@@ -14,3 +14,14 @@ venv/
 # 로그 및 임시 파일
 *.log
 .DS_Store
+
+# 모델 파일 및 데이터
+*.pt
+*.pth
+*.bin
+*.safetensors
+test_data/
+data/
+
+# 가상환경 (시스템별로 다를 수 있음)
+aiblock_env/
