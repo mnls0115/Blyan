@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Block</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>AI Block</h1>
+            <p>An AI on a blockchain.</p>
+        </header>
+        <div id="chat-window">
+            <ul id="message-list">
+                <li class="message ai">
+                    <strong>AI:</strong> Hello! Ask me anything.
+                </li>
+            </ul>
+        </div>
+        <section id="wallet-section" style="padding:16px; border-top:1px solid #e0e0e0;">
+            <h3>Your Wallet</h3>
+            <input type="text" id="wallet-address" placeholder="Wallet address" />
+            <button id="check-balance">Check Balance</button>
+            <span id="balance-display"></span>
+        </section>
+
+        <section id="chain-section" style="padding:16px; border-top:1px solid #e0e0e0; flex-grow:0; max-height:200px; overflow:auto;">
+            <h3>Recent Blocks (Chain B)</h3>
+            <button id="refresh-chain">Refresh</button>
+            <ul id="blocks-list"></ul>
+        </section>
+
+        <form id="chat-form">
+            <input type="text" id="prompt-input" placeholder="Say something..." autocomplete="off" required>
+            <button type="submit">Send</button>
+        </form>
+    </div>
+    <script src="main.js"></script>
+</body>
+</html> 
