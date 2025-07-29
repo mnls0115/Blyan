@@ -4,7 +4,7 @@ import hashlib
 import json
 import time
 from dataclasses import asdict, dataclass
-from typing import Optional
+from typing import Optional, List, Literal
 
 
 @dataclass
@@ -19,6 +19,16 @@ class BlockHeader:
     payload_hash: str
     payload_size: int
     nonce: int = 0  # proof-of-work nonce
+    
+    # DAG and MoE extensions
+    depends_on: List[str] = None  # list of block hashes this block depends on
+    block_type: Literal['meta', 'expert', 'router'] = 'meta'  # block type for MoE
+    expert_name: Optional[str] = None  # expert identifier for expert blocks
+    layer_id: Optional[str] = None  # layer identifier for model architecture
+    
+    def __post_init__(self):
+        if self.depends_on is None:
+            self.depends_on = []
 
     # ---------------------------------------------------------------------
     # Helper utilities
@@ -69,4 +79,100 @@ class Block:
             payload=payload,
             miner_pub=data.get("miner_pub"),
             payload_sig=data.get("payload_sig"),
-        ) 
+        )
+
+
+# ---------------------------------------------------------------------
+# DAG validation utilities
+# ---------------------------------------------------------------------
+
+def has_cycle(blocks: List[Block]) -> bool:
+    """Check if the DAG has cycles using DFS."""
+    # Build adjacency list: hash -> list of dependent hashes
+    graph = {}
+    block_hashes = set()
+    
+    for block in blocks:
+        block_hash = block.compute_hash()
+        block_hashes.add(block_hash)
+        graph[block_hash] = block.header.depends_on.copy()
+    
+    # DFS cycle detection
+    WHITE, GRAY, BLACK = 0, 1, 2
+    colors = {h: WHITE for h in block_hashes}
+    
+    def dfs(node: str) -> bool:
+        if colors[node] == GRAY:  # Back edge found - cycle detected
+            return True
+        if colors[node] == BLACK:  # Already processed
+            return False
+            
+        colors[node] = GRAY
+        for neighbor in graph.get(node, []):
+            if neighbor in colors and dfs(neighbor):
+                return True
+        colors[node] = BLACK
+        return False
+    
+    for node in block_hashes:
+        if colors[node] == WHITE and dfs(node):
+            return True
+    return False
+
+
+def topological_sort(blocks: List[Block]) -> Optional[List[str]]:
+    """Return topologically sorted block hashes, None if cycle exists."""
+    if has_cycle(blocks):
+        return None
+    
+    # Build graph and in-degree count
+    graph = {}
+    in_degree = {}
+    block_hashes = set()
+    
+    for block in blocks:
+        block_hash = block.compute_hash()
+        block_hashes.add(block_hash)
+        graph[block_hash] = block.header.depends_on.copy()
+        in_degree[block_hash] = 0
+    
+    # Calculate in-degrees
+    for block_hash in block_hashes:
+        for dep in graph[block_hash]:
+            if dep in in_degree:
+                in_degree[dep] += 1
+    
+    # Kahn's algorithm
+    queue = [h for h in block_hashes if in_degree[h] == 0]
+    result = []
+    
+    while queue:
+        current = queue.pop(0)
+        result.append(current)
+        
+        for dep in graph[current]:
+            if dep in in_degree:
+                in_degree[dep] -= 1
+                if in_degree[dep] == 0:
+                    queue.append(dep)
+    
+    return result if len(result) == len(block_hashes) else None
+
+
+def validate_dag_structure(blocks: List[Block]) -> bool:
+    """Validate that blocks form a valid DAG structure."""
+    if not blocks:
+        return True
+    
+    # Check for cycles
+    if has_cycle(blocks):
+        return False
+    
+    # Check that all dependencies exist
+    block_hashes = {block.compute_hash() for block in blocks}
+    for block in blocks:
+        for dep_hash in block.header.depends_on:
+            if dep_hash not in block_hashes:
+                return False  # Dependency not found
+    
+    return True 

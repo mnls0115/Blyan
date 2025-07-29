@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Union, List, Dict
 
 # Third-party libraries; ignore type checker if not present in local env
 from fastapi import FastAPI, HTTPException  # type: ignore
@@ -24,6 +25,8 @@ from backend.core.param_index import ParameterIndex
 
 from backend.core.chain import Chain
 from backend.model.infer import ModelManager
+from backend.model.moe_infer import MoEModelManager, ExpertUsageTracker, reward_expert
+from backend.p2p.distributed_inference import DistributedInferenceCoordinator, ExpertNode
 from backend.core.pol import evaluate_candidate
 
 # -------------------------------------------------
@@ -52,7 +55,12 @@ param_index = ParameterIndex(root_dir / "param_index.json")
 # Token ledger (simple JSON file)
 ledger = Ledger(root_dir / "ledger.json")
 
+# Usage tracking for MoE experts
+usage_tracker = ExpertUsageTracker(root_dir / "usage_log.json")
+
 model_manager: ModelManager | None = None
+moe_model_manager: MoEModelManager | None = None
+distributed_coordinator: DistributedInferenceCoordinator | None = None
 
 app = FastAPI(title="AI-Blockchain Prototype")
 
@@ -60,10 +68,15 @@ app = FastAPI(title="AI-Blockchain Prototype")
 class ChatRequest(BaseModel):
     prompt: str
     max_new_tokens: int = 64
+    use_moe: bool = True  # Use MoE inference by default
+    use_distributed: bool = False  # Use distributed inference
+    top_k_experts: int = 2  # Number of experts to use per layer
 
 
 class ChatResponse(BaseModel):
     response: str
+    expert_usage: dict = {}  # Track which experts were used
+    inference_time: float = 0.0
 
 
 # ---------------------------------------------------------------------
@@ -77,7 +90,7 @@ class MineRequest(BaseModel):
     payload_sig: str  # hex signature of candidate_payload_b64 decoded bytes
     candidate_payload_b64: str
     candidate_loss: float
-    previous_loss: float | None = None
+    previous_loss: Union[float, None] = None
 
 
 class MineResponse(BaseModel):
@@ -131,11 +144,11 @@ class BlockMeta(BaseModel):
     timestamp: float
     payload_size: int
     chain_id: str
-    points_to: str | None
+    points_to: Union[str, None]
 
 
 class ChainBlocksResponse(BaseModel):
-    blocks: list[BlockMeta]
+    blocks: List[BlockMeta]
 
 
 def _resolve_chain(chain_id: str) -> Chain:
@@ -172,7 +185,7 @@ async def get_chain_blocks(chain_id: str, limit: int = 10):
 
 class BlockDetailResponse(BaseModel):
     header: dict
-    payload_b64: str | None = None
+    payload_b64: Union[str, None] = None
 
 
 @app.get("/chain/{chain_id}/block/{index}", response_model=BlockDetailResponse)
@@ -188,17 +201,48 @@ async def get_block(chain_id: str, index: int, include_payload: bool = False):
 
 @app.on_event("startup")
 def _startup():
-    global model_manager
+    global model_manager, moe_model_manager, distributed_coordinator
     model_manager = ModelManager(meta_chain, param_chain, param_index)
+    moe_model_manager = MoEModelManager(meta_chain, param_chain, param_index, usage_tracker)
+    distributed_coordinator = DistributedInferenceCoordinator(usage_tracker)
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
-    if model_manager is None:
-        raise HTTPException(status_code=500, detail="Model manager not initialized")
+    import time
+    start_time = time.time()
+    
     try:
-        answer = model_manager.generate(req.prompt, max_new_tokens=req.max_new_tokens)
-        return ChatResponse(response=answer)
+        if req.use_moe and moe_model_manager is not None:
+            # Use MoE inference with selective expert loading
+            answer, expert_usage = moe_model_manager.selective_generate(
+                prompt=req.prompt,
+                max_new_tokens=req.max_new_tokens,
+                top_k_experts=req.top_k_experts
+            )
+            
+            inference_time = time.time() - start_time
+            
+            return ChatResponse(
+                response=answer,
+                expert_usage=expert_usage,
+                inference_time=inference_time
+            )
+        
+        else:
+            # Fallback to standard model manager
+            if model_manager is None:
+                raise HTTPException(status_code=500, detail="Model manager not initialized")
+            
+            answer = model_manager.generate(req.prompt, max_new_tokens=req.max_new_tokens)
+            inference_time = time.time() - start_time
+            
+            return ChatResponse(
+                response=answer,
+                expert_usage={},
+                inference_time=inference_time
+            )
+            
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -271,11 +315,11 @@ class UploadParamsRequest(BaseModel):
     file_b64: str
     payload_sig: str  # signature over raw file bytes
     candidate_loss: float
-    previous_loss: float | None = None
+    previous_loss: Union[float, None] = None
 
 
 class UploadParamsResponse(BaseModel):
-    block_hashes: list[str]
+    block_hashes: List[str]
     reward: float
     balance: float
 
@@ -315,10 +359,10 @@ async def upload_parameters(req: UploadParamsRequest):
         raise HTTPException(status_code=500, detail="Meta chain empty")
     points_to = latest_meta.compute_hash()
 
-    block_hashes: list[str] = []
+    block_hashes: List[str] = []
     param_count = 0
     try:
-        mapping: dict[str, int] = {}
+        mapping: Dict[str, int] = {}
         for name, tensor in state_dict.items():
             buf = io.BytesIO()
             torch.save({name: tensor}, buf)
@@ -348,6 +392,317 @@ async def upload_parameters(req: UploadParamsRequest):
         reward=total_reward,
         balance=balance,
     )
+
+
+# ------------------------------ MoE Expert Upload ------------------------------
+
+
+class MoEExpertRequest(BaseModel):
+    miner_address: str
+    miner_pub: str
+    payload_sig: str
+    expert_name: str
+    layer_id: str
+    block_type: str  # 'expert' or 'router'
+    depends_on: List[str]
+    tensor_data_b64: str
+    candidate_loss: float
+    previous_loss: Union[float, None] = None
+
+
+class MoEExpertResponse(BaseModel):
+    block_hash: str
+    reward: float
+    balance: float
+
+
+@app.post("/upload_moe_experts", response_model=MoEExpertResponse)
+async def upload_moe_expert(req: MoEExpertRequest):
+    """Upload a single MoE expert or router block to the DAG chain."""
+    
+    # 1. PoL check
+    passed = evaluate_candidate(
+        candidate_loss_fn=lambda: req.candidate_loss,
+        previous_loss=req.previous_loss,
+    )
+    if not passed:
+        raise HTTPException(status_code=400, detail="PoL failed: insufficient improvement")
+    
+    # 2. Validate block type
+    if req.block_type not in ['expert', 'router']:
+        raise HTTPException(status_code=400, detail="block_type must be 'expert' or 'router'")
+    
+    # 3. Decode and verify tensor data
+    try:
+        tensor_bytes = base64.b64decode(req.tensor_data_b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 tensor data")
+    
+    if not _verify_signature(req.miner_pub, tensor_bytes, req.payload_sig):
+        raise HTTPException(status_code=400, detail="Signature verification failed")
+    
+    # 4. Validate tensor data
+    try:
+        import backend.model.arch as arch
+        tensor_dict = arch.bytes_to_state_dict(tensor_bytes)
+        if not isinstance(tensor_dict, dict):
+            raise ValueError("Invalid tensor format")
+    except Exception as ex:
+        raise HTTPException(status_code=400, detail=f"Invalid tensor data: {ex}")
+    
+    # 5. Validate dependencies exist
+    for dep_hash in req.depends_on:
+        # Check if dependency exists in meta chain or param chain
+        meta_blocks = list(meta_chain.storage.iter_blocks())
+        param_blocks = list(param_chain.storage.iter_blocks())
+        all_hashes = {block.compute_hash() for block in meta_blocks + param_blocks}
+        
+        if dep_hash not in all_hashes:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Dependency {dep_hash} not found in blockchain"
+            )
+    
+    # 6. Create and add block to parameter chain
+    try:
+        new_block = param_chain.add_block(
+            payload=tensor_bytes,
+            points_to=req.depends_on[0] if req.depends_on else None,  # Point to first dependency
+            miner_pub=req.miner_pub,
+            payload_sig=req.payload_sig,
+            depends_on=req.depends_on,
+            block_type=req.block_type,
+            expert_name=req.expert_name,
+            layer_id=req.layer_id,
+        )
+        
+        # 7. Update parameter index
+        param_index.set(req.expert_name, new_block.header.index)
+        
+        # 8. Calculate reward based on block type and complexity
+        base_reward = 15.0 if req.block_type == 'expert' else 10.0  # Experts get higher reward
+        tensor_count = len(tensor_dict)
+        complexity_bonus = min(tensor_count * 2.0, 20.0)  # Bonus for tensor complexity
+        total_reward = base_reward + complexity_bonus
+        
+        ledger.credit(req.miner_address, total_reward)
+        balance = ledger.get_balance(req.miner_address)
+        
+        return MoEExpertResponse(
+            block_hash=new_block.compute_hash(),
+            reward=total_reward,
+            balance=balance
+        )
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to create block: {exc}")
+
+
+# ------------------------------ Expert Analytics ------------------------------
+
+
+class ExpertStatsResponse(BaseModel):
+    expert_name: str
+    call_count: int
+    average_response_time: float
+    quality_score: float
+    last_used: float
+    current_reward_multiplier: float
+
+
+class TopExpertsResponse(BaseModel):
+    experts: List[ExpertStatsResponse]
+
+
+@app.get("/experts/stats/{expert_name}", response_model=ExpertStatsResponse)
+async def get_expert_stats(expert_name: str):
+    """Get usage statistics for a specific expert."""
+    stats = usage_tracker.get_expert_stats(expert_name)
+    if not stats:
+        raise HTTPException(status_code=404, detail="Expert not found")
+    
+    reward_multiplier = reward_expert(expert_name, usage_tracker)
+    
+    return ExpertStatsResponse(
+        expert_name=stats.expert_name,
+        call_count=stats.call_count,
+        average_response_time=stats.average_response_time,
+        quality_score=stats.quality_score,
+        last_used=stats.last_used,
+        current_reward_multiplier=reward_multiplier
+    )
+
+
+@app.get("/experts/top", response_model=TopExpertsResponse)
+async def get_top_experts(limit: int = 10):
+    """Get top experts by usage."""
+    top_experts = usage_tracker.get_top_experts(limit)
+    
+    expert_responses = []
+    for stats in top_experts:
+        reward_multiplier = reward_expert(stats.expert_name, usage_tracker)
+        expert_responses.append(ExpertStatsResponse(
+            expert_name=stats.expert_name,
+            call_count=stats.call_count,
+            average_response_time=stats.average_response_time,
+            quality_score=stats.quality_score,
+            last_used=stats.last_used,
+            current_reward_multiplier=reward_multiplier
+        ))
+    
+    return TopExpertsResponse(experts=expert_responses)
+
+
+@app.post("/experts/reward/{expert_name}")
+async def reward_expert_endpoint(expert_name: str, base_reward: float = 10.0):
+    """Manually trigger expert reward calculation."""
+    if not usage_tracker.get_expert_stats(expert_name):
+        raise HTTPException(status_code=404, detail="Expert not found")
+    
+    reward_amount = reward_expert(expert_name, usage_tracker, base_reward)
+    
+    # Find the expert's miner address from the latest block
+    expert_blocks = param_chain.get_expert_blocks(expert_name)
+    if expert_blocks:
+        latest_block = max(expert_blocks, key=lambda b: b.header.timestamp)
+        if latest_block.miner_pub:
+            # For demo, use miner_pub as address (in practice, derive address from pubkey)
+            miner_address = latest_block.miner_pub[:16]  # Truncated for demo
+            ledger.credit(miner_address, reward_amount)
+            balance = ledger.get_balance(miner_address)
+            
+            return {
+                "expert_name": expert_name,
+                "reward_amount": reward_amount,
+                "miner_address": miner_address,
+                "new_balance": balance
+            }
+    
+    return {
+        "expert_name": expert_name,
+        "reward_amount": reward_amount,
+        "message": "No miner found for reward distribution"
+    }
+
+
+# ------------------------------ Distributed Inference ------------------------------
+
+
+class RegisterNodeRequest(BaseModel):
+    node_id: str
+    host: str
+    port: int
+    available_experts: List[str]
+
+
+class NodeRegistrationResponse(BaseModel):
+    status: str
+    message: str
+    registered_experts: int
+
+
+@app.post("/p2p/register", response_model=NodeRegistrationResponse)
+async def register_expert_node(req: RegisterNodeRequest):
+    """Register a new expert node for distributed inference."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    node = ExpertNode(
+        node_id=req.node_id,
+        host=req.host,
+        port=req.port,
+        available_experts=req.available_experts
+    )
+    
+    distributed_coordinator.registry.register_node(node)
+    
+    return NodeRegistrationResponse(
+        status="success",
+        message=f"Node {req.node_id} registered successfully",
+        registered_experts=len(req.available_experts)
+    )
+
+
+@app.delete("/p2p/nodes/{node_id}")
+async def unregister_expert_node(node_id: str):
+    """Unregister an expert node."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    distributed_coordinator.registry.unregister_node(node_id)
+    
+    return {"status": "success", "message": f"Node {node_id} unregistered"}
+
+
+@app.get("/p2p/nodes")
+async def list_expert_nodes():
+    """List all registered expert nodes."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    nodes = []
+    for node_id, node in distributed_coordinator.registry.nodes.items():
+        nodes.append({
+            "node_id": node.node_id,
+            "endpoint": node.endpoint,
+            "available_experts": node.available_experts,
+            "load_factor": node.load_factor,
+            "last_heartbeat": node.last_heartbeat
+        })
+    
+    return {"nodes": nodes}
+
+
+@app.post("/p2p/heartbeat/{node_id}")
+async def node_heartbeat(node_id: str, load_factor: float = 0.0):
+    """Update heartbeat and load for a node."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    distributed_coordinator.registry.heartbeat(node_id)
+    distributed_coordinator.registry.update_node_load(node_id, load_factor)
+    
+    return {"status": "heartbeat_received", "node_id": node_id, "load_factor": load_factor}
+
+
+@app.post("/chat/distributed")
+async def distributed_chat(req: ChatRequest):
+    """Chat using distributed inference across expert nodes."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    import time
+    start_time = time.time()
+    
+    try:
+        # For demo, select some experts to use (in practice, this would be determined by routing)
+        available_experts = []
+        for expert_name in distributed_coordinator.registry.expert_to_nodes.keys():
+            available_experts.append(expert_name)
+        
+        if not available_experts:
+            raise HTTPException(status_code=503, detail="No expert nodes available")
+        
+        # Select top-k experts for this request
+        selected_experts = available_experts[:req.top_k_experts]
+        
+        # Perform distributed inference
+        response_text, expert_usage = await distributed_coordinator.distribute_inference(
+            prompt=req.prompt,
+            required_experts=selected_experts,
+            max_new_tokens=req.max_new_tokens
+        )
+        
+        inference_time = time.time() - start_time
+        
+        return ChatResponse(
+            response=response_text,
+            expert_usage=expert_usage,
+            inference_time=inference_time
+        )
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ------------------------------ Ledger ------------------------------
