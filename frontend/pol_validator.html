@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PoL Block Validator - AI Block</title>
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="header-container"></div>
+    
+    <div class="main-container">
+        <!-- Tab Navigation -->
+        <div id="tabs-container"></div>
+
+        <!-- Tab Content Container -->
+        <div class="tab-content-container">
+            <!-- Block Selection Tab -->
+            <div id="block-selection" class="tab-content active">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📦 Select Expert Block</div>
+                            <div class="card-subtitle">Choose an expert block to validate using Proof-of-Learning</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label><strong>Selection Method:</strong></label>
+                        <select id="selection-method" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 5px;">
+                            <option value="hash">By Block Hash</option>
+                            <option value="list">From Recent Blocks</option>
+                        </select>
+                    </div>
+
+                    <!-- Hash Input Section -->
+                    <div id="hash-input-section">
+                        <label><strong>Block Hash:</strong></label>
+                        <input type="text" id="block-hash-input" placeholder="Enter full block hash (64 characters)"
+                               style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; margin: 5px 0 15px 0;">
+                        <button id="load-block-btn" disabled 
+                                style="padding: 10px 20px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            Load Block Info
+                        </button>
+                    </div>
+
+                    <!-- Block List Section -->
+                    <div id="block-list-section" style="display: none;">
+                        <label><strong>Recent Expert Blocks:</strong></label>
+                        <div id="blocks-list" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 5px;">
+                            <!-- Blocks will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Block Info Tab -->
+            <div id="block-info" class="tab-content">
+                <div class="card" id="block-info-section" style="display: none;">
+                    <div class="card-header">
+                        <div class="card-title">📋 Block Information</div>
+                    </div>
+                    
+                    <div class="dashboard-grid">
+                        <div class="metric-item">
+                            <div id="block-expert-name" class="metric-value">-</div>
+                            <div class="metric-label">Expert Name</div>
+                        </div>
+                        <div class="metric-item">
+                            <div id="block-layer-id" class="metric-value">-</div>
+                            <div class="metric-label">Layer ID</div>
+                        </div>
+                        <div class="metric-item">
+                            <div id="block-type" class="metric-value">-</div>
+                            <div class="metric-label">Block Type</div>
+                        </div>
+                        <div class="metric-item">
+                            <div id="block-payload-size" class="metric-value">-</div>
+                            <div class="metric-label">Payload Size</div>
+                        </div>
+                    </div>
+
+                    <h3>Block Details</h3>
+                    <p><strong>Block Hash:</strong> <span id="block-hash-display">-</span></p>
+                    <p><strong>Timestamp:</strong> <span id="block-timestamp">-</span></p>
+                </div>
+            </div>
+
+            <!-- Validation Tab -->
+            <div id="validation" class="tab-content">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">🔍 PoL Validation</div>
+                            <div class="card-subtitle">Validate expert block performance using Proof-of-Learning</div>
+                        </div>
+                    </div>
+                    
+                    <button id="validate-btn" disabled
+                            style="padding: 15px 30px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-bottom: 20px;">
+                        🧠 Run PoL Validation
+                    </button>
+
+                    <div id="validation-loading" style="display: none; text-align: center; margin: 20px 0;">
+                        <div class="loading-spinner" style="margin: 0 auto;"></div>
+                        <p>Running validation... This may take a moment.</p>
+                    </div>
+
+                    <div id="validation-results" style="display: none;">
+                        <!-- Validation results will appear here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Tab -->
+            <div id="admin" class="tab-content">
+                <div class="card" id="admin-section" style="display: none;">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">⚙️ Admin Actions</div>
+                            <div class="card-subtitle">Manual block management (Admin only)</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label><strong>Reason (Optional):</strong></label>
+                        <textarea id="admin-reason" placeholder="Enter reason for manual action..."
+                                  style="width: 100%; height: 80px; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; margin-top: 5px;"></textarea>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                        <button id="admin-accept-btn"
+                                style="padding: 10px 20px; background: var(--secondary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            ✅ Manual Accept
+                        </button>
+                        <button id="admin-reject-btn"
+                                style="padding: 10px 20px; background: var(--danger-color); color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            ❌ Manual Reject
+                        </button>
+                    </div>
+
+                    <div id="admin-results" style="display: none;">
+                        <!-- Admin results will appear here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="common-header.js"></script>
+    <script src="pol_validator.js"></script>
+    <script>
+        // 페이지 초기화
+        document.addEventListener('DOMContentLoaded', () => {
+            // 헤더 생성
+            document.getElementById('header-container').innerHTML = createAIBlockHeader('validator');
+            
+            // 탭 생성
+            const tabs = [
+                { id: 'block-selection', icon: '📦', name: 'Select Block' },
+                { id: 'block-info', icon: '📋', name: 'Block Info' },
+                { id: 'validation', icon: '🔍', name: 'Validation' },
+                { id: 'admin', icon: '⚙️', name: 'Admin' }
+            ];
+            document.getElementById('tabs-container').innerHTML = createPageTabs(tabs, 'block-selection');
+            
+            // PoL Validator 초기화
+            new PoLValidator();
+        });
+    </script>
+</body>
+</html>

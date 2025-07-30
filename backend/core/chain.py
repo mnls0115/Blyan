@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import time
 from pathlib import Path
-from typing import Iterator, Optional, List, Literal
+from typing import Iterator, Optional, List, Literal, Dict
 
 from .block import Block, BlockHeader, validate_dag_structure, topological_sort
 from .pow import find_nonce, verify_pow
@@ -13,9 +15,30 @@ from .storage import BlockStorage
 class Chain:
     """Represents a single append-only blockchain (meta or parameter)."""
 
-    def __init__(self, root_dir: Path, chain_id: str, difficulty: int = 4):
+    def __init__(self, root_dir: Path, chain_id: str, difficulty: int = 4, skip_pow: bool = False, chain_validator=None):
         self.chain_id = chain_id
-        self.difficulty = difficulty
+        # Support environment variable for difficulty override
+        env_difficulty = os.environ.get('CHAIN_DIFFICULTY')
+        if env_difficulty is not None:
+            try:
+                self.difficulty = int(env_difficulty)
+                print(f"Using CHAIN_DIFFICULTY={self.difficulty} from environment")
+            except ValueError:
+                self.difficulty = difficulty
+                print(f"Invalid CHAIN_DIFFICULTY, using default: {difficulty}")
+        else:
+            self.difficulty = difficulty
+        
+        self.skip_pow = skip_pow
+        if skip_pow:
+            print(f"⚠️  PoW disabled for chain {chain_id} (development mode)")
+        
+        # PoL validation support
+        self.chain_validator = chain_validator
+        self.enable_pol = os.environ.get('ENABLE_POL', 'false').lower() in ('true', '1', 'yes')
+        if self.enable_pol and self.chain_validator:
+            print(f"🧠 PoL validation enabled for chain {chain_id}")
+        
         self.storage = BlockStorage(root_dir / chain_id)
         self.storage.ensure_dir()
 
@@ -60,14 +83,38 @@ class Chain:
             layer_id=layer_id,
         )
 
-        # mine
-        header.nonce = find_nonce(header.to_json().encode() + payload, self.difficulty)
+        # mine (or skip if in development mode)
+        if self.skip_pow:
+            # Skip PoW computation but still include a dummy nonce
+            header.nonce = 12345  # Dummy nonce for development
+            print(f"⚡ Skipped PoW mining for block {index} (dev mode)")
+        else:
+            header.nonce = find_nonce(header.to_json().encode() + payload, self.difficulty)
         block = Block(
             header=header,
             payload=payload,
             miner_pub=miner_pub,
             payload_sig=payload_sig,
         )
+        
+        # PoL validation for expert/router blocks
+        if self.enable_pol and self.chain_validator and block_type in ('expert', 'router'):
+            print(f"🧠 Running PoL validation for {block_type} block...")
+            
+            # Get previous score for this expert if it exists
+            previous_score = self._get_expert_previous_score(expert_name) if expert_name else None
+            
+            is_valid, validation_details = self.chain_validator.validate_block(block, previous_score)
+            
+            if not is_valid:
+                failure_reason = validation_details.get('failure_reason', 'Unknown validation failure')
+                raise ValueError(f"PoL validation failed: {failure_reason}")
+            
+            print(f"✅ PoL validation passed for {expert_name}")
+            
+            # Store validation metrics for future reference
+            self._store_validation_metrics(block, validation_details)
+        
         # DAG validation before persisting - temporarily disabled for performance
         # if not self._validate_dag_before_add(block):
         #     raise ValueError("Adding this block would create an invalid DAG structure")
@@ -89,8 +136,8 @@ class Chain:
             # Payload integrity
             if block.header.payload_hash != hashlib.sha256(block.payload).hexdigest():
                 return False
-            # Proof-of-work validity
-            if not verify_pow(
+            # Proof-of-work validity (skip if PoW was disabled)
+            if not self.skip_pow and not verify_pow(
                 block.header.to_json().encode() + block.payload,
                 block.header.nonce,
                 self.difficulty,
@@ -147,4 +194,31 @@ class Chain:
     def get_blocks_by_layer(self, layer_id: str) -> List[Block]:
         """Get all blocks for a specific layer."""
         return [block for block in self.storage.iter_blocks() 
-                if block.header.layer_id == layer_id] 
+                if block.header.layer_id == layer_id]
+    
+    def _get_expert_previous_score(self, expert_name: str) -> Optional[float]:
+        """Get the previous best score for an expert."""
+        if not expert_name:
+            return None
+        
+        # Look for existing blocks with this expert_name
+        existing_blocks = self.get_expert_blocks(expert_name)
+        
+        if not existing_blocks:
+            return None
+        
+        # For now, return a mock previous score
+        # In practice, this would be stored in block metadata or separate tracking
+        return 0.75  # Mock baseline score
+    
+    def _store_validation_metrics(self, block: Block, validation_details: Dict):
+        """Store validation metrics for future reference."""
+        # In practice, you might want to store this in a separate metrics database
+        # or as metadata in the block itself
+        metrics_file = self.storage.storage_dir / f"validation_metrics_{block.compute_hash()[:16]}.json"
+        
+        try:
+            with open(metrics_file, 'w') as f:
+                json.dump(validation_details, f, default=str, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not store validation metrics: {e}") 

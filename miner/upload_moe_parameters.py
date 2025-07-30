@@ -16,6 +16,8 @@ import json
 import hashlib
 import io
 import re
+import sys
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from urllib import request, error
@@ -29,6 +31,7 @@ except ImportError:
     exit(1)
 
 API_URL = "http://127.0.0.1:8000/upload_moe_experts"
+CHECK_EXPERT_URL = "http://127.0.0.1:8000/chain/B/blocks"
 
 
 class MoEExpertExtractor:
@@ -186,8 +189,9 @@ class MoEExpertExtractor:
 class ExpertBlockUploader:
     """Upload expert blocks to the DAG blockchain."""
     
-    def __init__(self, miner_address: str, private_key: Optional[str] = None):
+    def __init__(self, miner_address: str, private_key: Optional[str] = None, reuse_existing: bool = False):
         self.miner_address = miner_address
+        self.reuse_existing = reuse_existing
         
         # Setup ECDSA signing
         if private_key:
@@ -200,6 +204,9 @@ class ExpertBlockUploader:
         
         self.verifying_key = self.signing_key.verifying_key
         self.miner_pub = self.verifying_key.to_string().hex()
+        
+        # Cache for existing experts to avoid repeated API calls
+        self._existing_experts_cache = None
     
     def serialize_expert_tensors(self, tensors: Dict[str, torch.Tensor]) -> bytes:
         """Serialize expert tensors to bytes."""
@@ -288,6 +295,46 @@ class ExpertBlockUploader:
             error_detail = e.read().decode()
             raise RuntimeError(f"HTTP {e.code}: {error_detail}")
     
+    def check_existing_experts(self) -> Dict[str, str]:
+        """Check which experts already exist in the parameter chain."""
+        if self._existing_experts_cache is not None:
+            return self._existing_experts_cache
+        
+        existing_experts = {}
+        
+        try:
+            # Fetch all blocks from parameter chain (B)
+            req = request.Request(CHECK_EXPERT_URL)
+            with request.urlopen(req) as resp:
+                response_data = json.load(resp)
+                blocks = response_data.get('blocks', [])
+            
+            # Extract expert names and their block hashes
+            for block in blocks:
+                try:
+                    # API returns BlockMeta objects with expert_name field
+                    expert_name = block.get('expert_name')
+                    block_type = block.get('block_type')
+                    
+                    # Only consider expert and router blocks
+                    if expert_name and block_type in ('expert', 'router'):
+                        block_hash = block.get('hash', 'unknown')
+                        existing_experts[expert_name] = block_hash
+                        
+                except Exception as e:
+                    print(f"Warning: Could not parse block data: {e}")
+                    continue
+            
+            self._existing_experts_cache = existing_experts
+            print(f"Found {len(existing_experts)} existing experts in chain")
+            
+        except Exception as e:
+            print(f"Warning: Could not fetch existing experts: {e}")
+            # Return empty dict on error - will proceed with upload
+            existing_experts = {}
+            
+        return existing_experts
+    
     def upload_all_experts(
         self,
         extracted_data: Dict,
@@ -299,8 +346,22 @@ class ExpertBlockUploader:
         
         block_hashes = {}
         
+        # Check existing experts if reuse_existing is enabled
+        existing_experts = {}
+        if self.reuse_existing:
+            existing_experts = self.check_existing_experts()
+            if existing_experts:
+                print(f"🔄 Reuse mode: Found {len(existing_experts)} existing experts")
+        
         # Upload expert blocks
         for expert_name, expert_data in extracted_data['experts'].items():
+            # Check if expert already exists and reuse_existing is enabled
+            if self.reuse_existing and expert_name in existing_experts:
+                existing_hash = existing_experts[expert_name]
+                block_hashes[expert_name] = existing_hash
+                print(f"♾️ Expert {expert_name} already exists: {existing_hash[:16]}... (reused)")
+                continue
+                
             print(f"Uploading expert: {expert_name}")
             
             payload = self.create_expert_block_payload(
@@ -322,6 +383,13 @@ class ExpertBlockUploader:
         
         # Upload router blocks
         for router_name, router_data in extracted_data['routers'].items():
+            # Check if router already exists and reuse_existing is enabled
+            if self.reuse_existing and router_name in existing_experts:
+                existing_hash = existing_experts[router_name]
+                block_hashes[router_name] = existing_hash
+                print(f"♾️ Router {router_name} already exists: {existing_hash[:16]}... (reused)")
+                continue
+                
             print(f"Uploading router: {router_name}")
             
             payload = self.create_router_block_payload(
@@ -353,6 +421,8 @@ def main():
     parser.add_argument("--prev-loss", type=float, default=None, help="Previous model loss")
     parser.add_argument("--privkey", help="Private key for signing (hex)")
     parser.add_argument("--dry-run", action="store_true", help="Extract experts but don't upload")
+    parser.add_argument("--reuse-existing", action="store_true", help="Skip uploading experts that already exist in chain")
+    parser.add_argument("--skip-pow", action="store_true", help="Skip proof-of-work mining (development mode)")
     
     args = parser.parse_args()
     
@@ -393,9 +463,14 @@ def main():
             print("\nDry run completed - no upload performed")
             return 0
         
+        # Set environment variables for development mode
+        if args.skip_pow:
+            os.environ['SKIP_POW'] = 'true'
+            print("🚧 PoW mining disabled for this upload")
+        
         # Upload to blockchain
         print(f"\nUploading to DAG blockchain (meta_hash: {args.meta_hash})...")
-        uploader = ExpertBlockUploader(args.address, args.privkey)
+        uploader = ExpertBlockUploader(args.address, args.privkey, args.reuse_existing)
         
         block_hashes = uploader.upload_all_experts(
             extracted_data=extracted_data,

@@ -1,27 +1,290 @@
+# =============================================================================
 # Python
+# =============================================================================
 __pycache__/
 *.py[cod]
+*$py.class
 *.so
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
 env/
 venv/
 .venv/
+myenv/
+aiblock_env/
+ENV/
+env.bak/
+venv.bak/
 
-# IDE
+# =============================================================================
+# IDE & Editor
+# =============================================================================
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
 
-# 로그 및 임시 파일
+# =============================================================================
+# Logs & Debug Files
+# =============================================================================
 *.log
-.DS_Store
+api_debug.log
+server.log
+debug.log
+error.log
+*.log.*
+logs/
+debug/
 
-# 모델 파일 및 데이터
+# =============================================================================
+# Model Files & Data
+# =============================================================================
 *.pt
 *.pth
 *.bin
 *.safetensors
+*.ckpt
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.onnx
+*.tflite
+*.pb
+*.tfl
+*.lite
+*.mlmodel
+*.mlpackage
+
+# Data directories
 test_data/
 data/
+models/
+datasets/
+raw_data/
+processed_data/
+cache/
+.cache/
 
-# 가상환경 (시스템별로 다를 수 있음)
-aiblock_env/
+# =============================================================================
+# Test Files (Main directory temporary files)
+# =============================================================================
+test_*.py
+quick_test.py
+run_pol_tests.py
+test_new_features.py
+test_pol_system.py
+
+# Duplicate/临时 upload files
+upload_few_experts.py
+direct_moe_upload.py
+
+# =============================================================================
+# Temporary Files
+# =============================================================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*.rej
+*.old
+*.new
+*.part
+*.partial
+*.incomplete
+
+# =============================================================================
+# Environment & Configuration
+# =============================================================================
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+config.local.py
+settings.local.py
+secrets.json
+credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
+
+# =============================================================================
+# Testing & Coverage
+# =============================================================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# =============================================================================
+# Jupyter Notebook
+# =============================================================================
+.ipynb_checkpoints/
+*.ipynb
+!examples/*.ipynb
+
+# =============================================================================
+# macOS
+# =============================================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# =============================================================================
+# Windows
+# =============================================================================
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# =============================================================================
+# Linux
+# =============================================================================
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# Project Specific Files
+# =============================================================================
+PROJECT_OVERVIEW_past.md
+api_debug.log
+server.log
+*.pid
+*.lock
+*.state
+*.wal
+*.shm
+*.db
+*.sqlite
+*.sqlite3
+
+# =============================================================================
+# Blockchain & Crypto Specific
+# =============================================================================
+*.wallet
+*.key
+*.pub
+*.priv
+*.seed
+*.mnemonic
+wallets/
+keys/
+secrets/
+
+# =============================================================================
+# AI/ML Specific
+# =============================================================================
+checkpoints/
+runs/
+wandb/
+mlruns/
+tensorboard_logs/
+*.events.*
+*.tfevents.*
+model_outputs/
+predictions/
+embeddings/
+vectors/
+
+# =============================================================================
+# Documentation Build
+# =============================================================================
+docs/_build/
+docs/build/
+site/
+_site/
+
+# =============================================================================
+# Package Managers
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# =============================================================================
+# Docker
+# =============================================================================
+.dockerignore
+Dockerfile.dev
+docker-compose.override.yml
+*.dockerfile
+
+# =============================================================================
+# Backup & Archive
+# =============================================================================
+*.tar
+*.tar.gz
+*.tar.bz2
+*.zip
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+backup/
+archives/

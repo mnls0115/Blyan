@@ -6,6 +6,7 @@ from typing import Union, List, Dict
 
 # Third-party libraries; ignore type checker if not present in local env
 from fastapi import FastAPI, HTTPException  # type: ignore
+from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from pydantic import BaseModel  # type: ignore
 
 # Built-ins / stdlib
@@ -28,6 +29,7 @@ from backend.model.infer import ModelManager
 from backend.model.moe_infer import MoEModelManager, ExpertUsageTracker, reward_expert
 from backend.p2p.distributed_inference import DistributedInferenceCoordinator, ExpertNode
 from backend.core.pol import evaluate_candidate
+from backend.core.pol_validator import create_pol_validator, ChainValidator
 
 # -------------------------------------------------
 # ECDSA signature verification helper
@@ -47,8 +49,18 @@ def _verify_signature(pub_hex: str, message: bytes, sig_hex: str) -> bool:
 # Init chains & model manager on startup
 # ---------------------------------------------------------------------
 root_dir = Path(os.getenv("AIBLOCK_DATA", "./data"))
-meta_chain = Chain(root_dir, "A")
-param_chain = Chain(root_dir, "B")  # currently unused but reserved
+# Check for development mode (skip PoW)
+skip_pow = os.getenv("SKIP_POW", "false").lower() in ("true", "1", "yes")
+if skip_pow:
+    print("🚧 Running in development mode - PoW disabled")
+
+# Check for PoL mode
+enable_pol = os.getenv("ENABLE_POL", "false").lower() in ("true", "1", "yes")
+if enable_pol:
+    print("🧠 Proof-of-Learning validation enabled")
+
+meta_chain = Chain(root_dir, "A", skip_pow=skip_pow)
+param_chain = Chain(root_dir, "B", skip_pow=skip_pow)  # parameter chain for experts
 # Parameter index
 param_index = ParameterIndex(root_dir / "param_index.json")
 
@@ -61,8 +73,39 @@ usage_tracker = ExpertUsageTracker(root_dir / "usage_log.json")
 model_manager: ModelManager | None = None
 moe_model_manager: MoEModelManager | None = None
 distributed_coordinator: DistributedInferenceCoordinator | None = None
+chain_validator: ChainValidator | None = None
+
+# Initialize PoL validator if enabled
+if enable_pol:
+    try:
+        # Create temporary MoE manager for PoL validator initialization
+        temp_moe_manager = MoEModelManager(meta_chain, param_chain, param_index, usage_tracker)
+        
+        chain_validator = create_pol_validator(
+            model_manager=temp_moe_manager,
+            enable_pol=True,
+            pol_threshold=float(os.getenv("POL_THRESHOLD", "0.01"))  # 1% improvement threshold
+        )
+        print(f"✅ PoL validator initialized with threshold {float(os.getenv('POL_THRESHOLD', '0.01'))*100:.1f}%")
+        
+        # Update parameter chain to use PoL validator
+        param_chain.chain_validator = chain_validator
+        param_chain.enable_pol = True
+        
+    except Exception as e:
+        print(f"⚠️  Failed to initialize PoL validator: {e}")
+        enable_pol = False
 
 app = FastAPI(title="AI-Blockchain Prototype")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ChatRequest(BaseModel):
@@ -145,6 +188,9 @@ class BlockMeta(BaseModel):
     payload_size: int
     chain_id: str
     points_to: Union[str, None]
+    block_type: Union[str, None] = None
+    expert_name: Union[str, None] = None
+    layer_id: Union[str, None] = None
 
 
 class ChainBlocksResponse(BaseModel):
@@ -174,10 +220,64 @@ async def get_chain_blocks(chain_id: str, limit: int = 10):
             payload_size=b.header.payload_size,
             chain_id=b.header.chain_id,
             points_to=b.header.points_to,
+            block_type=getattr(b.header, 'block_type', None),
+            expert_name=getattr(b.header, 'expert_name', None),
+            layer_id=getattr(b.header, 'layer_id', None),
         )
         for b in blocks_sorted
     ]
     return ChainBlocksResponse(blocks=res_blocks)
+
+
+# PoL-specific endpoints
+
+@app.get("/pol/status")
+async def get_pol_status():
+    """Get PoL system status and configuration."""
+    return {
+        "pol_enabled": enable_pol,
+        "pol_threshold": float(os.getenv("POL_THRESHOLD", "0.01")),
+        "skip_pow": skip_pow,
+        "validator_initialized": chain_validator is not None,
+        "validation_data_dir": str(root_dir / "validation_data") if enable_pol else None
+    }
+
+
+class PoLValidationRequest(BaseModel):
+    expert_name: str
+    layer_id: str
+    block_hash: str
+
+
+@app.post("/pol/validate")
+async def validate_expert_block(request: PoLValidationRequest):
+    """Manually validate an expert block using PoL."""
+    if not enable_pol or not chain_validator:
+        raise HTTPException(status_code=400, detail="PoL validation not enabled")
+    
+    try:
+        # Find the block to validate
+        target_block = None
+        for block in param_chain.storage.iter_blocks():
+            if block.compute_hash() == request.block_hash:
+                target_block = block
+                break
+        
+        if not target_block:
+            raise HTTPException(status_code=404, detail="Block not found")
+        
+        # Run PoL validation
+        is_valid, validation_details = chain_validator.validate_block(target_block)
+        
+        return {
+            "block_hash": request.block_hash,
+            "expert_name": request.expert_name,
+            "is_valid": is_valid,
+            "validation_details": validation_details
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Validation error: {str(e)}")
 
 
 # Get single block metadata and optional payload
@@ -420,13 +520,18 @@ class MoEExpertResponse(BaseModel):
 async def upload_moe_expert(req: MoEExpertRequest):
     """Upload a single MoE expert or router block to the DAG chain."""
     
-    # 1. PoL check
-    passed = evaluate_candidate(
-        candidate_loss_fn=lambda: req.candidate_loss,
-        previous_loss=req.previous_loss,
-    )
-    if not passed:
-        raise HTTPException(status_code=400, detail="PoL failed: insufficient improvement")
+    # 1. Enhanced PoL check (if PoL validator is available)
+    if enable_pol and chain_validator:
+        print(f"🧠 Using advanced PoL validation for {req.expert_name}")
+        # PoL validation will be handled by the chain during block creation
+    else:
+        # Fallback to simple PoL check
+        passed = evaluate_candidate(
+            candidate_loss_fn=lambda: req.candidate_loss,
+            previous_loss=req.previous_loss,
+        )
+        if not passed:
+            raise HTTPException(status_code=400, detail="PoL failed: insufficient improvement")
     
     # 2. Validate block type
     if req.block_type not in ['expert', 'router']:
@@ -495,6 +600,10 @@ async def upload_moe_expert(req: MoEExpertRequest):
         )
         
     except Exception as exc:
+        # Enhanced error handling for PoL validation failures
+        error_msg = str(exc)
+        if "PoL validation failed" in error_msg:
+            raise HTTPException(status_code=422, detail=f"Expert quality insufficient: {error_msg}")
         raise HTTPException(status_code=500, detail=f"Failed to create block: {exc}")
 
 

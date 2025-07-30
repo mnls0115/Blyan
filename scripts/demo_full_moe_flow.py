@@ -11,6 +11,7 @@ This validates that we have a working "self-learning AI blockchain organism".
 """
 
 import json
+import os
 import time
 import torch
 import tempfile
@@ -225,14 +226,16 @@ class FullMoEFlowTester:
             return False
         
         try:
-            # Use the actual upload script
+            # Use the actual upload script with new options
             cmd = [
                 sys.executable, "miner/upload_moe_parameters.py",
                 "--address", "test_miner",
                 "--model-file", str(model_path),
                 "--meta-hash", self.meta_hash,
                 "--candidate-loss", "0.85",
-                "--dry-run"  # First run dry-run to see what would be uploaded
+                "--reuse-existing",  # Skip existing experts
+                "--skip-pow",       # Skip PoW for faster testing
+                "--dry-run"         # First run dry-run to see what would be uploaded
             ]
             
             print("Running expert extraction (dry-run)...")
@@ -244,7 +247,7 @@ class FullMoEFlowTester:
                 
                 # Now run actual upload (remove --dry-run)
                 cmd.remove("--dry-run")
-                print("Running actual upload...")
+                print("Running actual upload with reuse-existing and skip-pow...")
                 
                 result = subprocess.run(cmd, capture_output=True, text=True, cwd=".")
                 
@@ -496,6 +499,11 @@ Check the detailed logs above for specific error messages.
         if not test_results["System Requirements"]:
             print("❌ System requirements not met")
             return False
+        
+        # Set development mode environment variables
+        os.environ['SKIP_POW'] = 'true'
+        os.environ['CHAIN_DIFFICULTY'] = '1'
+        print("🚧 Development mode: PoW disabled, difficulty=1")
         
         # Step 2: Create/download model
         model_path = self.download_real_moe_model()

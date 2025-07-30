@@ -1,85 +1,118 @@
-const form = document.getElementById('chat-form');
-const input = document.getElementById('prompt-input');
-const messages = document.getElementById('message-list');
 const API_URL = 'http://127.0.0.1:8000/chat';
-
 const BALANCE_URL = 'http://127.0.0.1:8000/balance/';
 const CHAIN_URL = 'http://127.0.0.1:8000/chain/B/blocks?limit=10';
 
-const checkBalanceBtn = document.getElementById('check-balance');
-const walletInput = document.getElementById('wallet-address');
-const balanceDisplay = document.getElementById('balance-display');
-const refreshChainBtn = document.getElementById('refresh-chain');
-const blocksList = document.getElementById('blocks-list');
+let form, input, messages, checkBalanceBtn, walletInput, balanceDisplay, refreshChainBtn, blocksList;
 
-form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const prompt = input.value.trim();
-    if (!prompt) return;
+function initializeElements() {
+    form = document.getElementById('chat-form');
+    input = document.getElementById('prompt-input');
+    messages = document.getElementById('message-list');
+    checkBalanceBtn = document.getElementById('check-balance');
+    walletInput = document.getElementById('wallet-address');
+    balanceDisplay = document.getElementById('balance-display');
+    refreshChainBtn = document.getElementById('refresh-chain');
+    blocksList = document.getElementById('blocks-list');
+}
 
-    addMessage('You', prompt, 'user');
-    input.value = '';
-    input.focus();
+function attachEventListeners() {
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const prompt = input.value.trim();
+            if (!prompt) return;
 
-    try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ prompt: prompt }),
+            addMessage('You', prompt, 'user');
+            input.value = '';
+            input.focus();
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+
+                if (!response.ok) throw new Error('Network response was not ok');
+                
+                const data = await response.json();
+                addMessage('AI', data.response || 'No response', 'ai');
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('AI', 'Sorry, there was an error processing your request.', 'ai error');
+            }
         });
-
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.detail || 'API Error');
-        }
-
-        const data = await response.json();
-        addMessage('AI', data.response, 'ai');
-    } catch (error) {
-        addMessage('Error', error.message, 'error');
     }
-});
 
-checkBalanceBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    const addr = walletInput.value.trim();
-    if (!addr) return;
-    try {
-        const res = await fetch(BALANCE_URL + encodeURIComponent(addr));
-        if (!res.ok) throw new Error('Failed');
-        const data = await res.json();
-        balanceDisplay.textContent = `Balance: ${data.balance}`;
-    } catch (err) {
-        balanceDisplay.textContent = 'Error';
-    }
-});
-
-async function loadBlocks() {
-    try {
-        const res = await fetch(CHAIN_URL);
-        if (!res.ok) throw new Error('failed');
-        const data = await res.json();
-        blocksList.innerHTML = '';
-        data.blocks.forEach((blk) => {
-            const li = document.createElement('li');
-            li.textContent = `#${blk.index} size=${blk.payload_size}`;
-            blocksList.appendChild(li);
+    if (checkBalanceBtn) {
+        checkBalanceBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const addr = walletInput.value.trim();
+            if (!addr) return;
+            try {
+                const res = await fetch(BALANCE_URL + encodeURIComponent(addr));
+                if (!res.ok) throw new Error('Failed');
+                const data = await res.json();
+                balanceDisplay.textContent = `Balance: ${data.balance}`;
+            } catch (err) {
+                balanceDisplay.textContent = 'Error loading balance';
+            }
         });
-    } catch (err) {
-        blocksList.innerHTML = '<li>Error fetching blocks</li>';
+    }
+
+    if (refreshChainBtn) {
+        refreshChainBtn.addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            loadBlocks(); 
+        });
+        // initial load
+        loadBlocks();
     }
 }
 
-refreshChainBtn.addEventListener('click', (e) => { e.preventDefault(); loadBlocks(); });
-// initial load
-loadBlocks();
+async function loadBlocks() {
+    if (!blocksList) return;
+    
+    try {
+        const res = await fetch(CHAIN_URL);
+        if (!res.ok) throw new Error('Failed');
+        const data = await res.json();
+        
+        blocksList.innerHTML = '';
+        
+        data.blocks.forEach(block => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <strong>Block ${block.index}</strong><br>
+                Hash: ${block.hash.substring(0, 16)}...<br>
+                Size: ${block.payload_size} bytes
+            `;
+            li.style.marginBottom = '10px';
+            li.style.padding = '10px';
+            li.style.border = '1px solid #ddd';
+            li.style.borderRadius = '4px';
+            blocksList.appendChild(li);
+        });
+    } catch (error) {
+        blocksList.innerHTML = '<li>Error loading blocks</li>';
+    }
+}
 
 function addMessage(sender, text, type) {
+    if (!messages) return;
+    
     const li = document.createElement('li');
     li.className = `message ${type}`;
     li.innerHTML = `<strong>${sender}:</strong> ${text}`;
     messages.appendChild(li);
     messages.parentElement.scrollTop = messages.parentElement.scrollHeight;
-} 
+}
+
+// 페이지 로드 시 초기화
+document.addEventListener('DOMContentLoaded', () => {
+    // 헤더와 탭이 생성된 후 요소 초기화
+    setTimeout(() => {
+        initializeElements();
+        attachEventListeners();
+    }, 100);
+});
