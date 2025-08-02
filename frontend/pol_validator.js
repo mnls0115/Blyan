@@ -4,7 +4,7 @@
 
 class PoLValidator {
     constructor() {
-        this.apiBase = 'http://127.0.0.1:8000';
+        this.apiBase = API_CONFIG.baseURL;
         this.selectedBlock = null;
         
         // 페이지 로드 후 초기화

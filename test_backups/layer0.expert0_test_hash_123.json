@@ -1,0 +1,11 @@
+{
+  "expert_name": "layer0.expert0",
+  "block_hash": "test_hash_123",
+  "performance_metrics": {
+    "accuracy": 0.95,
+    "loss": 0.1
+  },
+  "timestamp": 1754015968.0615208,
+  "parent_snapshot": null,
+  "weights_hash": "9db07f734aa08ea7342cc6f7c4cae01f877c6ae90f9101cd77f80b89089e0362"
+}

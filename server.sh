@@ -24,9 +24,9 @@ start_server() {
     echo "🚀 Starting $name server on port $port..."
     
     if [ "$name" = "api" ]; then
-        uvicorn $module --reload --host 127.0.0.1 --port $port > logs/${name}.log 2>&1 &
+        python3 -m uvicorn $module --reload --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
     else
-        python -m $module $port > logs/${name}.log 2>&1 &
+        python3 -m $module $port > logs/${name}.log 2>&1 &
     fi
     
     local pid=$!

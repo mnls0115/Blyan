@@ -28,8 +28,14 @@ from backend.core.chain import Chain
 from backend.model.infer import ModelManager
 from backend.model.moe_infer import MoEModelManager, ExpertUsageTracker, reward_expert
 from backend.p2p.distributed_inference import DistributedInferenceCoordinator, ExpertNode
+from backend.p2p.expert_group_optimizer import NodeCapability, ExpertGroup
 from backend.core.pol import evaluate_candidate
 from backend.core.pol_validator import create_pol_validator, ChainValidator
+
+# Security systems
+from backend.security.data_validation import DataSecurityCoordinator
+from backend.security.poison_detection import ComprehensivePoisonDetector
+from backend.security.quarantine_system import NetworkDefenseCoordinator
 
 # -------------------------------------------------
 # ECDSA signature verification helper
@@ -69,6 +75,11 @@ ledger = Ledger(root_dir / "ledger.json")
 
 # Usage tracking for MoE experts
 usage_tracker = ExpertUsageTracker(root_dir / "usage_log.json")
+
+# Security systems
+security_coordinator = DataSecurityCoordinator(root_dir / "expert_backups")
+poison_detector = ComprehensivePoisonDetector()
+network_defense = NetworkDefenseCoordinator(root_dir / "quarantine_data")
 
 model_manager: ModelManager | None = None
 moe_model_manager: MoEModelManager | None = None
@@ -304,7 +315,7 @@ def _startup():
     global model_manager, moe_model_manager, distributed_coordinator
     model_manager = ModelManager(meta_chain, param_chain, param_index)
     moe_model_manager = MoEModelManager(meta_chain, param_chain, param_index, usage_tracker)
-    distributed_coordinator = DistributedInferenceCoordinator(usage_tracker)
+    distributed_coordinator = DistributedInferenceCoordinator(usage_tracker, param_index)
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -704,6 +715,47 @@ class RegisterNodeRequest(BaseModel):
     available_experts: List[str]
 
 
+class RegisterOptimizedNodeRequest(BaseModel):
+    node_id: str
+    host: str
+    port: int
+    available_experts: List[str]
+    expert_groups: List[Dict] = []  # [{experts: [str], usage_count: int}]
+    region: str = "default"
+
+
+class OptimizedChatRequest(BaseModel):
+    prompt: str
+    required_experts: List[str]
+    max_new_tokens: int = 64
+    preferred_region: str = "default"
+
+
+class ExpertGroupInsight(BaseModel):
+    group_id: str
+    experts: List[str]
+    usage_count: int
+    co_occurrence_score: float
+
+
+class SecureChatRequest(BaseModel):
+    prompt: str
+    required_experts: List[str]
+    max_new_tokens: int = 64
+    preferred_region: str = "default"
+    enable_integrity_check: bool = True
+
+
+class SecurityVerificationResult(BaseModel):
+    verification_enabled: bool
+    beacon_count: int
+    integrity_score: float
+    trust_level: str
+    anomalies: List[str]
+    verified_components: List[str]
+    rolling_hash: str
+
+
 class NodeRegistrationResponse(BaseModel):
     status: str
     message: str
@@ -774,6 +826,361 @@ async def node_heartbeat(node_id: str, load_factor: float = 0.0):
     return {"status": "heartbeat_received", "node_id": node_id, "load_factor": load_factor}
 
 
+@app.post("/p2p/register_optimized", response_model=NodeRegistrationResponse)
+async def register_optimized_expert_node(req: RegisterOptimizedNodeRequest):
+    """Register a new expert node with expert group capabilities."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    # Convert expert group data to ExpertGroup objects
+    expert_groups = []
+    for group_data in req.expert_groups:
+        expert_group = ExpertGroup(
+            experts=set(group_data.get("experts", [])),
+            usage_count=group_data.get("usage_count", 0),
+            co_occurrence_score=group_data.get("co_occurrence_score", 0.0)
+        )
+        expert_groups.append(expert_group)
+    
+    # Create NodeCapability
+    node_capability = NodeCapability(
+        node_id=req.node_id,
+        host=req.host,
+        port=req.port,
+        expert_groups=expert_groups,
+        individual_experts=set(req.available_experts),
+        region=req.region
+    )
+    
+    # Register with optimized coordinator
+    distributed_coordinator.register_expert_group_node(node_capability)
+    
+    return NodeRegistrationResponse(
+        status="success",
+        message=f"Optimized node {req.node_id} registered with {len(expert_groups)} expert groups",
+        registered_experts=len(req.available_experts)
+    )
+
+
+@app.post("/chat/distributed_optimized")
+async def optimized_distributed_chat(req: OptimizedChatRequest):
+    """Chat using optimized distributed inference with expert groups."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    import time
+    start_time = time.time()
+    
+    try:
+        # Use optimized distributed inference
+        response_text, routing_info = await distributed_coordinator.distribute_inference_optimized(
+            prompt=req.prompt,
+            required_experts=req.required_experts,
+            max_new_tokens=req.max_new_tokens,
+            preferred_region=req.preferred_region
+        )
+        
+        inference_time = time.time() - start_time
+        
+        return {
+            "response": response_text,
+            "routing_info": routing_info,
+            "inference_time": inference_time,
+            "optimization_applied": routing_info.get("optimization_applied", False)
+        }
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/p2p/optimization_insights")
+async def get_optimization_insights():
+    """Get insights about expert group optimization performance."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    try:
+        insights = distributed_coordinator.get_optimization_insights()
+        return insights
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/p2p/expert_groups")
+async def get_expert_groups():
+    """Get information about identified expert groups."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    try:
+        hot_groups = distributed_coordinator.group_index.get_hot_expert_groups(limit=10)
+        
+        return {
+            "hot_expert_groups": [
+                {
+                    "group_id": group.group_id,
+                    "experts": list(group.experts),
+                    "usage_count": group.usage_count,
+                    "co_occurrence_score": group.co_occurrence_score,
+                    "average_latency": group.average_latency
+                }
+                for group in hot_groups
+            ],
+            "total_groups": len(hot_groups)
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/p2p/replication_suggestions")
+async def get_replication_suggestions():
+    """Get suggestions for expert group replication."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    try:
+        suggestions = distributed_coordinator.smart_router.get_replication_suggestions()
+        return {"suggestions": suggestions}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/chat/distributed_secure")
+async def secure_distributed_chat(req: SecureChatRequest):
+    """Chat using secure distributed inference with real-time integrity verification and automatic failover."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    import time
+    start_time = time.time()
+    
+    try:
+        # Use secure distributed inference with failover
+        response_text, routing_info = await distributed_coordinator.distribute_inference_with_failover(
+            prompt=req.prompt,
+            required_experts=req.required_experts,
+            max_new_tokens=req.max_new_tokens,
+            preferred_region=req.preferred_region
+        )
+        
+        inference_time = time.time() - start_time
+        
+        # Extract security verification results
+        security_verification = routing_info.get("security_verification", {})
+        user_message = routing_info.get("user_message")
+        
+        # Determine response status
+        if routing_info.get("status") == "temporary_unavailable":
+            raise HTTPException(
+                status_code=503, 
+                detail={
+                    "message": user_message or "Service temporarily unavailable",
+                    "recovery_suggestion": routing_info.get("recovery_suggestion"),
+                    "retry_after": 30
+                }
+            )
+        
+        return {
+            "response": response_text,
+            "routing_info": routing_info,
+            "inference_time": inference_time,
+            "security_verification": security_verification,
+            "integrity_verified": security_verification.get("trust_level", "UNKNOWN") in ["HIGH", "MEDIUM"],
+            "user_message": user_message,
+            "failover_occurred": routing_info.get("failover_occurred", False)
+        }
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/security/integrity_status")
+async def get_integrity_status():
+    """Get the current status of integrity verification system."""
+    if not distributed_coordinator or not distributed_coordinator.integrity_coordinator:
+        return {
+            "integrity_verification_available": False,
+            "error": "Integrity coordinator not initialized"
+        }
+    
+    # Get statistics from integrity coordinator
+    active_audits = len(distributed_coordinator.integrity_coordinator.active_audits)
+    
+    return {
+        "integrity_verification_available": True,
+        "active_audit_contexts": active_audits,
+        "security_features": {
+            "activation_beacons": True,
+            "weight_verification": True,
+            "routing_canaries": True,
+            "rolling_commitments": True,
+            "runtime_attestation": True
+        },
+        "verification_levels": ["BASIC", "STANDARD", "STRICT"],
+        "current_level": "STANDARD"
+    }
+
+
+@app.post("/security/verify_audit/{request_id}")
+async def verify_audit_results(request_id: str):
+    """Verify audit results for a completed inference request."""
+    if not distributed_coordinator or not distributed_coordinator.integrity_coordinator:
+        raise HTTPException(status_code=500, detail="Integrity coordinator not initialized")
+    
+    try:
+        audit_summary = distributed_coordinator.integrity_coordinator.get_audit_summary(request_id)
+        
+        if "error" in audit_summary:
+            raise HTTPException(status_code=404, detail=audit_summary["error"])
+        
+        return {
+            "request_id": request_id,
+            "audit_summary": audit_summary,
+            "verification_complete": True
+        }
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/security/dashboard")
+async def get_security_dashboard():
+    """Get comprehensive security dashboard data with real-time metrics."""
+    if not distributed_coordinator or not distributed_coordinator.security_orchestrator:
+        raise HTTPException(status_code=500, detail="Security orchestrator not initialized")
+    
+    try:
+        dashboard_data = distributed_coordinator.security_orchestrator.get_security_dashboard_data()
+        return dashboard_data
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/security/threat_indicators")
+async def get_threat_indicators():
+    """Get current security threat indicators and anomaly detection results."""
+    if not distributed_coordinator or not distributed_coordinator.security_orchestrator:
+        # Fallback to basic threat indicators
+        return {
+            "threat_level": "UNKNOWN",
+            "anomaly_count_24h": 0,
+            "recent_anomalies": [],
+            "node_trust_scores": {},
+            "verification_success_rate": 0.0,
+            "error": "Security orchestrator not available"
+        }
+    
+    try:
+        dashboard_data = distributed_coordinator.security_orchestrator.get_security_dashboard_data()
+        
+        # Extract threat indicators from dashboard data
+        overview = dashboard_data["overview"]
+        alerts = dashboard_data["security_alerts"]
+        
+        # Determine threat level based on metrics
+        threat_level = "LOW"
+        if overview["success_rate"] < 0.8:
+            threat_level = "HIGH"
+        elif overview["quarantined_nodes"] > 0 or alerts["by_severity"]["HIGH"] > 0:
+            threat_level = "MEDIUM"
+        
+        return {
+            "threat_level": threat_level,
+            "anomaly_count_24h": alerts["total"],
+            "recent_anomalies": alerts["recent"],
+            "node_trust_scores": {
+                node_id: data["trust_score"] 
+                for node_id, data in dashboard_data["node_metrics"].items()
+            },
+            "verification_success_rate": overview["success_rate"],
+            "common_anomaly_types": list(dashboard_data["failure_analysis"].keys()),
+            "quarantined_nodes": overview["quarantined_nodes"],
+            "failover_count": overview["failover_count"],
+            "recommended_actions": [
+                "Monitor quarantined nodes" if overview["quarantined_nodes"] > 0 else None,
+                "Review failure patterns" if overview["success_rate"] < 0.9 else None,
+                "Consider scaling infrastructure" if overview["failover_count"] > 10 else None
+            ]
+        }
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/security/quarantine_node/{node_id}")
+async def manual_quarantine_node(node_id: str, reason: str = "Manual quarantine"):
+    """Manually quarantine a node for security reasons."""
+    if not distributed_coordinator or not distributed_coordinator.security_orchestrator:
+        raise HTTPException(status_code=500, detail="Security orchestrator not initialized")
+    
+    try:
+        distributed_coordinator.security_orchestrator.quarantine_node(node_id, reason)
+        return {
+            "status": "success",
+            "message": f"Node {node_id} has been quarantined",
+            "reason": reason
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/security/recover_node/{node_id}")
+async def attempt_node_recovery(node_id: str):
+    """Attempt to recover a quarantined node."""
+    if not distributed_coordinator or not distributed_coordinator.security_orchestrator:
+        raise HTTPException(status_code=500, detail="Security orchestrator not initialized")
+    
+    try:
+        distributed_coordinator.security_orchestrator.attempt_node_recovery(node_id)
+        return {
+            "status": "success",
+            "message": f"Recovery attempt initiated for node {node_id}"
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/security/node_status/{node_id}")
+async def get_node_security_status(node_id: str):
+    """Get detailed security status for a specific node."""
+    if not distributed_coordinator or not distributed_coordinator.security_orchestrator:
+        raise HTTPException(status_code=500, detail="Security orchestrator not initialized")
+    
+    try:
+        dashboard_data = distributed_coordinator.security_orchestrator.get_security_dashboard_data()
+        
+        if node_id not in dashboard_data["node_metrics"]:
+            raise HTTPException(status_code=404, detail="Node not found")
+        
+        node_data = dashboard_data["node_metrics"][node_id]
+        
+        # Check if node is quarantined
+        quarantine_info = None
+        for q_node in dashboard_data["quarantined_nodes"]:
+            if q_node["node_id"] == node_id:
+                quarantine_info = q_node
+                break
+        
+        return {
+            "node_id": node_id,
+            "status": "quarantined" if node_data["quarantined"] else "active",
+            "trust_score": node_data["trust_score"],
+            "success_rate": node_data["success_rate"],
+            "total_requests": node_data["total_requests"],
+            "consecutive_failures": node_data["consecutive_failures"],
+            "average_integrity": node_data["average_integrity"],
+            "quarantine_info": quarantine_info,
+            "can_use": distributed_coordinator.security_orchestrator.can_use_node(node_id)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post("/chat/distributed")
 async def distributed_chat(req: ChatRequest):
     """Chat using distributed inference across expert nodes."""
@@ -822,5 +1229,178 @@ async def get_balance(address: str):
     try:
         bal = ledger.get_balance(address)
         return BalanceResponse(address=address, balance=bal)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ------------------------------ Security ------------------------------
+
+class SecurityIncidentRequest(BaseModel):
+    node_id: str
+    incident_type: str
+    severity: float
+    evidence: Dict
+    reporter_nodes: List[str] = []
+
+class SecurityStatusResponse(BaseModel):
+    node_id: str
+    quarantined: bool
+    level: str = None
+    trust_score: float
+    recent_activities: List[Dict]
+
+class NetworkHealthResponse(BaseModel):
+    network_health_score: float
+    health_status: str
+    total_nodes: int
+    quarantined_nodes: int
+    trust_distribution: Dict[str, int]
+
+class ExpertValidationRequest(BaseModel):
+    expert_name: str
+    training_data_sample: str
+    test_responses: List[str]
+    address: str
+
+class ExpertValidationResponse(BaseModel):
+    is_valid: bool
+    action: str
+    snapshot_hash: str = None
+    confidence_score: float
+    violations: List[str] = []
+
+@app.post("/security/report_incident")
+async def report_security_incident(req: SecurityIncidentRequest):
+    """Report a security incident."""
+    try:
+        result = network_defense.handle_security_incident(
+            node_id=req.node_id,
+            incident_type=req.incident_type,
+            severity=req.severity,
+            evidence=req.evidence,
+            reporter_nodes=req.reporter_nodes
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.get("/security/status/{node_id}", response_model=SecurityStatusResponse)
+async def get_security_status(node_id: str):
+    """Get security status for a node."""
+    try:
+        status = network_defense.quarantine_manager.get_quarantine_status(node_id)
+        return SecurityStatusResponse(
+            node_id=node_id,
+            quarantined=status["quarantined"],
+            level=status.get("level"),
+            trust_score=status["trust_score"],
+            recent_activities=status["recent_activities"]
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.get("/security/network_health", response_model=NetworkHealthResponse)
+async def get_network_health():
+    """Get overall network health metrics."""
+    try:
+        health = network_defense.get_network_health()
+        return NetworkHealthResponse(
+            network_health_score=health["network_health_score"],
+            health_status=health["health_status"],
+            total_nodes=health["total_nodes"],
+            quarantined_nodes=health["quarantined_nodes"],
+            trust_distribution=health["trust_distribution"]
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.post("/security/validate_expert", response_model=ExpertValidationResponse)
+async def validate_expert_update(req: ExpertValidationRequest):
+    """Validate an expert update for security threats."""
+    try:
+        # Check if node is quarantined
+        can_submit, reason = network_defense.quarantine_manager.can_node_perform_action(
+            req.address, "submit_expert"
+        )
+        if not can_submit:
+            raise HTTPException(status_code=403, detail=f"Node quarantined: {reason}")
+        
+        # Get old weights (simplified - in production would get from blockchain)
+        old_weights = {"dummy": torch.randn(10, 5)}
+        new_weights = {"dummy": torch.randn(10, 5)}
+        
+        # Comprehensive validation
+        is_valid, action, snapshot_hash = security_coordinator.validate_expert_update(
+            expert_name=req.expert_name,
+            old_weights=old_weights,
+            new_weights=new_weights,
+            training_data_sample=req.training_data_sample,
+            test_responses=req.test_responses
+        )
+        
+        # If validation failed, report security incident
+        if not is_valid:
+            network_defense.handle_security_incident(
+                node_id=req.address,
+                incident_type="failed_validation",
+                severity=0.7,
+                evidence={"expert_name": req.expert_name, "action": action}
+            )
+        
+        return ExpertValidationResponse(
+            is_valid=is_valid,
+            action=action,
+            snapshot_hash=snapshot_hash,
+            confidence_score=0.8,  # Simplified
+            violations=[]
+        )
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.post("/security/quarantine/{node_id}")
+async def quarantine_node(node_id: str, reason: str, level: str = "restricted", duration_hours: float = 24):
+    """Manually quarantine a node."""
+    try:
+        from backend.security.quarantine_system import QuarantineLevel
+        
+        quarantine_level = QuarantineLevel(level)
+        duration = duration_hours * 3600 if duration_hours > 0 else None
+        
+        success = network_defense.quarantine_manager.quarantine_node(
+            node_id=node_id,
+            reason=reason,
+            level=quarantine_level,
+            duration=duration,
+            reporter_nodes=["admin"]
+        )
+        
+        return {"success": success, "message": f"Node {node_id} quarantined at level {level}"}
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.delete("/security/quarantine/{node_id}")
+async def release_quarantine(node_id: str, reason: str = "Manual release"):
+    """Release a node from quarantine."""
+    try:
+        success = network_defense.quarantine_manager.release_node(node_id, reason)
+        return {"success": success, "message": f"Node {node_id} released from quarantine"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.get("/security/quarantined_nodes")
+async def list_quarantined_nodes():
+    """List all quarantined nodes."""
+    try:
+        quarantined = {}
+        for node_id, entry in network_defense.quarantine_manager.quarantined_nodes.items():
+            quarantined[node_id] = {
+                "level": entry.level.value,
+                "reason": entry.reason,
+                "timestamp": entry.timestamp,
+                "duration": entry.duration
+            }
+        return quarantined
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) 

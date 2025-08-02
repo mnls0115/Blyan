@@ -48,8 +48,18 @@ class ModelWrapper:
         self.model = None
         
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            # Check if it's a local model path
+            import os
+            local_path = f"./models/{model_name}"
+            if os.path.exists(local_path):
+                print(f"🔍 Loading local model from {local_path}")
+                self.tokenizer = AutoTokenizer.from_pretrained(local_path)
+                self.model = AutoModelForCausalLM.from_pretrained(local_path, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+            else:
+                # Try loading from HuggingFace
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+                self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            
             self.model.to(self.device)
             self.model.eval()
             print(f"✓ Loaded model {model_name}")
@@ -72,15 +82,30 @@ class ModelWrapper:
             return f"Mock AI response to: '{prompt}' (using AI-Block MoE system)"
         
         try:
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+            # Format prompt for Mistral/Mixtral models
+            if "mixtral" in self.model_name.lower() or "mistral" in self.model_name.lower():
+                # Try a simple instruction format
+                formatted_prompt = f"Human: {prompt}\n\nAssistant:"
+            else:
+                formatted_prompt = prompt
+                
+            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.device)
+            input_length = inputs['input_ids'].shape[1]
+            
             output_ids = self.model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=True,
                 temperature=gen_kwargs.get("temperature", 0.8),
                 top_p=gen_kwargs.get("top_p", 0.95),
+                pad_token_id=self.tokenizer.eos_token_id,
             )
-            return self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+            
+            # Only decode the newly generated tokens (exclude input)
+            new_tokens = output_ids[0][input_length:]
+            generated_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
+            
+            return generated_text
         except Exception as e:
             print(f"⚠️  Generation failed: {e}")
             return f"AI-Block MoE response to: '{prompt}' [Note: Using fallback due to model error]"

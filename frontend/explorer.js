@@ -5,7 +5,7 @@
 
 class AIBlockExplorer {
     constructor() {
-        this.apiBase = 'http://127.0.0.1:8000';
+        this.apiBase = API_CONFIG.baseURL;
         this.data = {
             metaBlocks: [],
             parameterBlocks: [],
@@ -623,27 +623,27 @@ class AIBlockExplorer {
     }
 }
 
-// Global functions
-function switchTab(tabId) {
-    // Hide all tab contents
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    
-    // Remove active class from all tab buttons
-    document.querySelectorAll('.tab-button').forEach(button => {
-        button.classList.remove('active');
-    });
-    
-    // Show selected tab
-    document.getElementById(tabId).classList.add('active');
-    event.target.classList.add('active');
-    
-    // Load DAG visualization if DAG tab is selected
-    if (tabId === 'dag-view') {
-        window.explorer.initializeDAGView();
-    }
-}
+// Global functions - 이 함수는 common-header.js에서 처리되므로 제거
+// function switchTab(tabId) {
+//     // Hide all tab contents
+//     document.querySelectorAll('.tab-content').forEach(tab => {
+//         tab.classList.remove('active');
+//     });
+//     
+//     // Remove active class from all tab buttons
+//     document.querySelectorAll('.tab-button').forEach(button => {
+//         button.classList.remove('active');
+//     });
+//     
+//     // Show selected tab
+//     document.getElementById(tabId).classList.add('active');
+//     event.target.classList.add('active');
+//     
+//     // Load DAG visualization if DAG tab is selected
+//     if (tabId === 'dag-view') {
+//         window.explorer.initializeDAGView();
+//     }
+// }
 
 function applyFilters() {
     window.explorer.applyFilters();

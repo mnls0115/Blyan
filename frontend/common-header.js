@@ -81,12 +81,17 @@ function switchTab(tabId) {
         selectedContent.style.display = 'block';
         console.log('Shown content:', tabId);
     }
+    
+    // DAG 뷰 초기화 (해당 탭인 경우)
+    if (tabId === 'dag-view' && window.explorer) {
+        window.explorer.initializeDAGView();
+    }
 }
 
 // API 상태 체크 함수
 async function checkAPIStatus() {
     try {
-        const response = await fetch('http://127.0.0.1:8000/pol/status');
+        const response = await fetch(API_CONFIG.baseURL + API_CONFIG.polStatus);
         if (response.ok) {
             const status = await response.json();
             updateStatusBadge('api-status', true, 'API: Online');

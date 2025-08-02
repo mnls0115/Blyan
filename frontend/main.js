@@ -1,6 +1,6 @@
-const API_URL = 'http://127.0.0.1:8000/chat';
-const BALANCE_URL = 'http://127.0.0.1:8000/balance/';
-const CHAIN_URL = 'http://127.0.0.1:8000/chain/B/blocks?limit=10';
+const API_URL = API_CONFIG.baseURL + API_CONFIG.chat;
+const BALANCE_URL = API_CONFIG.baseURL + API_CONFIG.balance;
+const CHAIN_URL = API_CONFIG.baseURL + API_CONFIG.chain;
 
 let form, input, messages, checkBalanceBtn, walletInput, balanceDisplay, refreshChainBtn, blocksList;
 
