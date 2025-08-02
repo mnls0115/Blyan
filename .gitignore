@@ -82,6 +82,7 @@ debug/
 # Data directories
 test_data/
 data/
+data_backup/
 models/
 datasets/
 raw_data/
