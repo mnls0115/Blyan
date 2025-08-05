@@ -79,7 +79,7 @@ class ModelWrapper:
     @torch.inference_mode()
     def generate(self, prompt: str, max_new_tokens: int = 64, **gen_kwargs) -> str:
         if self.model is None or self.tokenizer is None:
-            return f"Mock AI response to: '{prompt}' (using AI-Block MoE system)"
+            return f"Mock AI response to: '{prompt}' (using Blyan MoE system)"
         
         try:
             # Format prompt for Mistral/Mixtral models
@@ -108,7 +108,7 @@ class ModelWrapper:
             return generated_text
         except Exception as e:
             print(f"⚠️  Generation failed: {e}")
-            return f"AI-Block MoE response to: '{prompt}' [Note: Using fallback due to model error]"
+            return f"Blyan MoE response to: '{prompt}' [Note: Using fallback due to model error]"
     
     def _create_mock_model(self):
         """Create a mock model and tokenizer for testing when real model fails."""
@@ -143,7 +143,7 @@ class MockTokenizer:
     
     def decode(self, token_ids, skip_special_tokens=True):
         # Return mock decoded text
-        return "This is a mock response from AI-Block MoE blockchain system."
+        return "This is a mock response from Blyan MoE blockchain system."
 
 
 class MockModel:

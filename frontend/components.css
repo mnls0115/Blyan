@@ -1,4 +1,4 @@
-/* AI-Block 공통 컴포넌트 스타일 */
+/* Blyan 공통 컴포넌트 스타일 */
 
 :root {
     --primary-color: #2563eb;
@@ -11,14 +11,14 @@
 }
 
 /* 공통 네비게이션 헤더 */
-.ai-block-header {
+.Blyan-header {
     background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
     color: white;
     padding: 20px 0;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 
-.ai-block-nav {
+.Blyan-nav {
     max-width: 1200px;
     margin: 0 auto;
     display: flex;
@@ -27,7 +27,7 @@
     padding: 0 20px;
 }
 
-.ai-block-title {
+.Blyan-title {
     font-size: 24px;
     font-weight: bold;
     display: flex;
@@ -188,7 +188,7 @@
 
 /* 반응형 */
 @media (max-width: 768px) {
-    .ai-block-nav {
+    .Blyan-nav {
         flex-direction: column;
         gap: 15px;
         text-align: center;

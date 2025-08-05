@@ -94,7 +94,7 @@ sudo certbot certificates
 # Nginx 재시작
 sudo systemctl restart nginx
 
-# AI-Block API 재시작
+# Blyan API 재시작
 sudo systemctl restart aiblock
 
 # 로그 확인

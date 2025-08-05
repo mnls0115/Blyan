@@ -1,23 +1,26 @@
-# AI-Block: Distributed AI Blockchain Platform
+# Blyan: AI Blockchain Platform
 
-A revolutionary blockchain system that hosts evolving AI models using DAG (Directed Acyclic Graph) structure and Mixture-of-Experts (MoE) architecture. Each expert is stored as an independent block, enabling selective inference, partial mining, and distributed computing.
+An innovative platform that runs AI models directly on blockchain. Unlike centralized AI services, all AI models are stored on blockchain providing transparent and verifiable AI services.
 
 ## 🎯 Key Features
 
-### 1. AI User Interface
-- **Web Chat**: Open `frontend/index.html` in your browser to chat with AI
-- **API Calls**: Use REST API to send prompts and receive responses
-- **Blockchain Info**: Query chain status and block information
+### 🌐 Website Features
+- **`frontend/index.html`** → AI Chat: Chat with AI directly in your browser
+- **`frontend/explorer.html`** → Block Explorer: View blockchain information
+- **`frontend/contribute.html`** → AI Model Contribution: Upload new AI models
+- **`frontend/dataset_explorer.html`** → Dataset Explorer: Browse training data
+- **`frontend/chat.html`** → Advanced Chat: Use expert AI modes
+- **`frontend/home.html`** → Main Page: Access all features
 
-### 2. AI Learning & Block Management
-- **Expert Block Upload**: Add individual AI model experts to the blockchain
-- **Model Updates**: Improve existing experts and create new blocks
-- **Selective Inference**: Load only required experts for efficient processing
+### 💡 AI Features
+- **Smart AI Chat**: Conversation with AI running directly from blockchain
+- **Expert AI Mode**: Choose AI specialists for specific domains
+- **Transparent Processing**: All AI response processes verifiable on blockchain
 
-### 3. Project Information
-- **Purpose**: Transparent and verifiable AI model hosting
-- **Features**: Decentralized AI evolution system
-- **Innovation**: Alternative to traditional centralized AI services
+### 🔗 Blockchain Features
+- **Block Exploration**: View all AI models and data block by block
+- **Model Contribution**: Users can directly upload and improve AI models
+- **Verifiable**: All AI processing results recorded on blockchain, tamper-proof
 
 ## 🚀 Quick Start
 
@@ -112,4 +115,4 @@ For more detailed information about the project, please refer to:
 
 ---
 
-AI-Block is an innovative platform for the future of transparent and decentralized AI. 🤖✨
+Blyan is an innovative platform for the future of transparent and decentralized AI. 🤖✨

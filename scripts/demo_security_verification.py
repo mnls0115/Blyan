@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Security Verification Demo for AI-Block
+Security Verification Demo for Blyan
 
 This script demonstrates the real-time integrity verification system:
 1. Activation Hash Beacons - Detect wrong model execution
@@ -20,7 +20,7 @@ import random
 from pathlib import Path
 from typing import List, Dict, Any
 
-# AI-Block imports
+# Blyan imports
 from backend.model.moe_infer import ExpertUsageTracker
 from backend.core.param_index import ParameterIndex
 from backend.p2p.distributed_inference import DistributedInferenceCoordinator, ExpertNodeServer
@@ -37,7 +37,7 @@ from backend.security.inference_integrity import (
 
 
 class SecurityVerificationDemo:
-    """Demonstrates the AI-Block security verification system."""
+    """Demonstrates the Blyan security verification system."""
     
     def __init__(self):
         self.root_dir = Path("./demo_security_data")
@@ -365,7 +365,7 @@ class SecurityVerificationDemo:
     
     async def run_complete_demo(self):
         """Run the complete security verification demo."""
-        print("🛡️  AI-Block Security Verification Demo")
+        print("🛡️  Blyan Security Verification Demo")
         print("=" * 50)
         
         # Setup

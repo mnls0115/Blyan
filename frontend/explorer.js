@@ -1,5 +1,5 @@
 /**
- * AI-Block Explorer Dashboard
+ * Blyan Explorer Dashboard
  * Comprehensive blockchain visualization and analytics
  */
 
@@ -19,7 +19,7 @@ class AIBlockExplorer {
     }
 
     async initialize() {
-        console.log('🔍 Initializing AI-Block Explorer...');
+        console.log('🔍 Initializing Blyan Explorer...');
         
         // Check API connectivity
         await this.checkAPIStatus();

@@ -460,7 +460,7 @@ Test Results:
             report += f"""
 🎉 ALL TESTS PASSED! 
 
-This confirms that AI-Block has achieved:
+This confirms that Blyan has achieved:
 ✅ Complete MoE model loading and expert extraction
 ✅ DAG blockchain structure with expert blocks
 ✅ Selective inference with router-based expert selection
@@ -554,7 +554,7 @@ def main():
         exit_code = 0 if success else 1
         
         if success:
-            print(f"\n🎉 ALL SYSTEMS GO! AI-Block MoE blockchain is fully operational!")
+            print(f"\n🎉 ALL SYSTEMS GO! Blyan MoE blockchain is fully operational!")
         else:
             print(f"\n⚠️  Some tests failed. Check the logs above for details.")
         

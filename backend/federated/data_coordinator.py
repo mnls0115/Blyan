@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Federated learning data coordination for AI-Block."""
+"""Federated learning data coordination for Blyan."""
 
 from __future__ import annotations
 
 import json
 import time
 import hashlib
+import asyncio
+import threading
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
+from backend.core.scheduler import PreemptiveScheduler, Metrics, SchedulerState
 
 @dataclass
 class BenchmarkTask:
@@ -224,6 +227,228 @@ class PrivacyPreservingTraining:
         # Create hash that represents data distribution without exposing content
         data_concat = "".join(sorted(local_data))  # Sort to ensure consistency
         return hashlib.sha256(data_concat.encode()).hexdigest()
+
+
+class MicroSteppingLearningLoop:
+    """Learning loop with micro-stepping support for preemptive scheduling."""
+    
+    def __init__(self, 
+                 step_duration_ms: int = 300,
+                 checkpoint_interval_sec: int = 90,
+                 gradient_accumulation_steps: int = 4,
+                 scheduler: Optional[PreemptiveScheduler] = None):
+        self.step_duration_ms = step_duration_ms
+        self.checkpoint_interval_sec = checkpoint_interval_sec
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+        
+        # Control flags
+        self._paused = False
+        self._target_gpu_util = 0.7
+        self._running = False
+        self._loop_thread: Optional[threading.Thread] = None
+        
+        # Scheduler integration
+        self.scheduler = scheduler
+        self.learning_metrics = {"active_learners": 0, "avg_step_time": 0.0, "total_steps": 0}
+        
+        # State tracking
+        self._last_checkpoint_time = time.time()
+        self._current_step = 0
+        self._total_steps_completed = 0
+        self._accumulated_gradients = 0
+        
+        # Performance metrics
+        self._step_times: List[float] = []
+        self._gpu_utilization_samples: List[float] = []
+        
+    def pause(self, grace_ms: int = 100) -> bool:
+        """Pause learning at the next micro-step boundary."""
+        self._paused = True
+        
+        # Wait for graceful pause within grace period
+        start_time = time.time()
+        while self._is_in_step() and (time.time() - start_time) * 1000 < grace_ms:
+            time.sleep(0.01)  # 10ms polling
+            
+        return not self._is_in_step()  # True if successfully paused
+    
+    def resume(self, target_gpu_util: float = 0.7):
+        """Resume learning with specified GPU utilization target."""
+        self._target_gpu_util = target_gpu_util
+        self._paused = False
+        
+        if not self._running:
+            self.start_learning_loop()
+            
+    def throttle(self, target_gpu_util: float = 0.3):
+        """Throttle learning to specified GPU utilization."""
+        self._target_gpu_util = target_gpu_util
+        # Note: Actual GPU throttling would be implemented in the training framework
+        
+    def start_learning_loop(self):
+        """Start the learning loop in a separate thread."""
+        if self._running:
+            return
+            
+        self._running = True
+        self._loop_thread = threading.Thread(target=self._learning_loop, daemon=True)
+        self._loop_thread.start()
+        
+    def stop_learning_loop(self):
+        """Stop the learning loop."""
+        self._running = False
+        if self._loop_thread:
+            self._loop_thread.join(timeout=2.0)
+            
+    def _learning_loop(self):
+        """Main learning loop with micro-stepping."""
+        while self._running:
+            if self._paused:
+                time.sleep(0.1)  # Sleep while paused
+                continue
+                
+            step_start = time.time()
+            
+            try:
+                # Execute micro-step (200-500ms target)
+                self._execute_micro_step()
+                
+                # Track step timing
+                step_duration = (time.time() - step_start) * 1000
+                self._step_times.append(step_duration)
+                
+                # Keep only recent samples for monitoring
+                if len(self._step_times) > 100:
+                    self._step_times = self._step_times[-50:]
+                    
+                # Checkpoint periodically
+                if time.time() - self._last_checkpoint_time > self.checkpoint_interval_sec:
+                    self._async_checkpoint()
+                    
+            except Exception as e:
+                print(f"❌ Learning step failed: {e}")
+                time.sleep(1.0)  # Back off on error
+                
+            # Yield at step boundary for preemption
+            self._yield_at_boundary()
+            
+    def _execute_micro_step(self):
+        """Execute a single micro-step of learning with scheduler integration."""
+        step_start_time = time.time()
+        
+        # Check scheduler state before learning step
+        if self.scheduler:
+            current_metrics = Metrics(
+                p95_latency_ms=100.0,  # Mock inference latency
+                p50_latency_ms=80.0,   # Mock inference latency
+                queue_depth=0,         # No inference queue in learning loop
+                queue_wait_ms=0.0,     # No queue waiting
+                gpu_utilization=self._target_gpu_util,
+                memory_free_gb=6.0,    # Mock value
+                arrival_rate_per_sec=0.0,  # No arrivals during learning
+                warm_pool_hit_ratio=1.0,   # Not relevant for learning
+                learning_step_duration_ms=self.learning_metrics["avg_step_time"] * 1000
+            )
+            
+            scheduler_state = self.scheduler.tick(current_metrics)
+            
+            # Respond to scheduler state
+            if scheduler_state == SchedulerState.RED:
+                print(f"🔴 Scheduler demands pause: yielding to inference")
+                self.pause()
+                time.sleep(0.1)  # Brief pause to allow inference to catch up
+                return
+            elif scheduler_state == SchedulerState.YELLOW:
+                print(f"🟡 Scheduler caution: reducing learning intensity")
+                self._target_gpu_util = 0.5  # Reduce GPU utilization to make room for inference
+            else:
+                self._target_gpu_util = 0.7  # Normal GPU utilization
+        
+        # Simulate gradient computation (replace with actual training code)
+        target_duration = self.step_duration_ms / 1000.0
+        
+        # Simulate work based on target GPU utilization
+        work_duration = target_duration * self._target_gpu_util
+        
+        # Mock training step
+        while time.time() - step_start_time < work_duration:
+            # Simulate computation (replace with actual forward/backward pass)
+            _ = np.random.randn(1000, 1000) @ np.random.randn(1000, 1000)
+            
+        self._accumulated_gradients += 1
+        
+        # Apply gradients after accumulation
+        if self._accumulated_gradients >= self.gradient_accumulation_steps:
+            self._apply_accumulated_gradients()
+            self._accumulated_gradients = 0
+            self._current_step += 1
+            
+        self._total_steps_completed += 1
+        
+        # Update learning metrics for scheduler
+        step_time = time.time() - step_start_time
+        self.learning_metrics["total_steps"] += 1
+        if self.learning_metrics["total_steps"] > 0:
+            self.learning_metrics["avg_step_time"] = (
+                (self.learning_metrics["avg_step_time"] * (self.learning_metrics["total_steps"] - 1) + step_time) / 
+                self.learning_metrics["total_steps"]
+            )
+        
+    def _apply_accumulated_gradients(self):
+        """Apply accumulated gradients to model parameters."""
+        # Simulate gradient application
+        # In real implementation: optimizer.step(), optimizer.zero_grad()
+        pass
+        
+    def _async_checkpoint(self):
+        """Create lightweight checkpoint asynchronously."""
+        # Simulate async checkpoint (replace with actual checkpoint logic)
+        self._last_checkpoint_time = time.time()
+        
+        # In real implementation:
+        # - Save model state_dict (FP16 to reduce size)
+        # - Save optimizer state (compressed)
+        # - Use background thread for I/O
+        print(f"📁 Checkpoint created at step {self._current_step}")
+        
+    def _yield_at_boundary(self):
+        """Yield control at micro-step boundary for preemption."""
+        # Allow preemption by sleeping briefly
+        time.sleep(0.001)  # 1ms yield
+        
+    def _is_in_step(self) -> bool:
+        """Check if currently executing a micro-step."""
+        # In real implementation, this would check training state
+        return not self._paused
+        
+    def get_learning_status(self) -> Dict[str, Any]:
+        """Get current learning status for monitoring."""
+        avg_step_time = np.mean(self._step_times) if self._step_times else 0
+        
+        return {
+            "running": self._running,
+            "paused": self._paused,
+            "target_gpu_util": self._target_gpu_util,
+            "current_step": self._current_step,
+            "total_steps_completed": self._total_steps_completed,
+            "accumulated_gradients": self._accumulated_gradients,
+            "avg_step_duration_ms": avg_step_time,
+            "recent_step_times": self._step_times[-10:] if self._step_times else [],
+            "last_checkpoint_time": self._last_checkpoint_time,
+            "checkpoint_interval_sec": self.checkpoint_interval_sec
+        }
+
+
+# Global learning loop instance  
+_global_learning_loop: Optional[MicroSteppingLearningLoop] = None
+
+def get_learning_loop() -> MicroSteppingLearningLoop:
+    """Get global learning loop instance."""
+    global _global_learning_loop
+    if _global_learning_loop is None:
+        _global_learning_loop = MicroSteppingLearningLoop()
+    return _global_learning_loop
+
 
 # Example usage and testing
 def demo_federated_coordination():

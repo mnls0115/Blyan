@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-Block is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system that hosts evolving AI models using DAG (Directed Acyclic Graph) structure. Each expert is stored as an independent block, enabling selective inference, partial mining, and distributed computing. The system has evolved into a **self-learning, evolving AI organism** rather than static data storage.
+Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system that hosts evolving AI models using DAG (Directed Acyclic Graph) structure. Each expert is stored as an independent block, enabling selective inference, partial mining, and distributed computing. The system has evolved into a **self-learning, evolving AI organism** rather than static data storage.
 
 ## Development Setup
 
@@ -97,7 +97,7 @@ PY
 ### ⚠️ **IMPORTANT: Blockchain-First Inference**
 **All inference MUST use parameters from blockchain blocks, not base model weights**
 
-The core principle of AI-Block is that inference should reconstruct the model using Expert blocks from the blockchain, ensuring:
+The core principle of Blyan is that inference should reconstruct the model using Expert blocks from the blockchain, ensuring:
 - **Transparency**: Every weight used is traceable to a specific block
 - **Decentralization**: No reliance on centralized model files
 - **Evolution**: Model behavior evolves as new Expert blocks are added

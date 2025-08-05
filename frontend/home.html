@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blyan - Decentralized AI Network</title>
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .hero-section {
+            text-align: center;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            margin-bottom: 40px;
+        }
+        .hero-title {
+            font-size: 3em;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .hero-subtitle {
+            font-size: 1.3em;
+            opacity: 0.9;
+            margin-bottom: 40px;
+        }
+        .main-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        .action-card {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        .action-card:hover {
+            transform: translateY(-5px);
+        }
+        .action-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        .action-title {
+            font-size: 1.8em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: var(--text-color);
+        }
+        .action-description {
+            color: var(--text-muted);
+            margin-bottom: 25px;
+            line-height: 1.6;
+        }
+        .action-button {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .action-button:hover {
+            background: var(--primary-hover);
+        }
+        .secondary-button {
+            background: var(--secondary-color);
+        }
+        .secondary-button:hover {
+            background: var(--secondary-hover);
+        }
+        .status-section {
+            max-width: 1000px;
+            margin: 60px auto 0;
+            padding: 0 20px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        .status-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        .status-label {
+            color: var(--text-muted);
+            margin-top: 5px;
+        }
+        @media (max-width: 768px) {
+            .main-actions {
+                grid-template-columns: 1fr;
+            }
+            .hero-title {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <div class="hero-title">Blyan</div>
+        <div class="hero-subtitle">The World's First Decentralized AI Network</div>
+        <p>Experience AI powered by collective intelligence. Chat with AI or contribute your computing power to earn rewards.</p>
+    </div>
+
+    <!-- Main Actions -->
+    <div class="main-actions">
+        <!-- Chat with AI -->
+        <div class="action-card">
+            <div class="action-icon">🤖</div>
+            <div class="action-title">Chat with AI</div>
+            <div class="action-description">
+                Start a conversation with our decentralized AI. Powered by distributed experts across the network.
+            </div>
+            <a href="chat.html" class="action-button">Start Chatting</a>
+        </div>
+
+        <!-- Upload Dataset -->
+        <div class="action-card">
+            <div class="action-icon">📊</div>
+            <div class="action-title">Upload Dataset</div>
+            <div class="action-description">
+                Contribute training data to improve AI models. Zero-cost participation with democratic governance.
+            </div>
+            <a href="dataset_upload.html" class="action-button secondary-button">Upload Now</a>
+        </div>
+
+        <!-- Join Network -->
+        <div class="action-card">
+            <div class="action-icon">⚡</div>
+            <div class="action-title">Join the Network</div>
+            <div class="action-description">
+                Share your computing power and earn rewards. One-click setup to become part of the AI network.
+            </div>
+            <a href="contribute.html" class="action-button secondary-button">Join Now</a>
+        </div>
+
+        <!-- Dataset Explorer -->
+        <div class="action-card">  
+            <div class="action-icon">🔍</div>
+            <div class="action-title">Dataset Explorer</div>
+            <div class="action-description">
+                Explore community datasets, vote on proposals, and track data governance in real-time.
+            </div>
+            <a href="dataset_explorer.html" class="action-button secondary-button">Explore Datasets</a>
+        </div>
+    </div>
+
+    <!-- Network Status -->
+    <div class="status-section">
+        <h2 style="text-align: center; margin-bottom: 30px; color: var(--text-color);">Network Status</h2>
+        <div class="status-grid">
+            <div class="status-card">
+                <div class="status-number" id="active-experts">-</div>
+                <div class="status-label">Active Experts</div>
+            </div>
+            <div class="status-card">
+                <div class="status-number" id="network-nodes">-</div>
+                <div class="status-label">Network Nodes</div>
+            </div>
+            <div class="status-card">
+                <div class="status-number" id="total-requests">-</div>
+                <div class="status-label">Total Requests</div>
+            </div>
+            <div class="status-card">
+                <div class="status-number" id="network-health">-</div>
+                <div class="status-label">Network Health</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced Features Link -->
+    <div style="text-align: center; margin: 60px 0; padding: 20px;">
+        <p style="color: var(--text-muted); margin-bottom: 15px;">
+            Looking for advanced features?
+        </p>
+        <a href="explorer.html" style="color: var(--primary-color); text-decoration: none;">
+            View Technical Dashboard & Analytics →
+        </a>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common-header.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Create header
+            document.getElementById('header-container').innerHTML = createAIBlockHeader('home');
+            
+            // Load network status
+            await loadNetworkStatus();
+        });
+
+        async function loadNetworkStatus() {
+            try {
+                // Get expert stats
+                const expertsResponse = await fetch(`${API_CONFIG.baseURL}/experts/top?limit=100`);
+                if (expertsResponse.ok) {
+                    const expertsData = await expertsResponse.json();
+                    document.getElementById('active-experts').textContent = expertsData.experts.length;
+                }
+
+                // Get network nodes
+                const nodesResponse = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
+                if (nodesResponse.ok) {
+                    const nodesData = await nodesResponse.json();
+                    document.getElementById('network-nodes').textContent = nodesData.nodes.length;
+                }
+
+                // Mock data for demo (replace with real endpoints when available)
+                document.getElementById('total-requests').textContent = '1,247';
+                document.getElementById('network-health').textContent = '99.8%';
+            } catch (error) {
+                console.log('Status loading failed (expected in development)');
+                // Show demo data
+                document.getElementById('active-experts').textContent = '8';
+                document.getElementById('network-nodes').textContent = '3';
+                document.getElementById('total-requests').textContent = '1,247';
+                document.getElementById('network-health').textContent = '99.8%';
+            }
+        }
+    </script>
+</body>
+</html>

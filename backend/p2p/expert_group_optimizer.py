@@ -1,4 +1,4 @@
-"""Expert Group Optimization for AI-Block Distributed Inference
+"""Expert Group Optimization for Blyan Distributed Inference
 
 This module implements the expert group-based optimization strategy where:
 1. Nodes store frequently co-used expert combinations

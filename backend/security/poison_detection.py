@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Advanced data poisoning detection and mitigation for AI-Block."""
+"""Advanced data poisoning detection and mitigation for Blyan."""
 
 import numpy as np
 import torch

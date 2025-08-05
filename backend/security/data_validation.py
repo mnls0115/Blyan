@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Data quality validation and poisoning attack detection for AI-Block."""
+"""Data quality validation and poisoning attack detection for Blyan."""
 
 from __future__ import annotations
 

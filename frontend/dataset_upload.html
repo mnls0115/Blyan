@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Dataset - Blyan Network</title>
+    <link rel="stylesheet" href="components.css">
+    <style>
+        .upload-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        .upload-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .upload-title {
+            font-size: 2.5em;
+            color: var(--primary-color);
+            margin-bottom: 15px;
+        }
+        
+        .upload-subtitle {
+            font-size: 1.2em;
+            color: var(--text-light);
+            margin-bottom: 30px;
+        }
+        
+        .pipeline-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 40px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+        }
+        
+        .step {
+            text-align: center;
+            flex: 1;
+            position: relative;
+        }
+        
+        .step:not(:last-child)::after {
+            content: '→';
+            position: absolute;
+            right: -20px;
+            top: 20px;
+            font-size: 20px;
+            color: var(--primary-color);
+        }
+        
+        .step-number {
+            background: var(--primary-color);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-weight: bold;
+        }
+        
+        .step-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .step-time {
+            font-size: 0.9em;
+            color: var(--text-light);
+        }
+        
+        .upload-form {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: var(--text-color);
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+        
+        .form-textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .form-select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            background: white;
+        }
+        
+        .file-upload-area {
+            border: 3px dashed #d0d7de;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .file-upload-area:hover {
+            border-color: var(--primary-color);
+            background: #f0f8ff;
+        }
+        
+        .file-upload-area.dragover {
+            border-color: var(--primary-color);
+            background: #e6f3ff;
+        }
+        
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        
+        .pow-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .pow-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #856404;
+        }
+        
+        .pow-status {
+            font-size: 14px;
+            color: #856404;
+        }
+        
+        .submit-button {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.3s ease;
+        }
+        
+        .submit-button:hover {
+            background: var(--primary-hover);
+        }
+        
+        .submit-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border: 1px solid #b8daff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .info-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #004085;
+        }
+        
+        .requirements-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .requirements-list li {
+            padding: 5px 0;
+            position: relative;
+            padding-left: 25px;
+        }
+        
+        .requirements-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: var(--success-color);
+            font-weight: bold;
+        }
+        
+        .progress-section {
+            display: none;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            margin-top: 30px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--primary-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .status-message {
+            text-align: center;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        
+        .status-details {
+            text-align: center;
+            color: var(--text-light);
+        }
+        
+        @media (max-width: 768px) {
+            .pipeline-steps {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .step:not(:last-child)::after {
+                content: '↓';
+                right: auto;
+                top: auto;
+                bottom: -15px;
+            }
+            
+            .upload-form {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-content">
+            <div class="header-left">
+                <div class="logo">
+                    <a href="home.html">🌐 <span>Blyan Network</span></a>
+                </div>
+            </div>
+            <nav class="header-nav">
+                <a href="home.html">Home</a>
+                <a href="chat.html">Chat</a>
+                <a href="dataset_upload.html" class="active">Upload Dataset</a>
+                <a href="dataset_explorer.html">Explore</a>
+                <a href="contribute.html">Contribute</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="upload-container">
+        <!-- Header -->
+        <div class="upload-header">
+            <h1 class="upload-title">📊 Upload Dataset</h1>
+            <p class="upload-subtitle">Contribute training data to improve AI models with zero economic barriers</p>
+        </div>
+
+        <!-- 4-Stage Pipeline Overview -->
+        <div class="pipeline-steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-title">Upload</div>
+                <div class="step-time">Instant</div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-title">AI Audit</div>
+                <div class="step-time">≤30 min</div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-title">Community Vote</div>
+                <div class="step-time">72 hours</div>
+            </div>
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-title">Approved</div>
+                <div class="step-time">Ready for training</div>
+            </div>
+        </div>
+
+        <!-- Requirements Info -->
+        <div class="info-box">
+            <div class="info-title">📋 Dataset Requirements</div>
+            <ul class="requirements-list">
+                <li>Open license (CC-BY, CC-BY-SA, MIT, Apache-2.0, etc.)</li>
+                <li>No personal information (PII) or sensitive data</li>
+                <li>Toxicity content less than 20%</li>
+                <li>No known copyright violations</li>
+                <li>Duplicate rate less than 95%</li>
+                <li>Minimum 1MB file size for meaningful training</li>
+            </ul>
+        </div>
+
+        <!-- Upload Form -->
+        <form class="upload-form" id="uploadForm">
+            <div class="form-group">
+                <label class="form-label" for="datasetId">Dataset ID *</label>
+                <input type="text" id="datasetId" class="form-input" placeholder="e.g., korean_dialogue_v1" required>
+                <small style="color: var(--text-light);">Unique identifier for your dataset (lowercase, underscores allowed)</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="version">Version</label>
+                <input type="text" id="version" class="form-input" value="1.0.0" placeholder="1.0.0">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="license">License *</label>
+                <select id="license" class="form-select" required>
+                    <option value="">Select License</option>
+                    <option value="CC-BY-4.0">CC-BY-4.0 (Attribution)</option>
+                    <option value="CC-BY-SA-4.0">CC-BY-SA-4.0 (Attribution-ShareAlike)</option>
+                    <option value="CC0-1.0">CC0-1.0 (Public Domain)</option>
+                    <option value="MIT">MIT License</option>
+                    <option value="Apache-2.0">Apache-2.0</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="description">Description</label>
+                <textarea id="description" class="form-input form-textarea" placeholder="Describe your dataset: content type, source, intended use, etc."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Dataset Files *</label>
+                <div class="file-upload-area" id="fileUploadArea">
+                    <div class="upload-icon">📁</div>
+                    <div>
+                        <strong>Drop files here or click to browse</strong>
+                        <br>
+                        <small>Supports: .txt, .json, .csv, .jsonl, .parquet, .zip</small>
+                    </div>
+                    <input type="file" id="fileInput" multiple style="display: none;" accept=".txt,.json,.csv,.jsonl,.parquet,.zip">
+                </div>
+                <div id="fileList" style="margin-top: 15px;"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="sourceUri">Data Source (Optional)</label>
+                <input type="url" id="sourceUri" class="form-input" placeholder="https://... or ipfs://...">
+                <small style="color: var(--text-light);">IPFS URL or web source (if files uploaded above, this is optional)</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="creatorPubkey">Creator Public Key *</label>
+                <input type="text" id="creatorPubkey" class="form-input" placeholder="0x..." required>
+                <small style="color: var(--text-light);">Your public key for attribution and rewards</small>
+            </div>
+
+            <!-- Proof-of-Work Section -->
+            <div class="pow-section">
+                <div class="pow-title">🔒 Anti-Spam Protection</div>
+                <div class="pow-status">
+                    <span id="powStatus">Click "Calculate PoW" to generate proof-of-work (takes ~3 seconds)</span>
+                    <button type="button" id="powButton" style="margin-left: 15px; padding: 5px 15px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">Calculate PoW</button>
+                </div>
+                <input type="hidden" id="powNonce" value="0">
+            </div>
+
+            <button type="submit" class="submit-button" id="submitButton" disabled>
+                🚀 Upload Dataset to Chain D
+            </button>
+        </form>
+
+        <!-- Progress Section -->
+        <div class="progress-section" id="progressSection">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="status-message" id="statusMessage">Uploading dataset...</div>
+            <div class="status-details" id="statusDetails">Please wait while we process your dataset.</div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        let selectedFiles = [];
+        const API_BASE = 'http://127.0.0.1:8000';
+
+        // File upload handling
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+
+        fileUploadArea.addEventListener('click', () => fileInput.click());
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            selectedFiles = Array.from(files);
+            updateFileList();
+        }
+
+        function updateFileList() {
+            if (selectedFiles.length === 0) {
+                fileList.innerHTML = '';
+                return;
+            }
+
+            const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+            const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+
+            fileList.innerHTML = `
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                    <strong>${selectedFiles.length} file(s) selected (${totalSizeMB} MB total)</strong>
+                    <ul style="margin: 10px 0 0 20px; padding: 0;">
+                        ${selectedFiles.map(file => `
+                            <li>${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)</li>
+                        `).join('')}
+                    </ul>
+                </div>
+            `;
+
+            // Auto-fill total bytes
+            document.getElementById('sourceUri').value = `local_upload_${Date.now()}`;
+        }
+
+        // Proof-of-Work calculation
+        document.getElementById('powButton').addEventListener('click', async () => {
+            const powButton = document.getElementById('powButton');
+            const powStatus = document.getElementById('powStatus');
+            const submitButton = document.getElementById('submitButton');
+
+            powButton.disabled = true;
+            powButton.textContent = 'Calculating...';
+            powStatus.textContent = 'Calculating proof-of-work (3-5 seconds)...';
+
+            // Simulate PoW calculation (in production, this would be real PoW)
+            setTimeout(() => {
+                const nonce = Math.floor(Math.random() * 1000000);
+                document.getElementById('powNonce').value = nonce;
+                
+                powStatus.textContent = `✅ Proof-of-work completed (nonce: ${nonce})`;
+                powButton.textContent = '✓ Completed';
+                powButton.style.background = 'var(--success-color)';
+                submitButton.disabled = false;
+            }, 3000);
+        });
+
+        // Form submission
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = {
+                dataset_id: document.getElementById('datasetId').value,
+                version: document.getElementById('version').value,
+                creator_pubkey: document.getElementById('creatorPubkey').value,
+                license: document.getElementById('license').value,
+                source_uri: document.getElementById('sourceUri').value || `local_upload_${Date.now()}`,
+                total_files: selectedFiles.length,
+                total_bytes: selectedFiles.reduce((sum, file) => sum + file.size, 0),
+                description: document.getElementById('description').value,
+                proof_of_work_nonce: parseInt(document.getElementById('powNonce').value)
+            };
+
+            // Show progress
+            document.querySelector('.upload-form').style.display = 'none';
+            document.getElementById('progressSection').style.display = 'block';
+
+            try {
+                // Simulate file upload progress
+                await simulateUploadProgress();
+
+                // Submit to API
+                const response = await fetch(`${API_BASE}/datasets/upload`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    document.getElementById('statusMessage').textContent = '🎉 Dataset uploaded successfully!';
+                    document.getElementById('statusDetails').innerHTML = `
+                        <strong>Dataset ID:</strong> ${result.dataset_id}<br>
+                        <strong>Stage:</strong> ${result.stage}<br>
+                        <strong>Next Step:</strong> ${result.next_step}<br>
+                        <br>
+                        <a href="dataset_explorer.html" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">
+                            → View in Dataset Explorer
+                        </a>
+                    `;
+                    document.getElementById('progressFill').style.width = '100%';
+                } else {
+                    throw new Error(result.detail || 'Upload failed');
+                }
+
+            } catch (error) {
+                document.getElementById('statusMessage').textContent = '❌ Upload failed';
+                document.getElementById('statusDetails').textContent = error.message;
+                document.getElementById('progressFill').style.background = 'var(--error-color)';
+            }
+        });
+
+        async function simulateUploadProgress() {
+            const progressFill = document.getElementById('progressFill');
+            const statusMessage = document.getElementById('statusMessage');
+            const statusDetails = document.getElementById('statusDetails');
+
+            const steps = [
+                { progress: 20, message: '📁 Processing files...', detail: 'Analyzing file contents and calculating hashes' },
+                { progress: 40, message: '🔒 Generating cryptographic proof...', detail: 'Creating tamper-proof dataset signatures' },
+                { progress: 60, message: '🌐 Uploading to IPFS...', detail: 'Distributing files across decentralized network' },
+                { progress: 80, message: '⛓️ Adding to Dataset-Chain D...', detail: 'Creating blockchain record for governance' },
+                { progress: 90, message: '🤖 Queuing for AI audit...', detail: 'Preparing for automated quality verification' }
+            ];
+
+            for (const step of steps) {
+                progressFill.style.width = `${step.progress}%`;
+                statusMessage.textContent = step.message;
+                statusDetails.textContent = step.detail;
+                await new Promise(resolve => setTimeout(resolve, 800));
+            }
+        }
+
+        // Auto-generate creator public key for demo
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('creatorPubkey').value = '0x' + Array.from({length: 40}, () => Math.floor(Math.random() * 16).toString(16)).join('');
+        });
+    </script>
+</body>
+</html>

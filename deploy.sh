@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# AI-Block 웹사이트 배포 스크립트
+# Blyan 웹사이트 배포 스크립트
 # 사용법: ./deploy.sh your-domain.com
 
 DOMAIN=$1
@@ -9,7 +9,7 @@ if [ -z "$DOMAIN" ]; then
     exit 1
 fi
 
-echo "🚀 AI-Block 웹사이트 배포 시작..."
+echo "🚀 Blyan 웹사이트 배포 시작..."
 echo "📡 도메인: $DOMAIN"
 
 # 1. 시스템 패키지 업데이트
@@ -63,7 +63,7 @@ echo "🖥️ 백엔드 서비스 시작..."
 echo "🔄 시스템 서비스 등록..."
 sudo tee /etc/systemd/system/aiblock.service > /dev/null <<EOF
 [Unit]
-Description=AI-Block API Server
+Description=Blyan API Server
 After=network.target
 
 [Service]

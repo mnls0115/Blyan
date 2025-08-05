@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# AI-Block MoE Test Runner
+# Blyan MoE Test Runner
 # Convenience script to run tests with proper environment
 
-echo "🚀 AI-Block MoE Blockchain Test Runner"
+echo "🚀 Blyan MoE Blockchain Test Runner"
 echo "======================================"
 
 # Activate virtual environment

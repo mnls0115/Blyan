@@ -4,7 +4,7 @@ import hashlib
 import json
 import time
 from dataclasses import asdict, dataclass
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict, Any
 
 
 @dataclass
@@ -22,13 +22,46 @@ class BlockHeader:
     
     # DAG and MoE extensions
     depends_on: List[str] = None  # list of block hashes this block depends on
-    block_type: Literal['meta', 'expert', 'router'] = 'meta'  # block type for MoE
+    block_type: Literal['meta', 'expert', 'router', 'code', 'architecture', 'migration', 'genesis_pact', 'dataset'] = 'meta'  # block type for MoE
     expert_name: Optional[str] = None  # expert identifier for expert blocks
     layer_id: Optional[str] = None  # layer identifier for model architecture
+    
+    # TensorBlock format extensions
+    payload_type: Optional[str] = None  # "pickle", "tensorblock", "eeb", "tile_stream", "json", "code"
+    tensor_dtype: Optional[str] = None  # "fp16", "int8", "fp8"
+    tensor_shape: Optional[List[int]] = None  # tensor dimensions
+    tensor_layout: Optional[str] = None  # "row_major", "col_major" 
+    quantization_method: Optional[str] = None  # "none", "per_tensor_int8", "per_channel_int8"
+    architecture: Optional[str] = None  # "sm_86", "sm_89", "sm_90" for EEB
+    merkle_root: Optional[str] = None  # merkle root for integrity verification
+    
+    # Evolution System Extensions
+    version: Optional[str] = None  # SemVer format (e.g., "1.3.0")
+    parent_hash: Optional[str] = None  # Hash of parent block in evolution chain
+    evolution_type: Optional[str] = None  # "expansion", "mutation", "pruning", "migration"
+    dimension_changes: Optional[Dict[str, Any]] = None  # Dimension change information
+    compatibility_range: Optional[List[str]] = None  # Compatible version range
+    evolution_metadata: Optional[Dict[str, Any]] = None  # Evolution-specific metadata
+    
+    # Code Block Extensions (for executable evolution)
+    code_type: Optional[str] = None  # "inference_logic", "router", "activation", "layer"
+    target_expert: Optional[str] = None  # Target expert for code application
+    language: Optional[str] = None  # "python", "torch_script", "wasm"
+    execution_environment: Optional[str] = None  # "torch_2.0", "tensorrt_10"
+    dependencies: Optional[List[str]] = None  # Code dependencies
+    
+    # Migration Block Extensions  
+    migration_from: Optional[str] = None  # Source version for migration
+    migration_to: Optional[str] = None  # Target version for migration
+    migration_ops: Optional[List[str]] = None  # List of migration operation hashes
     
     def __post_init__(self):
         if self.depends_on is None:
             self.depends_on = []
+        if self.dependencies is None:
+            self.dependencies = []
+        if self.migration_ops is None:
+            self.migration_ops = []
 
     # ---------------------------------------------------------------------
     # Helper utilities
@@ -40,6 +73,62 @@ class BlockHeader:
     def compute_hash(self) -> str:
         """SHA-256 of the header JSON."""
         return hashlib.sha256(self.to_json().encode()).hexdigest()
+    
+    # ---------------------------------------------------------------------
+    # Evolution System Utilities
+    # ---------------------------------------------------------------------
+    def is_evolution_block(self) -> bool:
+        """Check if this is an evolution-related block"""
+        return self.block_type in ['migration', 'code', 'architecture'] or self.evolution_type is not None
+    
+    def is_expert_evolution(self) -> bool:
+        """Check if this is an expert evolution block"""
+        return self.block_type == 'expert' and self.evolution_type is not None
+    
+    def is_migration_block(self) -> bool:
+        """Check if this is a migration block"""
+        return self.block_type == 'migration'
+    
+    def is_code_block(self) -> bool:
+        """Check if this is a code block"""
+        return self.block_type == 'code'
+    
+    def get_evolution_parent(self) -> Optional[str]:
+        """Get the parent block hash for evolution tracking"""
+        return self.parent_hash
+    
+    def get_version(self) -> Optional[str]:
+        """Get the version of this block"""
+        return self.version
+    
+    def is_compatible_with_version(self, target_version: str) -> bool:
+        """Check if this block is compatible with a target version"""
+        if not self.compatibility_range:
+            return True
+        
+        # TODO: Implement proper SemVer compatibility checking
+        return target_version in self.compatibility_range or any(
+            target_version.startswith(ver.replace('.x', '')) for ver in self.compatibility_range
+        )
+    
+    def get_dimension_change_summary(self) -> str:
+        """Get a summary of dimension changes"""
+        if not self.dimension_changes:
+            return "No dimension changes"
+        
+        changes = []
+        for param, change in self.dimension_changes.items():
+            if isinstance(change, dict) and 'from' in change and 'to' in change:
+                changes.append(f"{param}: {change['from']} → {change['to']}")
+        
+        return "; ".join(changes) if changes else "Dimension metadata available"
+    
+    def get_migration_summary(self) -> str:
+        """Get a summary of migration operations"""
+        if not self.is_migration_block():
+            return "Not a migration block"
+        
+        return f"Migration from {self.migration_from} to {self.migration_to}"
 
 
 @dataclass

@@ -58,7 +58,7 @@ class Chain:
         miner_pub: Optional[str] = None,
         payload_sig: Optional[str] = None,
         depends_on: Optional[List[str]] = None,
-        block_type: Literal['meta', 'expert', 'router'] = 'meta',
+        block_type: Literal['meta', 'expert', 'router', 'genesis_pact', 'dataset'] = 'meta',
         expert_name: Optional[str] = None,
         layer_id: Optional[str] = None,
     ) -> Block:
@@ -68,6 +68,10 @@ class Chain:
         prev_hash = prev_block.compute_hash() if prev_block else "0" * 64
 
         payload_hash = hashlib.sha256(payload).hexdigest()
+        
+        # Ensure all non-genesis blocks depend on Genesis Pact (lightweight check)
+        final_depends_on = self._ensure_genesis_dependency(depends_on or [], block_type)
+        
         header = BlockHeader(
             index=index,
             timestamp=time.time(),
@@ -77,7 +81,7 @@ class Chain:
             payload_hash=payload_hash,
             payload_size=len(payload),
             nonce=0,
-            depends_on=depends_on or [],
+            depends_on=final_depends_on,
             block_type=block_type,
             expert_name=expert_name,
             layer_id=layer_id,
@@ -150,6 +154,43 @@ class Chain:
                     return False
         
         return True
+
+    def _ensure_genesis_dependency(self, depends_on: List[str], block_type: str) -> List[str]:
+        """Ensure all non-genesis blocks depend on Genesis Pact (lightweight operation)."""
+        
+        # Genesis blocks don't depend on themselves
+        if block_type == "genesis_pact":
+            return depends_on
+        
+        # Get Genesis Pact hash (cached after first lookup)
+        if not hasattr(self, '_genesis_hash_cache'):
+            self._genesis_hash_cache = self._get_genesis_pact_hash()
+        
+        # Add Genesis dependency if not already present
+        if self._genesis_hash_cache and self._genesis_hash_cache not in depends_on:
+            depends_on = depends_on + [self._genesis_hash_cache]
+        
+        return depends_on
+    
+    def _get_genesis_pact_hash(self) -> Optional[str]:
+        """Get Genesis Pact hash (cached for performance)."""
+        try:
+            # Check if genesis hash file exists (fastest method)
+            genesis_file = Path("./data/genesis_pact_hash.txt")
+            if genesis_file.exists():
+                return genesis_file.read_text().strip()
+            
+            # Fallback: search for genesis block (slower, but works)
+            for block in self.storage.iter_blocks():
+                if block.header.block_type == "genesis_pact":
+                    hash_val = block.compute_hash()
+                    # Cache it for next time
+                    genesis_file.write_text(hash_val)
+                    return hash_val
+            
+            return None
+        except Exception:
+            return None
 
     def __iter__(self) -> Iterator[Block]:
         return self.storage.iter_blocks()

@@ -1,0 +1,266 @@
+syntax = "proto3";
+
+package blyan.edge;
+
+import "google/protobuf/timestamp.proto";
+
+// Edge Aggregator gRPC Service
+// Enables distributed gradient aggregation with 10-20x WAN traffic reduction
+service EdgeAggregatorService {
+    // Submit a delta from learner node
+    rpc SubmitDelta(DeltaSubmission) returns (SubmissionResponse);
+    
+    // Submit batch of deltas
+    rpc SubmitDeltaBatch(DeltaBatchSubmission) returns (BatchSubmissionResponse);
+    
+    // Get aggregation statistics
+    rpc GetAggregationStats(StatsRequest) returns (AggregationStats);
+    
+    // Health check for aggregator
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+    
+    // Register as learner node
+    rpc RegisterLearner(LearnerRegistration) returns (RegistrationResponse);
+    
+    // Unregister learner node
+    rpc UnregisterLearner(LearnerUnregistration) returns (UnregistrationResponse);
+}
+
+// Primary Owner gRPC Service
+// Receives aggregated deltas from edge aggregators
+service PrimaryOwnerService {
+    // Receive aggregated delta from edge aggregator
+    rpc ReceiveAggregatedDelta(AggregatedDeltaSubmission) returns (AggregatedDeltaResponse);
+    
+    // Apply delta to tile and update blockchain
+    rpc ApplyDeltaToTile(DeltaApplicationRequest) returns (DeltaApplicationResponse);
+    
+    // Get tile ownership status
+    rpc GetOwnershipStatus(OwnershipStatusRequest) returns (OwnershipStatusResponse);
+}
+
+// Messages for delta submission
+message DeltaSubmission {
+    string node_id = 1;
+    string tile_id = 2;
+    bytes delta_data = 3;  // Serialized DeltaBase
+    DeltaType delta_type = 4;
+    google.protobuf.Timestamp timestamp = 5;
+    int64 sequence_number = 6;
+    string signature = 7;  // Cryptographic signature for integrity
+    
+    // Compression metadata
+    CompressionMetadata compression = 8;
+}
+
+message DeltaBatchSubmission {
+    repeated DeltaSubmission deltas = 1;
+    string batch_id = 2;
+    google.protobuf.Timestamp batch_timestamp = 3;
+    int32 total_deltas = 4;
+}
+
+message CompressionMetadata {
+    int32 original_size = 1;
+    int32 compressed_size = 2;
+    float compression_ratio = 3;
+    CompressionMethod method = 4;
+}
+
+enum CompressionMethod {
+    NONE = 0;
+    INT8_ONLY = 1;
+    INT8_SPARSE = 2;
+    INT8_SPARSE_LORA = 3;
+}
+
+enum DeltaType {
+    INT8_DELTA = 0;
+    SPARSE_DELTA = 1;
+    LORA_DELTA = 2;
+    MIXED_DELTA = 3;
+}
+
+// Response messages
+message SubmissionResponse {
+    bool accepted = 1;
+    string message = 2;
+    string batch_id = 3;  // Assigned batch ID
+    google.protobuf.Timestamp estimated_aggregation_time = 4;
+}
+
+message BatchSubmissionResponse {
+    bool accepted = 1;
+    string message = 2;
+    int32 accepted_deltas = 3;
+    int32 rejected_deltas = 4;
+    repeated string rejection_reasons = 5;
+}
+
+// Aggregated delta submission to primary owner
+message AggregatedDeltaSubmission {
+    string tile_id = 1;
+    bytes aggregated_delta_data = 2;
+    DeltaType delta_type = 3;
+    string aggregator_id = 4;
+    string aggregator_region = 5;
+    google.protobuf.Timestamp aggregation_timestamp = 6;
+    
+    // Aggregation metadata
+    int32 source_deltas_count = 7;
+    repeated string source_node_ids = 8;
+    AggregationMetadata aggregation_metadata = 9;
+    
+    // Cryptographic proof
+    string aggregation_proof = 10;
+}
+
+message AggregationMetadata {
+    float avg_compression_ratio = 1;
+    float aggregation_time_ms = 2;
+    int32 batch_size = 3;
+    string aggregation_method = 4;
+}
+
+message AggregatedDeltaResponse {
+    bool accepted = 1;
+    string message = 2;
+    string tile_hash = 3;  // New tile hash after applying delta
+    int64 new_block_height = 4;
+}
+
+// Delta application to blockchain
+message DeltaApplicationRequest {
+    string tile_id = 1;
+    bytes delta_data = 2;
+    DeltaType delta_type = 3;
+    string requesting_aggregator = 4;
+    google.protobuf.Timestamp request_timestamp = 5;
+}
+
+message DeltaApplicationResponse {
+    bool success = 1;
+    string message = 2;
+    string new_tile_hash = 3;
+    int64 blockchain_height = 4;
+    google.protobuf.Timestamp application_timestamp = 5;
+}
+
+// Registration messages
+message LearnerRegistration {
+    string node_id = 1;
+    string host = 2;
+    int32 port = 3;
+    string region = 4;
+    repeated string interested_tiles = 5;
+    NodeCapabilities capabilities = 6;
+    string signature = 7;
+}
+
+message NodeCapabilities {
+    float gpu_memory_gb = 1;
+    float bandwidth_mbps = 2;
+    int32 max_concurrent_deltas = 3;
+    repeated string supported_compression_methods = 4;
+}
+
+message RegistrationResponse {
+    bool accepted = 1;
+    string message = 2;
+    string assigned_learner_id = 3;
+    repeated string assigned_tiles = 4;
+    AggregatorConfig config = 5;
+}
+
+message AggregatorConfig {
+    int32 batch_size_limit = 1;
+    float max_wait_time_seconds = 2;
+    int32 max_delta_size_mb = 3;
+    repeated string preferred_compression_methods = 4;
+}
+
+message LearnerUnregistration {
+    string node_id = 1;
+    string reason = 2;
+    google.protobuf.Timestamp timestamp = 3;
+}
+
+message UnregistrationResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+// Statistics and monitoring
+message StatsRequest {
+    string aggregator_id = 1;
+    google.protobuf.Timestamp start_time = 2;
+    google.protobuf.Timestamp end_time = 3;
+    bool include_per_tile_stats = 4;
+}
+
+message AggregationStats {
+    string aggregator_id = 1;
+    string region = 2;
+    float uptime_seconds = 3;
+    
+    // Delta statistics
+    int64 total_deltas_received = 4;
+    int64 total_deltas_aggregated = 5;
+    int64 total_bytes_received = 6;
+    int64 total_bytes_sent = 7;
+    
+    // Performance metrics
+    float avg_batch_size = 8;
+    float avg_aggregation_time_ms = 9;
+    float compression_ratio = 10;
+    int32 active_learners = 11;
+    int32 pending_batches = 12;
+    
+    // Throughput metrics
+    float deltas_per_second = 13;
+    float bandwidth_saved_ratio = 14;
+    
+    // Per-tile statistics (if requested)
+    repeated TileStats per_tile_stats = 15;
+}
+
+message TileStats {
+    string tile_id = 1;
+    int64 deltas_received = 2;
+    int64 deltas_aggregated = 3;
+    float avg_aggregation_time_ms = 4;
+    int32 active_learners = 5;
+    google.protobuf.Timestamp last_update = 6;
+}
+
+// Ownership status
+message OwnershipStatusRequest {
+    string tile_id = 1;
+    string requesting_node = 2;
+}
+
+message OwnershipStatusResponse {
+    string tile_id = 1;
+    string primary_owner = 2;
+    repeated string secondary_owners = 3;
+    int64 election_height = 4;
+    google.protobuf.Timestamp last_update = 5;
+    bool is_healthy = 6;
+}
+
+// Health check
+message HealthCheckRequest {
+    string service = 1;
+}
+
+message HealthCheckResponse {
+    enum ServingStatus {
+        UNKNOWN = 0;
+        SERVING = 1;
+        NOT_SERVING = 2;
+        SERVICE_UNKNOWN = 3;
+    }
+    ServingStatus status = 1;
+    string message = 2;
+    google.protobuf.Timestamp timestamp = 3;
+}

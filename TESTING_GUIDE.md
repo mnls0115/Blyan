@@ -1,4 +1,4 @@
-# 🧪 AI-Block MoE Testing Guide
+# 🧪 Blyan MoE Testing Guide
 
 Complete guide for testing the MoE blockchain system's end-to-end functionality.
 

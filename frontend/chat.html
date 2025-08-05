@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat - Blyan</title>
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            height: calc(100vh - 120px);
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px 12px 0 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .chat-window {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .chat-input-area {
+            background: white;
+            padding: 20px;
+            border-radius: 0 0 12px 12px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        }
+        .message {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .message.user {
+            background: var(--primary-color);
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        .message.ai {
+            background: #f8f9fa;
+            color: var(--text-color);
+            border: 1px solid #e9ecef;
+        }
+        .message-sender {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        .chat-form {
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+        }
+        .chat-input:focus {
+            border-color: var(--primary-color);
+        }
+        .send-button {
+            padding: 15px 25px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s ease;
+        }
+        .send-button:hover:not(:disabled) {
+            background: var(--primary-hover);
+        }
+        .send-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .typing-indicator {
+            display: none;
+            color: var(--text-muted);
+            font-style: italic;
+            padding: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 AI Chat</h1>
+            <p>Chat with our decentralized AI network</p>
+        </div>
+        
+        <div class="chat-window" id="chat-window">
+            <div class="message ai">
+                <div class="message-sender">AI Assistant</div>
+                <div>Hello! I'm powered by the Blyan decentralized network. Ask me anything!</div>
+            </div>
+        </div>
+        
+        <div class="typing-indicator" id="typing-indicator">
+            AI is thinking...
+        </div>
+        
+        <div class="chat-input-area">
+            <form class="chat-form" id="chat-form">
+                <input 
+                    type="text" 
+                    id="chat-input" 
+                    class="chat-input" 
+                    placeholder="Type your message..."
+                    autocomplete="off"
+                    required
+                >
+                <button type="submit" class="send-button" id="send-button">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="common-header.js"></script>
+    <script>
+        // Global chat persistence
+        let chatHistory = [];
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // Create header
+            document.getElementById('header-container').innerHTML = createAIBlockHeader('chat');
+            
+            const chatForm = document.getElementById('chat-form');
+            const chatInput = document.getElementById('chat-input');
+            const chatWindow = document.getElementById('chat-window');
+            const sendButton = document.getElementById('send-button');
+            const typingIndicator = document.getElementById('typing-indicator');
+            
+            // Load saved chat history
+            loadChatHistory();
+
+            chatForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const message = chatInput.value.trim();
+                if (!message) return;
+
+                // Add user message
+                addMessage('user', message);
+                chatInput.value = '';
+                
+                // Show typing indicator
+                showTyping(true);
+                
+                try {
+                    // Check if user has any active nodes
+                    const savedNode = localStorage.getItem('blyan-node');
+                    let hasActiveNode = false;
+                    
+                    if (savedNode) {
+                        try {
+                            const nodeData = JSON.parse(savedNode);
+                            // Check if node still exists
+                            const nodesResponse = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
+                            if (nodesResponse.ok) {
+                                const nodesData = await nodesResponse.json();
+                                hasActiveNode = nodesData.nodes.some(n => n.node_id === nodeData.nodeId);
+                            }
+                        } catch (e) {
+                            console.error('Node check failed:', e);
+                        }
+                    }
+                    
+                    if (!hasActiveNode) {
+                        addMessage('ai', '🙅 Sorry, I need at least one active node to process your request. Please start a node from the "Join Network" page first.');
+                        return;
+                    }
+                    
+                    const response = await fetch(`${API_CONFIG.baseURL}/chat`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            prompt: message,
+                            use_moe: true,
+                            top_k_experts: 2
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        addMessage('ai', data.response);
+                    } else {
+                        addMessage('ai', 'Sorry, I encountered an error. Please try again.');
+                    }
+                } catch (error) {
+                    console.error('Chat error:', error);
+                    addMessage('ai', 'Sorry, I\'m having trouble connecting to the network. Please try again later.');
+                } finally {
+                    showTyping(false);
+                }
+            });
+
+            function addMessage(sender, content, saveToHistory = true) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${sender}`;
+                
+                const senderDiv = document.createElement('div');
+                senderDiv.className = 'message-sender';
+                senderDiv.textContent = sender === 'user' ? 'You' : 'AI Assistant';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.textContent = content;
+                
+                messageDiv.appendChild(senderDiv);
+                messageDiv.appendChild(contentDiv);
+                
+                chatWindow.appendChild(messageDiv);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+                
+                // Save to persistent history
+                if (saveToHistory) {
+                    const message = { sender, content, timestamp: Date.now() };
+                    chatHistory.push(message);
+                    saveChatHistory();
+                }
+            }
+            
+            function loadChatHistory() {
+                try {
+                    const saved = localStorage.getItem('blyan-chat-history');
+                    if (saved) {
+                        chatHistory = JSON.parse(saved);
+                        
+                        // Clear existing messages (except welcome)
+                        const existingMessages = chatWindow.querySelectorAll('.message');
+                        existingMessages.forEach((msg, index) => {
+                            if (index > 0) msg.remove(); // Keep first welcome message
+                        });
+                        
+                        // Restore chat history
+                        chatHistory.forEach(msg => {
+                            addMessage(msg.sender, msg.content, false);
+                        });
+                    }
+                } catch (error) {
+                    console.error('Failed to load chat history:', error);
+                }
+            }
+            
+            function saveChatHistory() {
+                try {
+                    // Keep only last 50 messages
+                    if (chatHistory.length > 50) {
+                        chatHistory = chatHistory.slice(-50);
+                    }
+                    localStorage.setItem('blyan-chat-history', JSON.stringify(chatHistory));
+                } catch (error) {
+                    console.error('Failed to save chat history:', error);
+                }
+            }
+
+            function showTyping(show) {
+                typingIndicator.style.display = show ? 'block' : 'none';
+                sendButton.disabled = show;
+                if (show) {
+                    chatWindow.scrollTop = chatWindow.scrollHeight;
+                }
+            }
+
+            // Auto-focus input
+            chatInput.focus();
+        });
+    </script>
+</body>
+</html>

@@ -1,19 +1,20 @@
 /**
- * AI-Block 공통 헤더 컴포넌트
+ * Blyan 공통 헤더 컴포넌트
  */
 
 function createAIBlockHeader(currentPage = '') {
     const pages = {
-        'chat': { icon: '💬', name: 'Chat', url: 'index.html' },
-        'validator': { icon: '🧠', name: 'PoL Validator', url: 'pol_validator.html' },
-        'explorer': { icon: '🔍', name: 'Explorer', url: 'explorer.html' }
+        'home': { icon: '🏠', name: 'Home', url: 'home.html' },
+        'chat': { icon: '💬', name: 'Chat', url: 'chat.html' },
+        'contribute': { icon: '⚡', name: 'Join Network', url: 'contribute.html' },
+        'explorer': { icon: '🔧', name: 'Technical', url: 'explorer.html' }
     };
 
     return `
-        <header class="ai-block-header">
-            <div class="ai-block-nav">
-                <div class="ai-block-title">
-                    🤖 AI-Block
+        <header class="Blyan-header">
+            <div class="Blyan-nav">
+                <div class="Blyan-title">
+                    🤖 Blyan
                 </div>
                 <nav class="nav-tabs">
                     ${Object.entries(pages).map(([key, page]) => `

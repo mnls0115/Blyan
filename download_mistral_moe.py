@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Download TinyMistral-6x248M-Instruct MoE model for AI-Block distributed MoE system.
+Download TinyMistral-6x248M-Instruct MoE model for Blyan distributed MoE system.
 This model has 6 experts (1.48B total, 248M active) - perfect for blockchain distribution!
 """
 
@@ -55,7 +55,7 @@ def download_tiny_mistral_moe():
         if hasattr(config, 'router_aux_loss_coef'):
             print(f"⚖️ Router loss coefficient: {config.router_aux_loss_coef}")
             
-        print("\n🚀 Ready for AI-Block blockchain distribution!")
+        print("\n🚀 Ready for Blyan blockchain distribution!")
         
     except Exception as e:
         print(f"❌ Download failed: {e}")

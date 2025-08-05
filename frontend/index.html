@@ -3,96 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Block - Chat</title>
-    <link rel="stylesheet" href="components.css">
-    <link rel="stylesheet" href="style.css">
+    <title>Blyan - Decentralized AI Network</title>
+    <script>
+        // Redirect to home page
+        window.location.href = 'home.html';
+    </script>
 </head>
 <body>
-    <div id="header-container"></div>
-    
-    <div class="main-container">
-        <!-- Tab Navigation -->
-        <div id="tabs-container"></div>
-
-        <!-- Tab Content Container -->
-        <div class="tab-content-container">
-            <!-- Chat Tab -->
-            <div id="chat" class="tab-content active">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">AI Chat Interface</div>
-                    </div>
-                    
-                    <div id="chat-window">
-                        <ul id="message-list">
-                            <li class="message ai">
-                                <strong>AI:</strong> Hello! Ask me anything.
-                            </li>
-                        </ul>
-                    </div>
-
-                    <form id="chat-form" style="margin-top: 20px;">
-                        <div style="display: flex; gap: 10px;">
-                            <input type="text" id="prompt-input" placeholder="Say something..." 
-                                autocomplete="off" required style="flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px;">
-                            <button type="submit" style="padding: 10px 20px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">Send</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Wallet Tab -->
-            <div id="wallet" class="tab-content">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-title">Your Wallet</div>
-                    </div>
-                    
-                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                        <input type="text" id="wallet-address" placeholder="Wallet address" 
-                            style="flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px;" />
-                        <button id="check-balance" style="padding: 10px 20px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">Check Balance</button>
-                    </div>
-                    <div id="balance-display" style="font-weight: bold; color: var(--primary-color);"></div>
-                </div>
-            </div>
-
-            <!-- Chain Tab -->
-            <div id="chain" class="tab-content">
-                <div class="card">
-                    <div class="card-header">
-                        <div>
-                            <div class="card-title">Recent Blocks (Chain B)</div>
-                            <div class="card-subtitle">Latest blockchain activity</div>
-                        </div>
-                        <button id="refresh-chain" style="padding: 8px 16px; background: var(--secondary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">Refresh</button>
-                    </div>
-                    
-                    <ul id="blocks-list" style="list-style: none; padding: 0; max-height: 400px; overflow-y: auto;">
-                        <!-- Blocks will be loaded here -->
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="config.js"></script>
-    <script src="common-header.js"></script>
-    <script src="main.js"></script>
-    <script>
-        // 페이지 초기화
-        document.addEventListener('DOMContentLoaded', () => {
-            // 헤더 생성
-            document.getElementById('header-container').innerHTML = createAIBlockHeader('chat');
-            
-            // 탭 생성
-            const tabs = [
-                { id: 'chat', icon: '💬', name: 'Chat' },
-                { id: 'wallet', icon: '💰', name: 'Wallet' },
-                { id: 'chain', icon: '⛓️', name: 'Chain' }
-            ];
-            document.getElementById('tabs-container').innerHTML = createPageTabs(tabs, 'chat');
-        });
-    </script>
+    <p>Redirecting to Blyan...</p>
 </body>
 </html>

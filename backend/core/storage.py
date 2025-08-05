@@ -44,13 +44,28 @@ class BlockStorage:
         json_files = list(self.dir_path.glob("*.json"))
         if not json_files:
             return None
-        latest_idx = max(int(p.stem) for p in json_files)
+        # Filter to only numeric filenames
+        numeric_files = []
+        for p in json_files:
+            try:
+                int(p.stem)
+                numeric_files.append(p)
+            except ValueError:
+                continue
+        if not numeric_files:
+            return None
+        latest_idx = max(int(p.stem) for p in numeric_files)
         return self.load_block(latest_idx)
 
     def iter_blocks(self) -> Iterator[Block]:
         self.ensure_dir()
         for path in sorted(self.dir_path.glob("*.json")):
-            idx = int(path.stem)
-            blk = self.load_block(idx)
-            if blk is not None:
-                yield blk 
+            # Skip non-numeric files (like dataset_state.json)
+            try:
+                idx = int(path.stem)
+                blk = self.load_block(idx)
+                if blk is not None:
+                    yield blk
+            except ValueError:
+                # Skip non-numeric filenames
+                continue 

@@ -453,8 +453,8 @@ class MoEModelManager:
         
         if any(word in prompt_lower for word in ["hi", "hello", "안녕"]):
             responses = [
-                "안녕하세요! AI-Block의 분산 MoE 시스템으로 구동되는 AI입니다.",
-                "Hello! I'm powered by blockchain Expert weights from the AI-Block network.",
+                "안녕하세요! Blyan의 분산 MoE 시스템으로 구동되는 AI입니다.",
+                "Hello! I'm powered by blockchain Expert weights from the Blyan network.",
                 "반갑습니다! 블록체인에 저장된 Expert 가중치를 사용해 응답하고 있습니다."
             ]
         elif any(word in prompt_lower for word in ["뭐", "what", "할까", "doing"]):
@@ -471,7 +471,7 @@ class MoEModelManager:
             ]
         else:
             responses = [
-                f"AI-Block의 Expert {expert_names}가 처리한 응답입니다.",
+                f"Blyan의 Expert {expert_names}가 처리한 응답입니다.",
                 f"Blockchain Expert {expert_names} processed your request.",
                 f"분산 MoE 시스템의 {expert_names}를 통해 응답을 생성했습니다."
             ]
@@ -484,20 +484,20 @@ class MoEModelManager:
         # Simple rule-based response generation based on prompt content
         prompt_lower = prompt.lower()
         
-        # AI-Block specific responses
-        if any(word in prompt_lower for word in ['aiblock', 'ai-block', 'blockchain', 'expert']):
-            return f"AI-Block is a revolutionary distributed MoE blockchain system where {len(selected_experts)} experts collaborated to process your query. Each expert specializes in different aspects of AI inference, enabling efficient and scalable distributed computing."
+        # Blyan specific responses
+        if any(word in prompt_lower for word in ['aiblock', 'Blyan', 'blockchain', 'expert']):
+            return f"Blyan is a revolutionary distributed MoE blockchain system where {len(selected_experts)} experts collaborated to process your query. Each expert specializes in different aspects of AI inference, enabling efficient and scalable distributed computing."
         
         # Greeting responses
         if any(word in prompt_lower for word in ['hello', 'hi', 'hey', 'greetings']):
-            return f"Hello! I'm powered by AI-Block's distributed MoE system. {len(selected_experts)} specialized experts processed your greeting, demonstrating our blockchain-based AI architecture in action."
+            return f"Hello! I'm powered by Blyan's distributed MoE system. {len(selected_experts)} specialized experts processed your greeting, demonstrating our blockchain-based AI architecture in action."
         
         # Question responses
         if '?' in prompt or any(word in prompt_lower for word in ['what', 'how', 'why', 'when', 'where', 'who']):
             return f"Based on analysis from {len(selected_experts)} blockchain-stored experts, I can help answer your question. Our distributed MoE system combines knowledge from multiple specialized models to provide comprehensive responses."
         
         # General response
-        return f"AI-Block MoE system processed your input using {len(selected_experts)} distributed experts. This demonstrates our revolutionary approach to blockchain-based AI inference, where each expert contributes specialized knowledge."
+        return f"Blyan MoE system processed your input using {len(selected_experts)} distributed experts. This demonstrates our revolutionary approach to blockchain-based AI inference, where each expert contributes specialized knowledge."
 
     @property
     def model(self):

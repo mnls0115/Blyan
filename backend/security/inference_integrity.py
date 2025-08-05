@@ -1,5 +1,5 @@
 """
-Inference Integrity Verification System for AI-Block
+Inference Integrity Verification System for Blyan
 
 This module implements real-time verification mechanisms to detect:
 1. Wrong expert execution (different weights)

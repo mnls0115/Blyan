@@ -81,6 +81,9 @@ debug/
 
 # Data directories
 test_data/
+tests/
+test_backups/
+test_quarantine/
 data/
 data_backup/
 models/

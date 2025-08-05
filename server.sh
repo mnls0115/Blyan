@@ -1,9 +1,16 @@
 #!/bin/bash
 
-# AI-Block Multi-Server Management Script
+# Blyan Multi-Server Management Script
+
+# 가상환경 활성화 (있는 경우)
+if [ -d "myenv" ]; then
+    source myenv/bin/activate
+elif [ -d ".venv" ]; then
+    source .venv/bin/activate
+fi
 
 # 서버 구성 (포트:모듈 형식)
-SERVERS="api:8000:api.server:app p2p-node1:8001:backend.p2p.distributed_inference:server p2p-node2:8002:backend.p2p.distributed_inference:server"
+SERVERS="api:8000:api.server:app p2p-node1:8001:backend.p2p.distributed_inference p2p-node2:8002:backend.p2p.distributed_inference"
 
 get_server_config() {
     local name=$1
@@ -24,9 +31,19 @@ start_server() {
     echo "🚀 Starting $name server on port $port..."
     
     if [ "$name" = "api" ]; then
-        python3 -m uvicorn $module --reload --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+        # 가상환경 경로 직접 사용
+        if [ -f "myenv/bin/python3" ]; then
+            myenv/bin/python3 -m uvicorn $module --reload --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+        else
+            python3 -m uvicorn $module --reload --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+        fi
     else
-        python3 -m $module $port > logs/${name}.log 2>&1 &
+        echo "Debug: Starting P2P node with command: python3 -m $module server $name $port"
+        if [ -f "myenv/bin/python3" ]; then
+            myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+        else
+            python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+        fi
     fi
     
     local pid=$!
@@ -42,10 +59,20 @@ stop_server() {
     echo "🛑 Stopping $name server..."
     
     # 포트로 프로세스 찾아서 종료
-    local pid=$(lsof -ti:$port 2>/dev/null)
-    if [ ! -z "$pid" ]; then
-        kill $pid
-        echo "   ✓ $name stopped (was PID: $pid)"
+    local pids=$(lsof -ti:$port 2>/dev/null)
+    if [ ! -z "$pids" ]; then
+        for pid in $pids; do
+            kill $pid 2>/dev/null
+        done
+        sleep 2
+        # 강제 종료로 확인
+        local remaining=$(lsof -ti:$port 2>/dev/null)
+        if [ ! -z "$remaining" ]; then
+            for pid in $remaining; do
+                kill -9 $pid 2>/dev/null
+            done
+        fi
+        echo "   ✓ $name stopped (PIDs: $pids)"
     else
         echo "   ⚠️  $name was not running"
     fi
@@ -56,9 +83,9 @@ status_server() {
     local config=$(get_server_config $name)
     local port=$(echo $config | cut -d: -f2)
     
-    local pid=$(lsof -ti:$port 2>/dev/null)
-    if [ ! -z "$pid" ]; then
-        echo "✅ $name: Running (PID: $pid, Port: $port)"
+    local pids=$(lsof -ti:$port 2>/dev/null)
+    if [ ! -z "$pids" ]; then
+        echo "✅ $name: Running (PIDs: $(echo $pids | tr '\n' ' '), Port: $port)"
         # API 응답 확인
         if [ "$name" = "api" ]; then
             curl -s http://127.0.0.1:$port/pol/status > /dev/null 2>&1 && echo "   🌐 API responding" || echo "   ❌ API not responding"
@@ -73,9 +100,38 @@ case "$1" in
         mkdir -p logs
         if [ -z "$2" ]; then
             echo "🔄 Starting all servers..."
+            
+            # 먼저 모든 서버 중지
+            echo "Cleaning up existing processes..."
             for server in $SERVERS; do
                 name=$(echo $server | cut -d: -f1)
+                stop_server $name >/dev/null 2>&1
+            done
+            
+            sleep 3
+            
+            # 순차적으로 시작 및 확인
+            for server in $SERVERS; do
+                name=$(echo $server | cut -d: -f1)
+                port=$(echo $server | cut -d: -f2)
+                
                 start_server $name
+                sleep 2
+                
+                # 시작 확인
+                attempts=0
+                while [ $attempts -lt 5 ]; do
+                    if lsof -ti:$port >/dev/null 2>&1; then
+                        echo "   ✓ $name confirmed running on port $port"
+                        break
+                    fi
+                    sleep 1
+                    attempts=$((attempts + 1))
+                done
+                
+                if [ $attempts -eq 5 ]; then
+                    echo "   ⚠️  Warning: $name may not have started properly"
+                fi
             done
         else
             start_server $2
@@ -139,7 +195,7 @@ case "$1" in
         done
         ;;
     *)
-        echo "🤖 AI-Block Multi-Server Manager"
+        echo "🤖 Blyan Multi-Server Manager"
         echo "==============================="
         echo "Usage: $0 {start|stop|restart|status|logs|list} [server-name]"
         echo ""

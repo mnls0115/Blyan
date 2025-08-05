@@ -1,5 +1,5 @@
 """
-Security Orchestrator for AI-Block
+Security Orchestrator for Blyan
 
 This module implements production-grade security orchestration including:
 1. Automatic failover when integrity verification fails
@@ -576,7 +576,7 @@ class SecurityOrchestrator:
 async def send_slack_alert(alert: SecurityAlert):
     """Example webhook integration for Slack notifications."""
     webhook_payload = {
-        "text": f"🚨 AI-Block Security Alert: {alert.alert_type}",
+        "text": f"🚨 Blyan Security Alert: {alert.alert_type}",
         "attachments": [
             {
                 "color": "danger" if alert.severity in ["HIGH", "CRITICAL"] else "warning",

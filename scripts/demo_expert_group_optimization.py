@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Demo script for Expert Group Optimization in AI-Block
+Demo script for Expert Group Optimization in Blyan
 
 This script demonstrates the new expert group-based optimization system:
 1. Expert group identification from usage patterns
@@ -16,7 +16,7 @@ import random
 from pathlib import Path
 from typing import List, Set
 
-# AI-Block imports
+# Blyan imports
 from backend.model.moe_infer import ExpertUsageTracker
 from backend.p2p.distributed_inference import DistributedInferenceCoordinator
 from backend.p2p.expert_group_optimizer import (
@@ -309,7 +309,7 @@ class ExpertGroupOptimizationDemo:
     
     async def run_complete_demo(self):
         """Run the complete expert group optimization demo."""
-        print("🚀 AI-Block Expert Group Optimization Demo")
+        print("🚀 Blyan Expert Group Optimization Demo")
         print("=" * 50)
         
         # Setup
