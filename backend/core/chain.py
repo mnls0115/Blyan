@@ -8,14 +8,14 @@ from pathlib import Path
 from typing import Iterator, Optional, List, Literal, Dict
 
 from .block import Block, BlockHeader, validate_dag_structure, topological_sort
-from .pow import find_nonce, verify_pow
+from .pow import find_pol_nonce, verify_pol_nonce
 from .storage import BlockStorage
 
 
 class Chain:
     """Represents a single append-only blockchain (meta or parameter)."""
 
-    def __init__(self, root_dir: Path, chain_id: str, difficulty: int = 4, skip_pow: bool = False, chain_validator=None):
+    def __init__(self, root_dir: Path, chain_id: str, difficulty: int = 1, skip_pol: bool = False, chain_validator=None):
         self.chain_id = chain_id
         # Support environment variable for difficulty override
         env_difficulty = os.environ.get('CHAIN_DIFFICULTY')
@@ -29,9 +29,9 @@ class Chain:
         else:
             self.difficulty = difficulty
         
-        self.skip_pow = skip_pow
-        if skip_pow:
-            print(f"⚠️  PoW disabled for chain {chain_id} (development mode)")
+        self.skip_pol = skip_pol
+        if skip_pol:
+            print(f"⚠️  Anti-spam PoL disabled for chain {chain_id} (development mode)")
         
         # PoL validation support
         self.chain_validator = chain_validator
@@ -87,13 +87,15 @@ class Chain:
             layer_id=layer_id,
         )
 
-        # mine (or skip if in development mode)
-        if self.skip_pow:
-            # Skip PoW computation but still include a dummy nonce
+        # Generate anti-spam proof (or skip if in development mode)  
+        if self.skip_pol:
+            # Skip anti-spam PoL but still include a dummy nonce
             header.nonce = 12345  # Dummy nonce for development
-            print(f"⚡ Skipped PoW mining for block {index} (dev mode)")
+            print(f"⚡ Skipped anti-spam PoL for block {index} (dev mode)")
         else:
-            header.nonce = find_nonce(header.to_json().encode() + payload, self.difficulty)
+            # Lightweight anti-spam challenge instead of wasteful PoW
+            contributor_id = miner_pub or "anonymous"
+            header.nonce = find_pol_nonce(header.to_json().encode() + payload, contributor_id, self.difficulty)
         block = Block(
             header=header,
             payload=payload,
@@ -128,7 +130,7 @@ class Chain:
         return block
 
     def verify_chain(self) -> bool:
-        """Verify entire chain integrity & PoW results."""
+        """Verify entire chain integrity & anti-spam PoL results."""
         blocks = self.get_all_blocks()
         
         # 1. Verify DAG structure
@@ -140,13 +142,15 @@ class Chain:
             # Payload integrity
             if block.header.payload_hash != hashlib.sha256(block.payload).hexdigest():
                 return False
-            # Proof-of-work validity (skip if PoW was disabled)
-            if not self.skip_pow and not verify_pow(
-                block.header.to_json().encode() + block.payload,
-                block.header.nonce,
-                self.difficulty,
-            ):
-                return False
+            # Anti-spam PoL validity (skip if disabled in development)
+            if not self.skip_pol:
+                contributor_id = block.miner_pub or "anonymous"
+                if not verify_pol_nonce(
+                    block.header.to_json().encode() + block.payload,
+                    block.header.nonce,
+                    contributor_id
+                ):
+                    return False
             # Dependency validation (all dependencies must exist)
             block_hashes = {b.compute_hash() for b in blocks}
             for dep_hash in block.header.depends_on:

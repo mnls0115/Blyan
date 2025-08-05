@@ -41,11 +41,11 @@ class DatasetChain(Chain):
         # Load existing state
         self._load_dataset_state()
     
-    def add_dataset(self, metadata: DatasetMetadata, proof_of_work_nonce: int = 0) -> Tuple[bool, str]:
+    def add_dataset(self, metadata: DatasetMetadata, anti_spam_nonce: int = 0) -> Tuple[bool, str]:
         """
         Add new dataset to Chain D following 4-stage pipeline.
         
-        Stage 1: Pending - Zero-barrier upload with PoW anti-spam
+        Stage 1: Pending - Zero-barrier upload with lightweight anti-spam
         """
         try:
             # Create dataset block
@@ -56,8 +56,8 @@ class DatasetChain(Chain):
             if not is_valid:
                 return False, f"Dataset validation failed: {'; '.join(errors)}"
             
-            # Set PoW nonce if provided (anti-spam measure)
-            dataset_block.header.nonce = proof_of_work_nonce
+            # Set anti-spam nonce if provided (lightweight spam prevention)
+            dataset_block.header.nonce = anti_spam_nonce
             
             # Add to blockchain
             block = self.add_block(

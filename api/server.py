@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Optional
 
 # Third-party libraries; ignore type checker if not present in local env
-from fastapi import FastAPI, HTTPException  # type: ignore
+from fastapi import FastAPI, HTTPException, Request, Depends  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from pydantic import BaseModel  # type: ignore
 
@@ -41,6 +41,24 @@ from backend.core.pol_validator import create_pol_validator, ChainValidator
 from backend.security.data_validation import DataSecurityCoordinator
 from backend.security.poison_detection import ComprehensivePoisonDetector
 from backend.security.quarantine_system import NetworkDefenseCoordinator
+from backend.security.rate_limiting import rate_limiter, create_contribution_proof, ContributionProof
+from backend.security.api_auth import security_middleware, api_key_manager, APIKeyGenerator, get_api_key_info
+from backend.security.monitoring import record_security_event, record_api_response_time, get_security_dashboard, get_system_health
+from backend.security.genesis_verification import register_network_peer, verify_network_genesis_consensus, should_accept_peer, get_genesis_network_status
+from backend.security.disaster_recovery import create_manual_snapshot, emergency_rollback, list_available_snapshots, get_disaster_recovery_status
+from backend.security.key_management import (
+    create_secure_key, get_secure_key, rotate_secure_key, revoke_secure_key, 
+    list_secure_keys, get_key_management_status, KeyType
+)
+from backend.security.sbom_validator import (
+    scan_software_components, validate_license_compliance, get_sbom_status, get_latest_sbom_report
+)
+from backend.security.hardware_binding import (
+    bind_node_hardware, verify_node_hardware, check_node_trust, get_hardware_status, detect_current_hardware
+)
+from backend.security.content_safety import (
+    scan_content_safety, is_content_safe, get_content_safety_status, quarantine_content, unquarantine_content
+)
 from backend.core.scheduler_integration import wire_system_components
 
 # -------------------------------------------------
@@ -61,18 +79,18 @@ def _verify_signature(pub_hex: str, message: bytes, sig_hex: str) -> bool:
 # Init chains & model manager on startup
 # ---------------------------------------------------------------------
 root_dir = Path(os.getenv("AIBLOCK_DATA", "./data"))
-# Check for development mode (skip PoW)
-skip_pow = os.getenv("SKIP_POW", "false").lower() in ("true", "1", "yes")
-if skip_pow:
-    print("🚧 Running in development mode - PoW disabled")
+# Check for development mode (skip anti-spam PoL)
+skip_pol = os.getenv("SKIP_POL", "false").lower() in ("true", "1", "yes")
+if skip_pol:
+    print("🚧 Running in development mode - Anti-spam PoL disabled")
 
 # Check for PoL mode
 enable_pol = os.getenv("ENABLE_POL", "false").lower() in ("true", "1", "yes")
 if enable_pol:
     print("🧠 Proof-of-Learning validation enabled")
 
-meta_chain = Chain(root_dir, "A", skip_pow=skip_pow)
-param_chain = Chain(root_dir, "B", skip_pow=skip_pow)  # parameter chain for experts
+meta_chain = Chain(root_dir, "A", skip_pol=skip_pol)
+param_chain = Chain(root_dir, "B", skip_pol=skip_pol)  # parameter chain for experts
 dataset_chain = DatasetChain(root_dir, "D")  # Dataset governance chain
 # Parameter index
 param_index = ParameterIndex(root_dir / "param_index.json")
@@ -125,7 +143,53 @@ if enable_pol:
         print(f"⚠️  Failed to initialize PoL validator: {e}")
         enable_pol = False
 
-app = FastAPI(title="Blyanchain Prototype")
+app = FastAPI(
+    title="Blyan AI Blockchain API",
+    description="Enterprise AI blockchain with MoE architecture and PoL consensus",
+    version="2.0.0"
+)
+
+# Add monitoring middleware
+@app.middleware("http")
+async def monitoring_middleware(request: Request, call_next):
+    """Monitor API requests and record security events."""
+    start_time = time.time()
+    
+    try:
+        response = await call_next(request)
+        
+        # Record response time
+        response_time_ms = (time.time() - start_time) * 1000
+        record_api_response_time(response_time_ms)
+        
+        # Record security events based on response status
+        if response.status_code == 401:
+            record_security_event("failed_auth_attempts", str(request.client.host), {
+                "endpoint": str(request.url.path),
+                "user_agent": request.headers.get("user-agent", "unknown")
+            })
+        elif response.status_code == 429:
+            record_security_event("rate_limit_exceeded", str(request.client.host), {
+                "endpoint": str(request.url.path)
+            })
+        elif response.status_code >= 500:
+            record_security_event("server_error", "api_server", {
+                "endpoint": str(request.url.path),
+                "status_code": response.status_code
+            })
+        
+        return response
+        
+    except Exception as e:
+        # Record exception as security event
+        record_security_event("api_exception", "api_server", {
+            "endpoint": str(request.url.path),
+            "error": str(e)
+        })
+        raise
+
+# Add security middleware
+app.middleware("http")(security_middleware)
 
 # Add CORS middleware
 app.add_middleware(
@@ -287,7 +351,7 @@ async def get_pol_status():
     return {
         "pol_enabled": enable_pol,
         "pol_threshold": float(os.getenv("POL_THRESHOLD", "0.01")),
-        "skip_pow": skip_pow,
+        "skip_pol": skip_pol,
         "validator_initialized": chain_validator is not None,
         "validation_data_dir": str(root_dir / "validation_data") if enable_pol else None
     }
@@ -369,9 +433,13 @@ def _startup():
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, http_request: Request = None):
     import time
     start_time = time.time()
+    
+    # Rate limiting check
+    if http_request:
+        await rate_limiter(http_request, "inference")
     
     try:
         # Check if we have any registered nodes for distributed inference
@@ -469,7 +537,7 @@ async def mine(req: MineRequest):
 
     points_to = latest_meta.compute_hash()
 
-    # 4) Add block to parameter chain (mining includes PoW)
+    # 4) Add block to parameter chain (includes anti-spam PoL)
     try:
         new_block = param_chain.add_block(
             payload,
@@ -605,8 +673,12 @@ class MoEExpertResponse(BaseModel):
 
 
 @app.post("/upload_moe_experts", response_model=MoEExpertResponse)
-async def upload_moe_expert(req: MoEExpertRequest):
+async def upload_moe_expert(req: MoEExpertRequest, http_request: Request = None):
     """Upload a single MoE expert or router block to the DAG chain."""
+    
+    # Rate limiting check
+    if http_request:
+        await rate_limiter(http_request, "upload")
     
     # 1. Enhanced PoL check (if PoL validator is available)
     if enable_pol and chain_validator:
@@ -681,6 +753,10 @@ async def upload_moe_expert(req: MoEExpertRequest):
         ledger.credit(req.miner_address, total_reward)
         balance = ledger.get_balance(req.miner_address)
         
+        # Record successful upload for rate limiting
+        if http_request:
+            rate_limiter.record_action(http_request, "upload", success=True)
+        
         return MoEExpertResponse(
             block_hash=new_block.compute_hash(),
             reward=total_reward,
@@ -688,6 +764,10 @@ async def upload_moe_expert(req: MoEExpertRequest):
         )
         
     except Exception as exc:
+        # Record failed upload for rate limiting
+        if http_request:
+            rate_limiter.record_action(http_request, "upload", success=False)
+        
         # Enhanced error handling for PoL validation failures
         error_msg = str(exc)
         if "PoL validation failed" in error_msg:
@@ -1524,7 +1604,7 @@ class DatasetUploadRequest(BaseModel):
     total_files: int = 0
     total_bytes: int = 0
     description: str = ""
-    proof_of_work_nonce: int = 0
+    anti_spam_nonce: int = 0
 
 
 class DatasetVoteRequest(BaseModel):
@@ -1534,9 +1614,24 @@ class DatasetVoteRequest(BaseModel):
     voter_gpu_hwid: str = None
 
 
+class PoLChallengeRequest(BaseModel):
+    """Request for PoL challenge to bypass rate limits."""
+    challenge_type: str
+    expert_hash: Optional[str] = None
+    performance_improvement: Optional[float] = None
+    validation_proof: Optional[str] = None
+
+
+class APIKeyRequest(BaseModel):
+    """Request for API key creation."""
+    name: str
+    key_type: str  # "basic", "contributor", "node_operator", "admin"
+    description: str = ""
+
+
 @app.post("/datasets/upload")
 async def upload_dataset(request: DatasetUploadRequest):
-    """Stage 1: Upload new dataset to Chain D (Zero-barrier with PoW anti-spam)."""
+    """Stage 1: Upload new dataset to Chain D (Zero-barrier with lightweight anti-spam)."""
     try:
         # Create dataset metadata
         metadata = DatasetMetadata(
@@ -1552,7 +1647,7 @@ async def upload_dataset(request: DatasetUploadRequest):
         )
         
         # Add to Dataset-Chain D
-        success, message = dataset_chain.add_dataset(metadata, request.proof_of_work_nonce)
+        success, message = dataset_chain.add_dataset(metadata, request.anti_spam_nonce)
         
         if success:
             return {
@@ -1569,6 +1664,1060 @@ async def upload_dataset(request: DatasetUploadRequest):
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Dataset upload failed: {str(e)}")
+
+
+@app.post("/auth/pol_challenge")
+async def pol_challenge_bypass(request: PoLChallengeRequest, http_request: Request):
+    """Handle PoL challenge for rate limit bypass."""
+    try:
+        user_id = rate_limiter._get_user_id(http_request)
+        
+        if request.challenge_type == "prove_ai_contribution":
+            if not request.expert_hash or request.performance_improvement is None:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Expert hash and performance improvement required for AI contribution proof"
+                )
+            
+            # Create contribution proof
+            contribution_proof = create_contribution_proof(
+                user_id=user_id,
+                expert_hash=request.expert_hash,
+                performance_improvement=request.performance_improvement
+            )
+            
+            # Validate and apply bypass
+            if rate_limiter.pol_challenge_bypass(user_id, contribution_proof):
+                return {
+                    "success": True,
+                    "message": f"Quota increased by {int(contribution_proof.performance_improvement * 100)}% improvement contribution",
+                    "new_quota_info": rate_limiter.get_user_stats(user_id).__dict__
+                }
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid contribution proof or insufficient improvement"
+                )
+        
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown challenge type: {request.challenge_type}"
+            )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PoL challenge failed: {str(e)}")
+
+
+@app.get("/auth/rate_limit_status")
+async def get_rate_limit_status(http_request: Request):
+    """Get current rate limit status for the user."""
+    try:
+        user_id = rate_limiter._get_user_id(http_request)
+        user_stats = rate_limiter.get_user_stats(user_id)
+        quota_config = rate_limiter.user_quotas[user_stats.reputation_level]
+        
+        return {
+            "user_id": user_id[:8] + "...",  # Partial ID for privacy
+            "reputation_level": user_stats.reputation_level,
+            "quotas": {
+                "uploads_remaining_today": quota_config["uploads_per_day"] - user_stats.uploads_today,
+                "inference_remaining_hour": quota_config["inference_per_hour"] - user_stats.inference_requests_hour,
+                "uploads_per_day": quota_config["uploads_per_day"],
+                "inference_per_hour": quota_config["inference_per_hour"]
+            },
+            "statistics": {
+                "successful_uploads": user_stats.successful_uploads,
+                "failed_uploads": user_stats.failed_uploads,
+                "consecutive_successes": user_stats.consecutive_successes,
+                "pol_contributions": user_stats.pol_contributions
+            },
+            "next_reset": {
+                "daily_reset_in": rate_limiter._seconds_until_daily_reset(),
+                "hourly_reset_in": rate_limiter._seconds_until_hourly_reset()
+            }
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get rate limit status: {str(e)}")
+
+
+@app.get("/auth/rate_limit_stats")  
+async def get_rate_limit_system_stats():
+    """Get system-wide rate limiting statistics (admin endpoint)."""
+    try:
+        return rate_limiter.get_stats_summary()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get system stats: {str(e)}")
+
+
+@app.post("/auth/register_api_key")
+async def register_api_key(request: APIKeyRequest):
+    """Register a new API key."""
+    try:
+        # Create API key based on type
+        if request.key_type == "basic":
+            api_key = APIKeyGenerator.create_basic_user_key(request.name)
+        elif request.key_type == "contributor":
+            api_key = APIKeyGenerator.create_contributor_key(request.name)
+        elif request.key_type == "node_operator":
+            api_key = APIKeyGenerator.create_node_operator_key(request.name)
+        elif request.key_type == "admin":
+            api_key = APIKeyGenerator.create_admin_key(request.name)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid key type: {request.key_type}. Use: basic, contributor, node_operator, admin"
+            )
+        
+        return {
+            "success": True,
+            "api_key": api_key,
+            "key_type": request.key_type,
+            "name": request.name,
+            "message": "⚠️ Save this key securely - it won't be shown again!",
+            "usage_instructions": {
+                "header_format": f"X-API-Key: {api_key}",
+                "bearer_format": f"Authorization: Bearer {api_key}",
+                "test_endpoint": "/auth/api_key_info"
+            }
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create API key: {str(e)}")
+
+
+@app.get("/auth/api_key_info")
+async def get_api_key_info_endpoint(http_request: Request):
+    """Get information about the current API key."""
+    try:
+        key_info = get_api_key_info(http_request)
+        if not key_info:
+            raise HTTPException(status_code=401, detail="No valid API key found")
+        
+        return {
+            "key_id": key_info.key_id,
+            "name": key_info.name,
+            "permissions": list(key_info.permissions),
+            "rate_limit_tier": key_info.rate_limit_tier,
+            "created_at": key_info.created_at,
+            "last_used": key_info.last_used,
+            "usage_count": key_info.usage_count,
+            "is_active": key_info.is_active,
+            "expires_at": key_info.expires_at
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get API key info: {str(e)}")
+
+
+@app.get("/auth/list_api_keys")
+async def list_api_keys():
+    """List all API keys (admin only)."""
+    try:
+        return {
+            "keys": api_key_manager.list_keys(),
+            "total_keys": len(api_key_manager.keys_db),
+            "active_keys": sum(1 for k in api_key_manager.keys_db.values() if k.is_active)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list API keys: {str(e)}")
+
+
+@app.delete("/auth/revoke_api_key/{key_id}")
+async def revoke_api_key(key_id: str):
+    """Revoke an API key (admin only)."""
+    try:
+        success = api_key_manager.revoke_key(key_id)
+        if success:
+            return {"success": True, "message": f"API key {key_id} revoked successfully"}
+        else:
+            raise HTTPException(status_code=404, detail=f"API key {key_id} not found")
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to revoke API key: {str(e)}")
+
+
+@app.get("/genesis/hash")
+async def get_genesis_hash():
+    """Get Genesis Pact hash for node verification."""
+    try:
+        genesis_hash_file = Path("./data/genesis_pact_hash.txt")
+        if genesis_hash_file.exists():
+            genesis_hash = genesis_hash_file.read_text().strip()
+            return {
+                "genesis_hash": genesis_hash,
+                "timestamp": os.path.getmtime(genesis_hash_file),
+                "network": "blyan_mainnet"
+            }
+        else:
+            raise HTTPException(
+                status_code=404, 
+                detail="Genesis Pact not found. Run: python scripts/create_genesis_pact.py"
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get genesis hash: {str(e)}")
+
+
+@app.get("/health")
+async def health_check():
+    """Basic health check endpoint."""
+    try:
+        health_status = get_system_health()
+        
+        # Simple health check
+        if health_status["overall_status"] == "healthy":
+            return {
+                "status": "healthy",
+                "timestamp": time.time(),
+                "uptime_seconds": health_status["uptime_seconds"],
+                "api_response_time_ms": health_status["api_avg_response_time_ms"]
+            }
+        else:
+            return {
+                "status": health_status["overall_status"],
+                "timestamp": time.time(),
+                "details": health_status
+            }
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
+
+
+@app.get("/monitoring/dashboard")
+async def get_monitoring_dashboard():
+    """Get comprehensive security and monitoring dashboard."""
+    try:
+        return get_security_dashboard()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get monitoring dashboard: {str(e)}")
+
+
+@app.get("/monitoring/health")
+async def get_detailed_health():
+    """Get detailed system health information."""
+    try:
+        return get_system_health()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get health status: {str(e)}")
+
+
+@app.post("/monitoring/record_event")
+async def record_manual_security_event(
+    event_type: str,
+    source: str,
+    details: Optional[Dict] = None
+):
+    """Manually record a security event (admin only)."""
+    try:
+        record_security_event(event_type, source, details or {})
+        return {
+            "success": True,
+            "message": f"Security event '{event_type}' recorded from source '{source}'"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to record security event: {str(e)}")
+
+
+@app.post("/genesis/register_peer")
+async def register_genesis_peer(peer_id: str, host: str, port: int):
+    """Register a peer for Genesis verification."""
+    try:
+        success = register_network_peer(peer_id, host, port)
+        if success:
+            return {
+                "success": True,
+                "message": f"Peer {peer_id} registered for Genesis verification",
+                "peer_info": {"peer_id": peer_id, "host": host, "port": port}
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Failed to register peer")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to register peer: {str(e)}")
+
+
+@app.post("/genesis/verify_consensus")
+async def verify_genesis_consensus():
+    """Verify Genesis consensus across all registered peers."""
+    try:
+        consensus_result = verify_network_genesis_consensus()
+        
+        if consensus_result["consensus_achieved"]:
+            return {
+                "status": "consensus_achieved",
+                "details": consensus_result
+            }
+        else:
+            return {
+                "status": "consensus_failed",
+                "warning": "Network consensus verification failed - potential security risk",
+                "details": consensus_result
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify Genesis consensus: {str(e)}")
+
+
+@app.get("/genesis/network_status")
+async def get_genesis_network_status_endpoint():
+    """Get Genesis verification network status."""
+    try:
+        return get_genesis_network_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get Genesis network status: {str(e)}")
+
+
+@app.post("/genesis/verify_peer")
+async def verify_peer_genesis(peer_id: str, peer_genesis_hash: str):
+    """Verify if a peer's Genesis hash is acceptable for network connection."""
+    try:
+        should_accept = should_accept_peer(peer_id, peer_genesis_hash)
+        
+        return {
+            "peer_id": peer_id,
+            "genesis_hash_valid": should_accept,
+            "connection_allowed": should_accept,
+            "message": "Peer accepted" if should_accept else "Peer rejected: Genesis hash mismatch"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify peer Genesis: {str(e)}")
+
+
+@app.post("/recovery/create_snapshot")
+async def create_recovery_snapshot(description: str = "", tags: Optional[List[str]] = None):
+    """Create a manual system snapshot for disaster recovery."""
+    try:
+        snapshot_id = create_manual_snapshot(description, tags or [])
+        
+        if snapshot_id:
+            return {
+                "success": True,
+                "snapshot_id": snapshot_id,
+                "description": description,
+                "tags": tags or [],
+                "message": f"Snapshot {snapshot_id} created successfully"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create snapshot")
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create snapshot: {str(e)}")
+
+
+@app.post("/recovery/emergency_rollback")
+async def execute_emergency_rollback(snapshot_id: str):
+    """Execute emergency rollback to specified snapshot (ADMIN ONLY - DESTRUCTIVE)."""
+    try:
+        # This is a destructive operation - add extra security
+        print(f"🚨 EMERGENCY ROLLBACK REQUESTED: {snapshot_id}")
+        
+        success = emergency_rollback(snapshot_id)
+        
+        if success:
+            return {
+                "success": True,
+                "snapshot_id": snapshot_id,
+                "message": f"Emergency rollback to {snapshot_id} completed successfully",
+                "warning": "System has been restored to previous state. Recent data may be lost."
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Emergency rollback to {snapshot_id} failed. Check logs for details."
+            )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Emergency rollback failed: {str(e)}")
+
+
+@app.get("/recovery/snapshots")
+async def list_recovery_snapshots():
+    """List all available recovery snapshots."""
+    try:
+        snapshots = list_available_snapshots()
+        return {
+            "snapshots": snapshots,
+            "total_snapshots": len(snapshots),
+            "total_size_mb": sum(s["size_mb"] for s in snapshots),
+            "oldest_snapshot": min([s["timestamp"] for s in snapshots]) if snapshots else None,
+            "newest_snapshot": max([s["timestamp"] for s in snapshots]) if snapshots else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list snapshots: {str(e)}")
+
+
+@app.get("/recovery/status")
+async def get_recovery_system_status():
+    """Get disaster recovery system status."""
+    try:
+        return get_disaster_recovery_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get recovery status: {str(e)}")
+
+
+@app.get("/recovery/snapshot/{snapshot_id}")
+async def get_snapshot_details(snapshot_id: str):
+    """Get detailed information about a specific snapshot."""
+    try:
+        snapshots = list_available_snapshots()
+        snapshot = next((s for s in snapshots if s["snapshot_id"] == snapshot_id), None)
+        
+        if not snapshot:
+            raise HTTPException(status_code=404, detail=f"Snapshot {snapshot_id} not found")
+        
+        return {
+            "snapshot": snapshot,
+            "rollback_available": snapshot["age_hours"] <= 24,  # 24 hour limit
+            "estimated_rollback_time_minutes": 10,  # 10 minute guarantee
+            "data_loss_warning": f"Rolling back will lose all data created after {datetime.fromtimestamp(snapshot['timestamp']).isoformat()}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get snapshot details: {str(e)}")
+
+
+# =============================================================================
+# SECURE KEY MANAGEMENT ENDPOINTS
+# =============================================================================
+
+@app.post("/keys/create")
+async def create_key_endpoint(
+    key_type: str,
+    description: str,
+    metadata: Dict = None,
+    request: Request = None
+):
+    """Create a new secure key (ADMIN ONLY)."""
+    try:
+        # Validate key type
+        try:
+            key_type_enum = KeyType(key_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid key type. Valid types: {[t.value for t in KeyType]}"
+            )
+        
+        key_id, key_value = create_secure_key(key_type_enum, description, metadata or {})
+        
+        return {
+            "success": True,
+            "key_id": key_id,
+            "key_value": key_value,
+            "key_type": key_type,
+            "description": description,
+            "warning": "Store this key securely - it will not be shown again!",
+            "message": f"Secure key {key_id} created successfully"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create key: {str(e)}")
+
+
+@app.get("/keys/list")
+async def list_keys_endpoint(key_type: Optional[str] = None):
+    """List all secure keys (without sensitive values)."""
+    try:
+        key_type_filter = None
+        if key_type:
+            try:
+                key_type_filter = KeyType(key_type)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid key type. Valid types: {[t.value for t in KeyType]}"
+                )
+        
+        keys = list_secure_keys(key_type_filter)
+        
+        return {
+            "keys": keys,
+            "total_keys": len(keys),
+            "key_types": list(set(k["key_type"] for k in keys)),
+            "keys_needing_rotation": len([k for k in keys if k["rotation_needed"]])
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list keys: {str(e)}")
+
+
+@app.post("/keys/{key_id}/rotate")
+async def rotate_key_endpoint(key_id: str):
+    """Rotate a secure key (ADMIN ONLY)."""
+    try:
+        new_key_value = rotate_secure_key(key_id)
+        
+        if new_key_value:
+            return {
+                "success": True,
+                "key_id": key_id,
+                "new_key_value": new_key_value,
+                "message": f"Key {key_id} rotated successfully",
+                "warning": "Update all systems using this key with the new value!"
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Key {key_id} not found or cannot be rotated")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to rotate key: {str(e)}")
+
+
+@app.post("/keys/{key_id}/revoke")
+async def revoke_key_endpoint(key_id: str):
+    """Revoke a secure key (ADMIN ONLY)."""
+    try:
+        success = revoke_secure_key(key_id)
+        
+        if success:
+            return {
+                "success": True,
+                "key_id": key_id,
+                "message": f"Key {key_id} revoked successfully",
+                "warning": "All systems using this key will now fail authentication!"
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Key {key_id} not found")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to revoke key: {str(e)}")
+
+
+@app.get("/keys/{key_id}/retrieve")
+async def retrieve_key_endpoint(key_id: str):
+    """Retrieve a secure key value (ADMIN ONLY - USE WITH CAUTION)."""
+    try:
+        key_value = get_secure_key(key_id)
+        
+        if key_value:
+            # Record security event for key retrieval
+            record_security_event(
+                "secure_key_retrieved",
+                "key_management_api",
+                {"key_id": key_id, "accessed_via": "api"}
+            )
+            
+            return {
+                "success": True,
+                "key_id": key_id,
+                "key_value": key_value,
+                "warning": "This key value is sensitive - ensure secure transmission!"
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Key {key_id} not found or inactive")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve key: {str(e)}")
+
+
+@app.get("/keys/status")
+async def get_key_management_status_endpoint():
+    """Get key management system status."""
+    try:
+        return get_key_management_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get key management status: {str(e)}")
+
+
+# =============================================================================
+# SBOM AND LICENSE VALIDATION ENDPOINTS
+# =============================================================================
+
+@app.post("/sbom/scan")
+async def scan_components_endpoint():
+    """Scan all software components and update SBOM."""
+    try:
+        scan_results = scan_software_components()
+        
+        return {
+            "success": True,
+            "scan_results": scan_results,
+            "message": f"Scanned {scan_results['total_components']} components successfully",
+            "components_found": {
+                "python_packages": scan_results["python_packages"],
+                "ai_models": scan_results["ai_models"]
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to scan components: {str(e)}")
+
+
+@app.post("/sbom/validate")
+async def validate_compliance_endpoint():
+    """Validate license compliance for all components."""
+    try:
+        report = validate_license_compliance()
+        
+        return {
+            "success": True,
+            "report_id": report.report_id,
+            "compliance_status": report.compliance_status,
+            "summary": {
+                "total_components": report.total_components,
+                "verified_components": report.verified_components,
+                "high_risk_licenses": report.high_risk_licenses,
+                "license_conflicts": len(report.license_conflicts),
+                "missing_licenses": len(report.missing_licenses),
+                "security_vulnerabilities": report.security_vulnerabilities
+            },
+            "recommendations": report.recommendations[:5],  # Top 5 recommendations
+            "message": f"Validation completed with status: {report.compliance_status}"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to validate compliance: {str(e)}")
+
+
+@app.get("/sbom/status")
+async def get_sbom_status_endpoint():
+    """Get SBOM validation system status."""
+    try:
+        return get_sbom_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get SBOM status: {str(e)}")
+
+
+@app.get("/sbom/report")
+async def get_latest_report_endpoint():
+    """Get the latest SBOM validation report."""
+    try:
+        report = get_latest_sbom_report()
+        
+        if report:
+            return {
+                "report": {
+                    "report_id": report.report_id,
+                    "timestamp": report.timestamp,
+                    "compliance_status": report.compliance_status,
+                    "total_components": report.total_components,
+                    "verified_components": report.verified_components,
+                    "high_risk_licenses": report.high_risk_licenses,
+                    "license_conflicts": report.license_conflicts,
+                    "missing_licenses": report.missing_licenses,
+                    "recommendations": report.recommendations
+                },
+                "component_summary": {
+                    "by_type": {},
+                    "by_risk_level": {}
+                }
+            }
+        else:
+            return {
+                "report": None,
+                "message": "No SBOM validation reports available. Run /sbom/validate first."
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get SBOM report: {str(e)}")
+
+
+@app.get("/sbom/components")
+async def list_components_endpoint(
+    component_type: Optional[str] = None,
+    risk_level: Optional[str] = None,
+    limit: Optional[int] = 50
+):
+    """List software components with optional filtering."""
+    try:
+        # Get latest report
+        report = get_latest_sbom_report()
+        
+        if not report:
+            return {
+                "components": [],
+                "total": 0,
+                "message": "No components found. Run /sbom/scan first."
+            }
+        
+        components = report.components
+        
+        # Apply filters
+        if component_type:
+            components = [c for c in components if c.component_type.value == component_type]
+        
+        if risk_level:
+            components = [c for c in components 
+                         if any(lic.risk_level.value == risk_level for lic in c.license_info)]
+        
+        # Apply limit
+        if limit:
+            components = components[:limit]
+        
+        # Convert to response format
+        component_list = []
+        for component in components:
+            component_list.append({
+                "component_id": component.component_id,
+                "name": component.name,
+                "version": component.version,
+                "component_type": component.component_type.value,
+                "supplier": component.supplier,
+                "license_info": [
+                    {
+                        "license_name": lic.license_name,
+                        "risk_level": lic.risk_level.value,
+                        "commercial_use": lic.commercial_use,
+                        "copyleft": lic.copyleft
+                    }
+                    for lic in component.license_info
+                ],
+                "verification_status": component.verification_status,
+                "last_updated": component.last_updated
+            })
+        
+        return {
+            "components": component_list,
+            "total": len(component_list),
+            "filters_applied": {
+                "component_type": component_type,
+                "risk_level": risk_level,
+                "limit": limit
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list components: {str(e)}")
+
+
+# =============================================================================
+# GPU UUID HARDWARE BINDING ENDPOINTS
+# =============================================================================
+
+@app.post("/hardware/bind/{node_id}")
+async def bind_hardware_endpoint(node_id: str, expert_assignments: Optional[List[str]] = None):
+    """Bind a node to its current hardware configuration (NODE OPERATOR ONLY)."""
+    try:
+        binding_id = bind_node_hardware(node_id, expert_assignments or [])
+        
+        if binding_id:
+            return {
+                "success": True,
+                "binding_id": binding_id,
+                "node_id": node_id,
+                "expert_assignments": expert_assignments or [],
+                "message": f"Node {node_id} successfully bound to hardware",
+                "warning": "Hardware configuration is now locked to this node"
+            }
+        else:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to bind hardware for node {node_id}. Check if GPUs are available."
+            )
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to bind hardware: {str(e)}")
+
+
+@app.post("/hardware/verify/{binding_id}")
+async def verify_hardware_endpoint(binding_id: str):
+    """Verify hardware binding for a node."""
+    try:
+        result = verify_node_hardware(binding_id)
+        
+        return {
+            "verification_result": {
+                "hardware_id": result.hardware_id,
+                "verification_success": result.verification_success,
+                "verification_timestamp": result.verification_timestamp,
+                "hardware_present": result.hardware_present,
+                "performance_delta": result.performance_delta,
+                "trust_score_change": result.trust_score_change,
+                "anomalies_detected": result.anomalies_detected
+            },
+            "fingerprint_match": result.expected_fingerprint == result.actual_fingerprint if result.actual_fingerprint else False,
+            "message": "Hardware verification completed successfully" if result.verification_success else "Hardware verification failed"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify hardware: {str(e)}")
+
+
+@app.get("/hardware/trust/{node_id}")
+async def check_node_trust_endpoint(node_id: str):
+    """Check if a node should be trusted based on hardware binding."""
+    try:
+        should_trust, trust_score, trust_issues = check_node_trust(node_id)
+        
+        return {
+            "node_id": node_id,
+            "should_trust": should_trust,
+            "trust_score": trust_score,
+            "trust_issues": trust_issues,
+            "trust_level": "high" if trust_score >= 0.8 else "medium" if trust_score >= 0.5 else "low",
+            "recommendation": "Accept inference requests" if should_trust else "Reject or require re-binding"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check node trust: {str(e)}")
+
+
+@app.get("/hardware/detect")
+async def detect_hardware_endpoint():
+    """Detect current hardware configuration."""
+    try:
+        hardware_list = detect_current_hardware()
+        
+        hardware_summary = []
+        gpu_count = 0
+        total_gpu_memory = 0
+        
+        for hardware in hardware_list:
+            hardware_info = {
+                "hardware_id": hardware.hardware_id,
+                "hardware_type": hardware.hardware_type.value,
+                "name": hardware.name,
+                "uuid": hardware.uuid,
+                "vendor": hardware.vendor,
+                "memory_mb": hardware.memory_mb,
+                "compute_capability": hardware.compute_capability,
+                "driver_version": hardware.driver_version,
+                "pci_bus_id": hardware.pci_bus_id,
+                "temperature_c": hardware.temperature_c,
+                "power_draw_w": hardware.power_draw_w,
+                "utilization_percent": hardware.utilization_percent
+            }
+            
+            if hardware.hardware_type.value.endswith("_gpu"):
+                gpu_count += 1
+                total_gpu_memory += hardware.memory_mb
+            
+            hardware_summary.append(hardware_info)
+        
+        return {
+            "hardware_detected": hardware_summary,
+            "summary": {
+                "total_components": len(hardware_list),
+                "gpu_count": gpu_count,
+                "total_gpu_memory_gb": round(total_gpu_memory / 1024, 2),
+                "detection_timestamp": time.time()
+            },
+            "message": f"Detected {len(hardware_list)} hardware components"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to detect hardware: {str(e)}")
+
+
+@app.get("/hardware/status")
+async def get_hardware_status_endpoint():
+    """Get hardware binding system status."""
+    try:
+        return get_hardware_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get hardware status: {str(e)}")
+
+
+@app.get("/hardware/bindings")
+async def list_hardware_bindings_endpoint():
+    """List all hardware bindings."""
+    try:
+        from backend.security.hardware_binding import hardware_binding_manager
+        
+        bindings_list = []
+        for binding_id, binding in hardware_binding_manager.bindings.items():
+            bindings_list.append({
+                "binding_id": binding_id,
+                "node_id": binding.node_id,
+                "hardware_id": binding.hardware_id,
+                "binding_status": binding.binding_status.value,
+                "trust_score": binding.trust_score,
+                "binding_timestamp": binding.binding_timestamp,
+                "last_verified": binding.last_verified,
+                "verification_count": binding.verification_count,
+                "expert_assignments": binding.expert_assignments,
+                "days_since_binding": (time.time() - binding.binding_timestamp) / 86400,
+                "hours_since_verification": (time.time() - binding.last_verified) / 3600
+            })
+        
+        # Sort by binding timestamp (newest first)
+        bindings_list.sort(key=lambda x: x["binding_timestamp"], reverse=True)
+        
+        return {
+            "bindings": bindings_list,
+            "total_bindings": len(bindings_list),
+            "active_bindings": len([b for b in bindings_list if b["binding_status"] == "bound"]),
+            "average_trust_score": sum(b["trust_score"] for b in bindings_list) / len(bindings_list) if bindings_list else 0.0
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list hardware bindings: {str(e)}")
+
+
+# =============================================================================
+# PII/TOXICITY CONTENT SAFETY ENDPOINTS  
+# =============================================================================
+
+@app.post("/content/scan")
+async def scan_content_endpoint(content_id: str, content: str):
+    """Scan content for PII, toxicity, and malware (ADMIN/MODERATOR ONLY)."""
+    try:
+        scan_result = scan_content_safety(content_id, content)
+        
+        return {
+            "scan_result": {
+                "content_id": scan_result.content_id,
+                "content_hash": scan_result.content_hash[:16] + "...",  # Truncated hash
+                "scan_timestamp": scan_result.scan_timestamp,
+                "overall_risk": scan_result.overall_risk.value,
+                "pii_detected": scan_result.pii_detected,
+                "toxicity_detected": scan_result.toxicity_detected,
+                "malware_detected": scan_result.malware_detected,
+                "violations_count": len(scan_result.violations),
+                "scan_duration_ms": scan_result.scan_duration_ms,
+                "scanner_version": scan_result.scanner_version
+            },
+            "violations_summary": [
+                {
+                    "violation_type": v.violation_type.value,
+                    "severity": v.severity.value,
+                    "confidence": v.confidence,
+                    "auto_fixable": v.auto_fixable,
+                    "suggested_action": v.suggested_action
+                }
+                for v in scan_result.violations[:10]  # Limit to first 10 violations
+            ],
+            "message": f"Content scan completed - Risk level: {scan_result.overall_risk.value}"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to scan content: {str(e)}")
+
+
+@app.get("/content/safety/{content_id}")
+async def check_content_safety_endpoint(content_id: str):
+    """Check if content is safe for use."""
+    try:
+        is_safe, scan_result = is_content_safe(content_id)
+        
+        if scan_result:
+            return {
+                "content_id": content_id,
+                "is_safe": is_safe,
+                "risk_level": scan_result.overall_risk.value,
+                "last_scanned": scan_result.scan_timestamp,
+                "hours_since_scan": (time.time() - scan_result.scan_timestamp) / 3600,
+                "violations_count": len(scan_result.violations),
+                "pii_detected": scan_result.pii_detected,
+                "toxicity_detected": scan_result.toxicity_detected,
+                "malware_detected": scan_result.malware_detected,
+                "recommendation": "Content approved for use" if is_safe else "Content requires review or quarantine"
+            }
+        else:
+            return {
+                "content_id": content_id,
+                "is_safe": False,
+                "risk_level": "unknown",
+                "message": "Content not found or not yet scanned",
+                "recommendation": "Scan content before use"
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check content safety: {str(e)}")
+
+
+@app.post("/content/quarantine/{content_id}")
+async def quarantine_content_endpoint(content_id: str, reason: str = "Manual quarantine"):
+    """Manually quarantine content (ADMIN/MODERATOR ONLY)."""
+    try:
+        quarantine_content(content_id)
+        
+        # Record security event
+        record_security_event(
+            "content_manually_quarantined",
+            "content_safety_api",
+            {
+                "content_id": content_id,
+                "reason": reason
+            }
+        )
+        
+        return {
+            "success": True,
+            "content_id": content_id,
+            "status": "quarantined",
+            "reason": reason,
+            "message": f"Content {content_id} has been quarantined",
+            "warning": "Quarantined content cannot be used in inference or training"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to quarantine content: {str(e)}")
+
+
+@app.post("/content/unquarantine/{content_id}")
+async def unquarantine_content_endpoint(content_id: str, reason: str = "Manual review completed"):
+    """Remove content from quarantine (ADMIN ONLY)."""
+    try:
+        unquarantine_content(content_id)
+        
+        # Record security event
+        record_security_event(
+            "content_unquarantined",
+            "content_safety_api",
+            {
+                "content_id": content_id,
+                "reason": reason
+            }
+        )
+        
+        return {
+            "success": True,
+            "content_id": content_id,
+            "status": "active",
+            "reason": reason,
+            "message": f"Content {content_id} has been removed from quarantine",
+            "warning": "Ensure content has been properly reviewed before unquarantine"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to unquarantine content: {str(e)}")
+
+
+@app.get("/content/safety/status")
+async def get_content_safety_status_endpoint():
+    """Get content safety system status."""
+    try:
+        return get_content_safety_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get content safety status: {str(e)}")
+
+
+@app.get("/content/quarantined")
+async def list_quarantined_content_endpoint():
+    """List all quarantined content."""
+    try:
+        from backend.security.content_safety import content_safety_scanner
+        
+        quarantined_list = []
+        for content_id in content_safety_scanner.quarantined_content:
+            scan_result = content_safety_scanner.scan_results.get(content_id)
+            
+            quarantined_item = {
+                "content_id": content_id,
+                "quarantine_timestamp": scan_result.scan_timestamp if scan_result else None,
+                "risk_level": scan_result.overall_risk.value if scan_result else "unknown",
+                "violations_count": len(scan_result.violations) if scan_result else 0,
+                "pii_detected": scan_result.pii_detected if scan_result else False,
+                "toxicity_detected": scan_result.toxicity_detected if scan_result else False,
+                "malware_detected": scan_result.malware_detected if scan_result else False,
+                "days_quarantined": (time.time() - scan_result.scan_timestamp) / 86400 if scan_result else 0
+            }
+            
+            quarantined_list.append(quarantined_item)
+        
+        # Sort by quarantine time (most recent first)
+        quarantined_list.sort(key=lambda x: x["quarantine_timestamp"] or 0, reverse=True)
+        
+        return {
+            "quarantined_content": quarantined_list,
+            "total_quarantined": len(quarantined_list),
+            "high_risk_count": len([item for item in quarantined_list if item["risk_level"] == "high_risk"]),
+            "pii_violations": len([item for item in quarantined_list if item["pii_detected"]]),
+            "toxicity_violations": len([item for item in quarantined_list if item["toxicity_detected"]]),
+            "malware_violations": len([item for item in quarantined_list if item["malware_detected"]])
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list quarantined content: {str(e)}")
 
 
 @app.post("/datasets/{dataset_id}/audit")
