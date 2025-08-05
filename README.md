@@ -71,7 +71,69 @@ print('✅ Meta-chain initialized successfully.')
 ### Basic AI Conversation
 Simply enter prompts in the web interface and receive AI responses.
 
-### API Usage (Optional)
+### Programmatic Usage (Python SDK)
+
+You can interact with Blyan programmatically without using the web interface:
+
+#### Install Client
+```bash
+pip install aiohttp
+```
+
+#### Basic Usage
+```python
+import asyncio
+from client.blyan_client import BlyanClient
+
+async def main():
+    # Connect to Blyan API
+    async with BlyanClient("http://localhost:8000") as client:
+        # Run inference
+        response = await client.chat(
+            "What is artificial intelligence?",
+            use_moe=True,
+            top_k_experts=2
+        )
+        print(response)
+        
+        # Get expert statistics
+        stats = await client.get_expert_stats("layer0.expert0")
+        print(stats)
+
+asyncio.run(main())
+```
+
+#### Register as Expert Node
+```python
+from client.blyan_client import BlyanNode, NodeRunner
+
+# Define your node configuration
+node = BlyanNode(
+    node_id="my-gpu-node",
+    host="192.168.1.100",  # Your node's IP
+    port=8001,
+    available_experts=["layer0.expert0", "layer1.expert0"]
+)
+
+# Run node with automatic heartbeat
+runner = NodeRunner(node, api_url="http://api.blyan.com")
+await runner.run()  # Runs until Ctrl+C
+```
+
+#### Distributed Inference
+```python
+async with BlyanClient("http://api.blyan.com") as client:
+    # Run secure distributed inference
+    response = await client.chat(
+        "Explain quantum computing",
+        use_distributed=True,
+        use_secure=True,
+        required_experts=["layer0.expert0", "layer1.expert1"]
+    )
+    print(response)
+```
+
+### API Usage (cURL)
 ```bash
 curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Union, List, Dict, Optional
 
 # Third-party libraries; ignore type checker if not present in local env
-from fastapi import FastAPI, HTTPException, Request, Depends  # type: ignore
+from fastapi import FastAPI, HTTPException, Request, Depends, Response  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from pydantic import BaseModel  # type: ignore
 
@@ -19,6 +19,9 @@ import torch  # type: ignore
 # ecdsa for signatures
 import ecdsa  # type: ignore
 import hashlib
+
+# Performance optimization
+from backend.utils.json_canonical import dumps_fast, loads_fast, HAS_ORJSON
 
 # Internal token ledger
 from backend.core.ledger import Ledger
@@ -148,6 +151,21 @@ app = FastAPI(
     description="Enterprise AI blockchain with MoE architecture and PoL consensus",
     version="2.0.0"
 )
+
+# Helper for fast JSON responses (non-consensus data only)
+def fast_json_response(data: Dict, status_code: int = 200) -> Response:
+    """
+    Create a fast JSON response using orjson for non-consensus data.
+    
+    WARNING: Do NOT use this for blockchain data or anything that affects consensus!
+    Use only for API responses, statistics, monitoring data, etc.
+    """
+    content = dumps_fast(data)
+    return Response(
+        content=content,
+        media_type="application/json",
+        status_code=status_code
+    )
 
 # Add monitoring middleware
 @app.middleware("http")
@@ -791,7 +809,7 @@ class TopExpertsResponse(BaseModel):
     experts: List[ExpertStatsResponse]
 
 
-@app.get("/experts/stats/{expert_name}", response_model=ExpertStatsResponse)
+@app.get("/experts/stats/{expert_name}")
 async def get_expert_stats(expert_name: str):
     """Get usage statistics for a specific expert."""
     stats = usage_tracker.get_expert_stats(expert_name)
@@ -800,14 +818,15 @@ async def get_expert_stats(expert_name: str):
     
     reward_multiplier = reward_expert(expert_name, usage_tracker)
     
-    return ExpertStatsResponse(
-        expert_name=stats.expert_name,
-        call_count=stats.call_count,
-        average_response_time=stats.average_response_time,
-        quality_score=stats.quality_score,
-        last_used=stats.last_used,
-        current_reward_multiplier=reward_multiplier
-    )
+    # Use fast JSON for statistics (non-consensus data)
+    return fast_json_response({
+        "expert_name": stats.expert_name,
+        "call_count": stats.call_count,
+        "average_response_time": stats.average_response_time,
+        "quality_score": stats.quality_score,
+        "last_used": stats.last_used,
+        "current_reward_multiplier": reward_multiplier
+    })
 
 
 @app.get("/experts/top", response_model=TopExpertsResponse)
@@ -976,7 +995,8 @@ async def list_expert_nodes():
             "last_heartbeat": node.last_heartbeat
         })
     
-    return {"nodes": nodes}
+    # Use fast JSON for node list (non-consensus data)
+    return fast_json_response({"nodes": nodes})
 
 
 @app.post("/p2p/heartbeat/{node_id}")
@@ -1066,7 +1086,8 @@ async def get_optimization_insights():
     
     try:
         insights = distributed_coordinator.get_optimization_insights()
-        return insights
+        # Use fast JSON for insights (non-consensus data)
+        return fast_json_response(insights)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

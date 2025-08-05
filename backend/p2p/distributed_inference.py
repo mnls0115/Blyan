@@ -33,6 +33,7 @@ from backend.core.rewards import get_reward_calculator, RewardComponent
 from backend.model.moe_infer import MoEModelManager, ExpertUsageTracker
 from backend.core.chain import Chain
 from backend.core.scheduler import PreemptiveScheduler, Metrics, SchedulerState
+from .connection_pool import ConnectionPool
 
 
 class WarmPool:
@@ -255,6 +256,14 @@ class DistributedInferenceCoordinator:
         # SLO-based scheduler integration
         self.scheduler = PreemptiveScheduler()
         self.inference_metrics = {"request_count": 0, "total_latency": 0.0, "active_requests": 0}
+        
+        # Connection pooling for reduced latency
+        self.connection_pool = ConnectionPool(
+            max_connections_per_host=20,
+            keepalive_timeout=60,
+            total_timeout=30
+        )
+        
         self.integrity_coordinator = None
         self.security_orchestrator = None
         if param_index:
@@ -592,15 +601,15 @@ class DistributedInferenceCoordinator:
         received_beacons = [header_beacon]  # Start with our header beacon
         rolling_commitment = RollingOutputCommitment(audit_context.request_id)
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{node.endpoint}/inference/secure",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=60.0)
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    raise Exception(f"Secure inference failed: HTTP {response.status}: {error_text}")
+        # Use connection pool for better performance
+        async with await self.connection_pool.post(
+            f"{node.endpoint}/inference/secure",
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=60.0)
+        ) as response:
+            if response.status != 200:
+                error_text = await response.text()
+                raise Exception(f"Secure inference failed: HTTP {response.status}: {error_text}")
                 
                 # Process streaming response with beacon verification
                 full_response = ""
@@ -778,27 +787,27 @@ class DistributedInferenceCoordinator:
                 "max_new_tokens": max_new_tokens
             }
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{node.endpoint}/expert/inference",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=30.0)
-                ) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        processing_time = time.time() - start_time
-                        
-                        return ExpertResponse(
-                            expert_name=expert_name,
-                            node_id=node.node_id,
-                            result=result,
-                            processing_time=processing_time,
-                            success=True
-                        )
-                    else:
-                        error_text = await response.text()
-                        return ExpertResponse(
-                            expert_name=expert_name,
+            # Use connection pool for better performance
+            async with await self.connection_pool.post(
+                f"{node.endpoint}/expert/inference",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30.0)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    processing_time = time.time() - start_time
+                    
+                    return ExpertResponse(
+                        expert_name=expert_name,
+                        node_id=node.node_id,
+                        result=result,
+                        processing_time=processing_time,
+                        success=True
+                    )
+                else:
+                    error_text = await response.text()
+                    return ExpertResponse(
+                        expert_name=expert_name,
                             node_id=node.node_id,
                             result=None,
                             processing_time=time.time() - start_time,
@@ -832,18 +841,18 @@ class DistributedInferenceCoordinator:
             "optimization": "expert_group"
         }
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{node.endpoint}/inference/expert_group",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=30.0)
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return result.get("text", f"Expert group {expert_group.group_id} inference completed")
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Expert group inference failed: HTTP {response.status}: {error_text}")
+        # Use connection pool for better performance
+        async with await self.connection_pool.post(
+            f"{node.endpoint}/inference/expert_group",
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=30.0)
+        ) as response:
+            if response.status == 200:
+                result = await response.json()
+                return result.get("text", f"Expert group {expert_group.group_id} inference completed")
+            else:
+                error_text = await response.text()
+                raise Exception(f"Expert group inference failed: HTTP {response.status}: {error_text}")
     
     async def _call_individual_experts(
         self, 
@@ -860,18 +869,23 @@ class DistributedInferenceCoordinator:
             "optimization": "individual_fallback"
         }
         
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{node.endpoint}/inference/multi_expert",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=30.0)
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return result.get("text", f"Multi-expert inference completed using {len(required_experts)} experts")
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"Multi-expert inference failed: HTTP {response.status}: {error_text}")
+        # Use connection pool for better performance
+        async with await self.connection_pool.post(
+            f"{node.endpoint}/inference/multi_expert",
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=30.0)
+        ) as response:
+            if response.status == 200:
+                result = await response.json()
+                return result.get("text", f"Multi-expert inference completed using {len(required_experts)} experts")
+            else:
+                error_text = await response.text()
+                raise Exception(f"Multi-expert inference failed: HTTP {response.status}: {error_text}")
+    
+    async def cleanup(self):
+        """Clean up resources including connection pool."""
+        await self.connection_pool.close()
+        print("✓ Cleaned up distributed inference coordinator resources")
     
     def get_optimization_insights(self) -> Dict[str, Any]:
         """Get insights about the optimization performance."""

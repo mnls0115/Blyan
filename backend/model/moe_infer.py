@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from backend.core.chain import Chain
 from backend.core.param_index import ParameterIndex
 from .arch import ModelWrapper, bytes_to_state_dict
+from .expert_cache import ExpertLRUCache
 
 
 @dataclass
@@ -121,7 +122,8 @@ class MoEModelManager:
         param_chain: Chain, 
         param_index: ParameterIndex,
         usage_tracker: ExpertUsageTracker,
-        device: Optional[str] = None
+        device: Optional[str] = None,
+        cache_size_gb: float = 8.0
     ):
         self.meta_chain = meta_chain
         self.param_chain = param_chain
@@ -129,9 +131,10 @@ class MoEModelManager:
         self.usage_tracker = usage_tracker
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         
-        # Cache loaded experts to avoid reloading
-        self._loaded_experts: Dict[str, Dict[str, torch.Tensor]] = {}
-        self._loaded_routers: Dict[str, Dict[str, torch.Tensor]] = {}
+        # Use LRU cache with proper CUDA memory management instead of unbounded dict
+        self._expert_cache = ExpertLRUCache(max_memory_gb=cache_size_gb, device=self.device)
+        self._router_cache = ExpertLRUCache(max_memory_gb=1.0, device=self.device)  # Routers are smaller
+        
         self._base_model: Optional[ModelWrapper] = None
         self._current_meta_hash: Optional[str] = None
     
@@ -171,9 +174,11 @@ class MoEModelManager:
             return None
     
     def _load_expert(self, expert_name: str) -> Optional[Dict[str, torch.Tensor]]:
-        """Load weights for a specific expert."""
-        if expert_name in self._loaded_experts:
-            return self._loaded_experts[expert_name]
+        """Load weights for a specific expert using LRU cache."""
+        # Check cache first
+        cached_expert = self._expert_cache.get(expert_name)
+        if cached_expert is not None:
+            return cached_expert
         
         # Find expert block
         expert_blocks = self.param_chain.get_expert_blocks(expert_name)
@@ -185,11 +190,31 @@ class MoEModelManager:
         
         try:
             expert_weights = bytes_to_state_dict(latest_expert.payload)
-            self._loaded_experts[expert_name] = expert_weights
+            
+            # Add to cache (will handle eviction if needed)
+            if self._expert_cache.put(expert_name, expert_weights):
+                print(f"✓ Loaded and cached expert {expert_name}")
+            else:
+                print(f"⚠️ Expert {expert_name} loaded but too large for cache")
+            
             return expert_weights
         except Exception as e:
             print(f"Warning: Could not load expert {expert_name}: {e}")
             return None
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics for monitoring."""
+        return {
+            'expert_cache': self._expert_cache.get_stats(),
+            'router_cache': self._router_cache.get_stats(),
+            'memory_info': self._expert_cache.get_memory_info()
+        }
+    
+    def clear_caches(self):
+        """Clear all caches and free GPU memory."""
+        self._expert_cache.clear()
+        self._router_cache.clear()
+        print("✓ Cleared all expert and router caches")
     
     def _get_available_experts_for_layer(self, layer_id: str) -> List[str]:
         """Get list of available experts for a layer."""

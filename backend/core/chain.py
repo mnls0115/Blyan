@@ -5,11 +5,13 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Iterator, Optional, List, Literal, Dict
+from typing import Iterator, Optional, List, Literal, Dict, Set
+from collections import defaultdict
 
 from .block import Block, BlockHeader, validate_dag_structure, topological_sort
 from .pow import find_pol_nonce, verify_pol_nonce
 from .storage import BlockStorage
+from ..utils.json_canonical import dumps_canonical, loads_canonical
 
 
 class Chain:
@@ -41,6 +43,107 @@ class Chain:
         
         self.storage = BlockStorage(root_dir / chain_id)
         self.storage.ensure_dir()
+        
+        # Performance optimization: In-memory hash index for O(1) lookups
+        self._hash_index: Dict[str, int] = {}  # block_hash -> block_index
+        self._dependency_index: Dict[str, Set[str]] = defaultdict(set)  # block_hash -> set of dependent hashes
+        self._build_indexes()
+
+    # ------------------------------------------------------------------
+    # Performance optimization methods
+    # ------------------------------------------------------------------
+    def _build_indexes(self):
+        """Build in-memory indexes for O(1) block lookups."""
+        self._hash_index.clear()
+        self._dependency_index.clear()
+        
+        for block in self.storage.iter_blocks():
+            block_hash = block.compute_hash()
+            self._hash_index[block_hash] = block.header.index
+            
+            # Build dependency index
+            if block.header.depends_on:
+                for dep_hash in block.header.depends_on:
+                    self._dependency_index[dep_hash].add(block_hash)
+    
+    def _update_indexes(self, block: Block):
+        """Update indexes with new block (incremental update)."""
+        block_hash = block.compute_hash()
+        self._hash_index[block_hash] = block.header.index
+        
+        if block.header.depends_on:
+            for dep_hash in block.header.depends_on:
+                self._dependency_index[dep_hash].add(block_hash)
+    
+    def verify_incremental(self, new_block: Block) -> bool:
+        """
+        Verify only the new block against existing chain state (O(1)).
+        Much faster than verify_chain() which is O(n²).
+        """
+        # 1. Verify previous block hash matches
+        if new_block.header.index > 0:
+            prev_block = self.storage.get_block_by_index(new_block.header.index - 1)
+            if not prev_block:
+                return False
+            if new_block.header.prev_hash != prev_block.compute_hash():
+                return False
+        
+        # 2. Verify dependencies exist
+        if new_block.header.depends_on:
+            for dep_hash in new_block.header.depends_on:
+                if dep_hash not in self._hash_index:
+                    return False
+        
+        # 3. Verify no cycles would be created (using cached indexes)
+        if not self._check_no_cycles_incremental(new_block):
+            return False
+        
+        # 4. Verify block signature/PoL
+        if not self.skip_pol:
+            contributor_id = new_block.miner_pub or "anonymous"
+            if not verify_pol_nonce(
+                new_block.header.to_json().encode() + new_block.payload,
+                contributor_id,
+                new_block.header.nonce,
+                self.difficulty
+            ):
+                return False
+        
+        return True
+    
+    def _check_no_cycles_incremental(self, new_block: Block) -> bool:
+        """Check if adding new_block would create a cycle (O(dependencies))."""
+        if not new_block.header.depends_on:
+            return True
+        
+        # DFS from new block to check for cycles
+        visited = set()
+        stack = [new_block.compute_hash()]
+        
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                return False  # Cycle detected
+            visited.add(current)
+            
+            # Get dependencies of current block
+            if current == new_block.compute_hash():
+                deps = new_block.header.depends_on or []
+            else:
+                # Look up block by hash
+                block_idx = self._hash_index.get(current)
+                if block_idx is not None:
+                    block = self.storage.get_block_by_index(block_idx)
+                    if block:
+                        deps = block.header.depends_on or []
+                    else:
+                        deps = []
+                else:
+                    deps = []
+            
+            stack.extend(deps)
+        
+        return True
 
     # ------------------------------------------------------------------
     # Convenience helpers
@@ -121,12 +224,16 @@ class Chain:
             # Store validation metrics for future reference
             self._store_validation_metrics(block, validation_details)
         
-        # DAG validation before persisting - temporarily disabled for performance
-        # if not self._validate_dag_before_add(block):
-        #     raise ValueError("Adding this block would create an invalid DAG structure")
+        # Use incremental verification instead of full DAG validation (O(1) vs O(n²))
+        if not self.verify_incremental(block):
+            raise ValueError("Block validation failed - would create invalid chain state")
         
         # persist
         self.storage.save_block(block)
+        
+        # Update indexes for O(1) lookups
+        self._update_indexes(block)
+        
         return block
 
     def verify_chain(self) -> bool:

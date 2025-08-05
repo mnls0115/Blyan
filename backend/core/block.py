@@ -5,6 +5,7 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from typing import Optional, List, Literal, Dict, Any
+from ..utils.json_canonical import dumps_canonical
 
 
 @dataclass
@@ -67,8 +68,11 @@ class BlockHeader:
     # Helper utilities
     # ---------------------------------------------------------------------
     def to_json(self) -> str:
-        """Stable JSON representation used for hashing."""
-        return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
+        """
+        Stable JSON representation used for hashing.
+        WARNING: Uses canonical JSON for consensus operations.
+        """
+        return dumps_canonical(asdict(self))
 
     def compute_hash(self) -> str:
         """SHA-256 of the header JSON."""
