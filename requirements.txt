@@ -4,4 +4,11 @@ transformers
 torch
 ecdsa
 requests
-aiohttp 
+aiohttp
+redis
+pyyaml
+pyjwt
+cryptography
+python-multipart
+psutil
+cryptography

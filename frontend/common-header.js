@@ -4,10 +4,10 @@
 
 function createAIBlockHeader(currentPage = '') {
     const pages = {
-        'home': { icon: '🏠', name: 'Home', url: 'home.html' },
-        'chat': { icon: '💬', name: 'Chat', url: 'chat.html' },
-        'contribute': { icon: '⚡', name: 'Join Network', url: 'contribute.html' },
-        'explorer': { icon: '🔧', name: 'Technical', url: 'explorer.html' }
+        'home': { icon: '🏠', nameKey: 'home', url: 'home.html' },
+        'chat': { icon: '💬', nameKey: 'chat', url: 'chat.html' },
+        'contribute': { icon: '⚡', nameKey: 'joinNetwork', url: 'contribute.html' },
+        'explorer': { icon: '🔧', nameKey: 'technical', url: 'explorer.html' }
     };
 
     return `
@@ -19,21 +19,47 @@ function createAIBlockHeader(currentPage = '') {
                 <nav class="nav-tabs">
                     ${Object.entries(pages).map(([key, page]) => `
                         <a href="${page.url}" class="${currentPage === key ? 'active' : ''}">
-                            ${page.icon} ${page.name}
+                            ${page.icon} <span data-i18n="${page.nameKey}">${t(page.nameKey)}</span>
                         </a>
                     `).join('')}
                 </nav>
                 <div class="status-indicators">
+                    ${typeof createLanguageSelector !== 'undefined' ? createLanguageSelector() : ''}
+                    <div id="wallet-info" style="display: none;">
+                        <span id="wallet-balance" class="wallet-balance">0 BLY</span>
+                        <span id="wallet-address" class="wallet-address"></span>
+                        <span id="contributor-badge" class="contributor-badge"></span>
+                    </div>
+                    <button id="wallet-connect-btn" class="wallet-button" data-i18n="connectWallet">${typeof t !== 'undefined' ? t('connectWallet') : 'Connect Wallet'}</button>
                     <div id="api-status" class="status-badge status-offline">
-                        API: Offline
+                        <span data-i18n="apiStatus">${typeof t !== 'undefined' ? t('apiStatus') : 'API'}</span>: <span data-i18n="offline">${typeof t !== 'undefined' ? t('offline') : 'Offline'}</span>
                     </div>
                     <div id="pol-status" class="status-badge status-offline">
-                        PoL: Unknown
+                        <span data-i18n="polStatus">${typeof t !== 'undefined' ? t('polStatus') : 'PoL'}</span>: <span data-i18n="unknown">${typeof t !== 'undefined' ? t('unknown') : 'Unknown'}</span>
                     </div>
                 </div>
             </div>
         </header>
     `;
+}
+
+// Function to refresh header (called when language changes)
+function refreshHeader() {
+    const currentPageElement = document.querySelector('.nav-tabs a.active');
+    let currentPage = '';
+    if (currentPageElement) {
+        const href = currentPageElement.getAttribute('href');
+        if (href.includes('home.html')) currentPage = 'home';
+        else if (href.includes('chat.html')) currentPage = 'chat';
+        else if (href.includes('contribute.html')) currentPage = 'contribute';
+        else if (href.includes('explorer.html')) currentPage = 'explorer';
+    }
+    
+    const headerContainer = document.getElementById('header-container');
+    if (headerContainer) {
+        headerContainer.innerHTML = createAIBlockHeader(currentPage);
+        updatePageLanguage();
+    }
 }
 
 function createPageTabs(tabs, activeTab = '') {
@@ -110,7 +136,15 @@ async function checkAPIStatus() {
 function updateStatusBadge(elementId, isOnline, text) {
     const element = document.getElementById(elementId);
     if (element) {
-        element.textContent = text;
+        // Parse the text to use translations
+        if (elementId === 'api-status') {
+            element.innerHTML = `<span data-i18n="apiStatus">${typeof t !== 'undefined' ? t('apiStatus') : 'API'}</span>: <span data-i18n="${isOnline ? 'online' : 'offline'}">${typeof t !== 'undefined' ? t(isOnline ? 'online' : 'offline') : (isOnline ? 'Online' : 'Offline')}</span>`;
+        } else if (elementId === 'pol-status') {
+            const statusKey = text.includes('Enabled') ? 'enabled' : text.includes('Disabled') ? 'disabled' : 'unknown';
+            element.innerHTML = `<span data-i18n="polStatus">${typeof t !== 'undefined' ? t('polStatus') : 'PoL'}</span>: <span data-i18n="${statusKey}">${typeof t !== 'undefined' ? t(statusKey) : text.split(': ')[1]}</span>`;
+        } else {
+            element.textContent = text;
+        }
         element.className = `status-badge ${isOnline ? 'status-online' : 'status-offline'}`;
     }
 }

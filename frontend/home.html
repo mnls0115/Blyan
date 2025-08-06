@@ -6,6 +6,8 @@
     <title>Blyan - Decentralized AI Network</title>
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
+    <script src="language.js"></script>
+    <script src="wallet.js"></script>
     <style>
         .hero-section {
             text-align: center;
@@ -13,6 +15,70 @@
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
             margin-bottom: 40px;
+        }
+        .vision-section {
+            max-width: 1200px;
+            margin: 60px auto;
+            padding: 0 20px;
+            text-align: center;
+        }
+        .vision-title {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: var(--text-color);
+            margin-bottom: 40px;
+        }
+        .vision-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+        .vision-card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            text-align: left;
+        }
+        .vision-card-title {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: var(--primary-color);
+            margin-bottom: 15px;
+        }
+        .vision-card-description {
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+        .vision-comparison {
+            background: linear-gradient(135deg, #f0f4ff, #fff0f5);
+            border-radius: 12px;
+            padding: 30px;
+            margin: 40px 0;
+            font-size: 1.2em;
+            line-height: 1.8;
+            color: var(--text-color);
+            position: relative;
+        }
+        .vision-comparison::before {
+            content: '💡';
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2em;
+            background: white;
+            padding: 0 10px;
+        }
+        .language-selector {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-right: 15px;
         }
         .hero-title {
             font-size: 3em;
@@ -120,9 +186,31 @@
     
     <!-- Hero Section -->
     <div class="hero-section">
-        <div class="hero-title">Blyan</div>
-        <div class="hero-subtitle">The World's First Decentralized AI Network</div>
-        <p>Experience AI powered by collective intelligence. Chat with AI or contribute your computing power to earn rewards.</p>
+        <div class="hero-title" data-i18n="heroTitle">Blyan</div>
+        <div class="hero-subtitle" data-i18n="heroSubtitle">The World's First Decentralized AI Network</div>
+        <p data-i18n="heroDescription">Experience AI powered by collective intelligence. Chat with AI or contribute your computing power to earn rewards.</p>
+    </div>
+
+    <!-- Vision Section -->
+    <div class="vision-section">
+        <h2 class="vision-title" data-i18n="visionTitle">Why We Built Blyan</h2>
+        <div class="vision-grid">
+            <div class="vision-card">
+                <div class="vision-card-title" data-i18n="visionTrustworthy">Creating Trustworthy AI</div>
+                <div class="vision-card-description" data-i18n="visionTrustworthyDesc">In a world of black-box AI systems, Blyan offers transparency through blockchain-verified computation.</div>
+            </div>
+            <div class="vision-card">
+                <div class="vision-card-title" data-i18n="visionDemocratic">Democratizing AI Development</div>
+                <div class="vision-card-description" data-i18n="visionDemocraticDesc">Not just for tech giants anymore. Together, we can build and evolve AI models collectively.</div>
+            </div>
+            <div class="vision-card">
+                <div class="vision-card-title" data-i18n="visionEvolution">Blockchain Evolution</div>
+                <div class="vision-card-description" data-i18n="visionEvolutionDesc">Beyond transaction records - a living, learning infrastructure for distributed intelligence.</div>
+            </div>
+        </div>
+        <div class="vision-comparison" data-i18n="visionComparison">
+            Did you know? The energy Bitcoin uses in just 3 hours could train a GPT-4 level AI model. With Proof-of-Learning, we turn computation into intelligence.
+        </div>
     </div>
 
     <!-- Main Actions -->
@@ -130,73 +218,73 @@
         <!-- Chat with AI -->
         <div class="action-card">
             <div class="action-icon">🤖</div>
-            <div class="action-title">Chat with AI</div>
-            <div class="action-description">
+            <div class="action-title" data-i18n="chatWithAI">Chat with AI</div>
+            <div class="action-description" data-i18n="chatDescription">
                 Start a conversation with our decentralized AI. Powered by distributed experts across the network.
             </div>
-            <a href="chat.html" class="action-button">Start Chatting</a>
+            <a href="chat.html" class="action-button" data-i18n="startChatting">Start Chatting</a>
         </div>
 
         <!-- Upload Dataset -->
         <div class="action-card">
             <div class="action-icon">📊</div>
-            <div class="action-title">Upload Dataset</div>
-            <div class="action-description">
+            <div class="action-title" data-i18n="uploadDataset">Upload Dataset</div>
+            <div class="action-description" data-i18n="uploadDescription">
                 Contribute training data to improve AI models. Zero-cost participation with democratic governance.
             </div>
-            <a href="dataset_upload.html" class="action-button secondary-button">Upload Now</a>
+            <a href="dataset_upload.html" class="action-button secondary-button" data-i18n="uploadNow">Upload Now</a>
         </div>
 
         <!-- Join Network -->
         <div class="action-card">
             <div class="action-icon">⚡</div>
-            <div class="action-title">Join the Network</div>
-            <div class="action-description">
+            <div class="action-title" data-i18n="joinTheNetwork">Join the Network</div>
+            <div class="action-description" data-i18n="joinDescription">
                 Share your computing power and earn rewards. One-click setup to become part of the AI network.
             </div>
-            <a href="contribute.html" class="action-button secondary-button">Join Now</a>
+            <a href="contribute.html" class="action-button secondary-button" data-i18n="joinNow">Join Now</a>
         </div>
 
         <!-- Dataset Explorer -->
         <div class="action-card">  
             <div class="action-icon">🔍</div>
-            <div class="action-title">Dataset Explorer</div>
-            <div class="action-description">
+            <div class="action-title" data-i18n="datasetExplorer">Dataset Explorer</div>
+            <div class="action-description" data-i18n="explorerDescription">
                 Explore community datasets, vote on proposals, and track data governance in real-time.
             </div>
-            <a href="dataset_explorer.html" class="action-button secondary-button">Explore Datasets</a>
+            <a href="dataset_explorer.html" class="action-button secondary-button" data-i18n="exploreDatasets">Explore Datasets</a>
         </div>
     </div>
 
     <!-- Network Status -->
     <div class="status-section">
-        <h2 style="text-align: center; margin-bottom: 30px; color: var(--text-color);">Network Status</h2>
+        <h2 style="text-align: center; margin-bottom: 30px; color: var(--text-color);" data-i18n="networkStatus">Network Status</h2>
         <div class="status-grid">
             <div class="status-card">
                 <div class="status-number" id="active-experts">-</div>
-                <div class="status-label">Active Experts</div>
+                <div class="status-label" data-i18n="activeExperts">Active Experts</div>
             </div>
             <div class="status-card">
                 <div class="status-number" id="network-nodes">-</div>
-                <div class="status-label">Network Nodes</div>
+                <div class="status-label" data-i18n="networkNodes">Network Nodes</div>
             </div>
             <div class="status-card">
                 <div class="status-number" id="total-requests">-</div>
-                <div class="status-label">Total Requests</div>
+                <div class="status-label" data-i18n="totalRequests">Total Requests</div>
             </div>
             <div class="status-card">
                 <div class="status-number" id="network-health">-</div>
-                <div class="status-label">Network Health</div>
+                <div class="status-label" data-i18n="networkHealth">Network Health</div>
             </div>
         </div>
     </div>
 
     <!-- Advanced Features Link -->
     <div style="text-align: center; margin: 60px 0; padding: 20px;">
-        <p style="color: var(--text-muted); margin-bottom: 15px;">
+        <p style="color: var(--text-muted); margin-bottom: 15px;" data-i18n="advancedFeatures">
             Looking for advanced features?
         </p>
-        <a href="explorer.html" style="color: var(--primary-color); text-decoration: none;">
+        <a href="explorer.html" style="color: var(--primary-color); text-decoration: none;" data-i18n="viewDashboard">
             View Technical Dashboard & Analytics →
         </a>
     </div>

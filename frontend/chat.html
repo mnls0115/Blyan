@@ -6,6 +6,7 @@
     <title>AI Chat - Blyan</title>
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
+    <script src="language.js"></script>
     <style>
         .chat-container {
             max-width: 800px;
@@ -103,19 +104,19 @@
     
     <div class="chat-container">
         <div class="chat-header">
-            <h1>🤖 AI Chat</h1>
-            <p>Chat with our decentralized AI network</p>
+            <h1>🤖 <span data-i18n="aiChat">AI Chat</span></h1>
+            <p data-i18n="chatWithDistributed">Chat with our decentralized AI network</p>
         </div>
         
         <div class="chat-window" id="chat-window">
             <div class="message ai">
-                <div class="message-sender">AI Assistant</div>
-                <div>Hello! I'm powered by the Blyan decentralized network. Ask me anything!</div>
+                <div class="message-sender" data-i18n="aiAssistant">AI Assistant</div>
+                <div data-i18n="aiWelcomeMessage">Hello! I'm powered by the Blyan decentralized network. Ask me anything!</div>
             </div>
         </div>
         
         <div class="typing-indicator" id="typing-indicator">
-            AI is thinking...
+            <span data-i18n="aiThinking">AI is thinking...</span>
         </div>
         
         <div class="chat-input-area">
@@ -125,10 +126,11 @@
                     id="chat-input" 
                     class="chat-input" 
                     placeholder="Type your message..."
+                    data-i18n-placeholder="typeYourMessage"
                     autocomplete="off"
                     required
                 >
-                <button type="submit" class="send-button" id="send-button">Send</button>
+                <button type="submit" class="send-button" id="send-button" data-i18n="send">Send</button>
             </form>
         </div>
     </div>

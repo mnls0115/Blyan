@@ -1,6 +1,47 @@
-# 🧪 Blyan MoE Testing Guide
+# Blyan Testing Guide
 
-Complete guide for testing the MoE blockchain system's end-to-end functionality.
+## 📁 Test Structure
+
+```
+tests/
+├── unit/               # Unit tests for individual components
+│   ├── test_chain.py
+│   ├── test_block.py
+│   └── test_expert_cache.py
+├── integration/        # Integration tests
+│   ├── test_gpu_improvements.py
+│   ├── test_state_sync.py
+│   └── test_distributed_inference.py
+└── performance/        # Performance benchmarks
+    ├── test_expert_loading.py
+    └── test_dag_validation.py
+```
+
+## 🚀 Quick Start
+
+### Run All Tests
+```bash
+# Install test dependencies
+pip install pytest pytest-asyncio pytest-cov
+
+# Run all tests
+pytest tests/
+
+# Run with coverage
+pytest tests/ --cov=backend --cov-report=html
+```
+
+### Run Specific Test Categories
+```bash
+# Unit tests only
+pytest tests/unit/
+
+# Integration tests only
+pytest tests/integration/
+
+# Performance tests only
+pytest tests/performance/
+```
 
 ## 🎯 Testing Objectives
 

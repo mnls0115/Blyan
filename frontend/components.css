@@ -84,6 +84,29 @@
     background-color: var(--danger-color);
 }
 
+/* Language Selector */
+.language-selector {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    margin-right: 15px;
+    color: var(--dark-color);
+    transition: all 0.3s ease;
+}
+
+.language-selector:hover {
+    background: white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.language-selector:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
+}
+
 /* 공통 컨테이너 */
 .main-container {
     max-width: 1200px;
@@ -208,4 +231,55 @@
         padding: 10px 15px;
         font-size: 13px;
     }
+}
+
+/* 지갑 연결 UI */
+.wallet-button {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wallet-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.wallet-button.connected {
+    background: #10b981;
+}
+
+#wallet-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+.wallet-balance {
+    font-weight: 600;
+    color: white;
+    font-size: 0.9rem;
+}
+
+.wallet-address {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-family: monospace;
+}
+
+.contributor-badge {
+    padding: 4px 8px;
+    background: #fbbf24;
+    color: #92400e;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
 }

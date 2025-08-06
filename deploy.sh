@@ -1,13 +1,11 @@
 #!/bin/bash
 
-# Blyan 웹사이트 배포 스크립트
-# 사용법: ./deploy.sh your-domain.com
+# Blyan Network Production Deployment Script
+# 사용법: ./deploy.sh [domain]
 
-DOMAIN=$1
-if [ -z "$DOMAIN" ]; then
-    echo "❌ 도메인을 입력해주세요: ./deploy.sh your-domain.com"
-    exit 1
-fi
+DOMAIN=${1:-"blyan.com"}
+echo "🚀 Blyan Network Production Deployment"
+echo "📡 Domain: $DOMAIN"
 
 echo "🚀 Blyan 웹사이트 배포 시작..."
 echo "📡 도메인: $DOMAIN"
@@ -32,12 +30,18 @@ sudo mkdir -p /var/www/aiblock
 sudo cp -r frontend/* /var/www/aiblock/frontend/
 sudo chown -R www-data:www-data /var/www/aiblock
 
-# 5. Nginx 설정
-echo "⚙️ Nginx 설정..."
-sudo cp nginx.conf /etc/nginx/sites-available/aiblock
-sudo sed -i "s/your-domain.com/$DOMAIN/g" /etc/nginx/sites-available/aiblock
-sudo ln -sf /etc/nginx/sites-available/aiblock /etc/nginx/sites-enabled/
+# 5. Nginx 보안 설정
+echo "⚙️ Nginx 보안 설정..."
+sudo cp nginx_security.conf /etc/nginx/sites-available/blyan
+sudo sed -i "s/blyan.com/$DOMAIN/g" /etc/nginx/sites-available/blyan
+sudo ln -sf /etc/nginx/sites-available/blyan /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
+
+# Add rate limiting to nginx.conf
+echo "🛡️ API rate limiting 설정..."
+if ! grep -q "limit_req_zone" /etc/nginx/nginx.conf; then
+    sudo sed -i '/http {/a\\tlimit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;' /etc/nginx/nginx.conf
+fi
 
 # 6. Nginx 테스트 및 재시작
 echo "🔄 Nginx 재시작..."
@@ -55,7 +59,21 @@ sudo ufw allow 'Nginx Full'
 sudo ufw allow 22
 sudo ufw --force enable
 
-# 9. 백엔드 서비스 시작
+# 9. 보안 설정 및 백엔드 서비스
+echo "🔒 프로덕션 환경 설정..."
+cp .env.production .env
+chmod 600 .env
+
+# Install Redis for nonce storage
+echo "📦 Redis 설치..."
+sudo apt install -y redis-server
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+
+# Set up supply verification cron job
+echo "⏰ 공급량 검증 크론잡 설정..."
+(crontab -l 2>/dev/null || echo "") | grep -v "verify_supply.py" | (cat; echo "0 0 * * * cd $(pwd) && python3 scripts/verify_supply.py >> logs/supply_check.log 2>&1") | crontab -
+
 echo "🖥️ 백엔드 서비스 시작..."
 ./server.sh start api
 

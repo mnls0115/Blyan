@@ -1,0 +1,52 @@
+# Blyan Network Token Economics Configuration
+# BLY Token Distribution and Reward Parameters
+
+# Core Parameters
+total_cap: 1_000_000_000        # Total BLY supply cap
+annual_inflation: 0.10          # 10% max annual inflation rate
+genesis_supply: 100_000_000     # Initial circulating supply
+
+# Learning Rewards
+learning:
+  base_reward_per_1p: 20_000    # BLY per 1% improvement
+  min_train_reward: 0.02        # Minimum BLY per micro-step
+  quality_thresholds:
+    excellent: 0.05             # 5% improvement
+    good: 0.02                  # 2% improvement
+    acceptable: 0.01            # 1% improvement
+
+# Inference Rewards
+inference:
+  beta_init: 0.002              # Initial BLY per token served
+  quality_factor_curve:
+    q90: 0.8                    # 90th percentile quality
+    q95: 1.0                    # Baseline
+    q99: 1.1                    # Premium quality
+  latency_slo_ms: 400           # Service level objective
+  latency_penalty_max: 0.3      # Max 30% penalty for slow response
+
+# Distribution Allocations
+allocations:
+  foundation: 0.20              # 20% Foundation treasury
+  team: 0.15                    # 15% Team (4-year vesting)
+  investors: 0.15               # 15% Investors (2-year vesting)
+  ecosystem: 0.10               # 10% Ecosystem grants
+  community_rewards: 0.40       # 40% Mining/inference rewards
+
+# Vesting Schedules
+vesting:
+  team:
+    cliff_months: 12
+    total_months: 48
+    release_schedule: "linear"
+  investors:
+    cliff_months: 6
+    total_months: 24
+    release_schedule: "linear"
+
+# Economic Controls
+controls:
+  reward_adjustment_interval: 3600  # Adjust α/β every hour
+  min_beta: 0.000001               # Floor for inference rewards
+  max_alpha_multiplier: 5.0        # Cap learning rewards surge
+  halving_epochs: [4, 8, 12]       # Reduce rewards at these years

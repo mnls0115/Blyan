@@ -12,6 +12,7 @@ from pydantic import BaseModel  # type: ignore
 # Built-ins / stdlib
 import base64
 import io
+import time
 
 # Third-party
 # silence type check errors if missing
@@ -63,6 +64,23 @@ from backend.security.content_safety import (
     scan_content_safety, is_content_safe, get_content_safety_status, quarantine_content, unquarantine_content
 )
 from backend.core.scheduler_integration import wire_system_components
+
+# Economy and wallet routers will be imported after app initialization
+
+# Import consensus endpoints
+try:
+    from backend.api.consensus import router as consensus_router, init_consensus_systems
+    # consensus router will be included after app is defined
+except ImportError:
+    print("⚠️  Consensus module not found - validator/sync endpoints disabled")
+
+# Use secure reward engine
+try:
+    from backend.core.reward_engine_secure import get_secure_reward_engine
+    secure_reward_engine = get_secure_reward_engine()
+    print("✅ Secure reward engine loaded with race condition protection")
+except ImportError:
+    print("⚠️  Secure reward engine not found - using basic version")
 
 # -------------------------------------------------
 # ECDSA signature verification helper
@@ -151,6 +169,13 @@ app = FastAPI(
     description="Enterprise AI blockchain with MoE architecture and PoL consensus",
     version="2.0.0"
 )
+
+# Include consensus router if available
+try:
+    if 'consensus_router' in locals():
+        app.include_router(consensus_router)
+except NameError:
+    pass
 
 # Helper for fast JSON responses (non-consensus data only)
 def fast_json_response(data: Dict, status_code: int = 200) -> Response:
@@ -448,6 +473,16 @@ def _startup():
     app.state.scheduler_integration = scheduler_integration
     
     print("✅ SLO-based scheduler integrated with distributed inference coordinator")
+    
+    # Initialize consensus systems if available
+    try:
+        if 'init_consensus_systems' in globals():
+            # Get reward engine (use secure one if available)
+            reward_engine = globals().get('secure_reward_engine', None)
+            init_consensus_systems(root_dir, reward_engine)
+            print("✅ Consensus systems initialized (state sync, validator rewards)")
+    except Exception as e:
+        print(f"⚠️  Failed to initialize consensus systems: {e}")
 
 
 @app.post("/chat", response_model=ChatResponse)
