@@ -438,4 +438,17 @@ async def train_with_micro_steps(
     
     return trainer
 
+if __name__ == "__main__":
+    # Basic test of micro-step trainer functionality
+    import torch.nn as nn
+    import torch.optim as optim
+    
+    model = nn.Linear(512, 10)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    config = MicroStepConfig(min_step_duration_ms=50, max_step_duration_ms=200)
+    
+    trainer = MicroStepTrainer(model, optimizer, config)
+    print("MicroStepTrainer initialized successfully")
+    print(f"Config: {config}")
+    
 # Production code - demo removed

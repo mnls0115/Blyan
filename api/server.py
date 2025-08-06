@@ -3372,4 +3372,8 @@ def widen_model(model, d_model_new=6144, ffn_ratio=1.6):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get migration templates: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to get migration templates: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000) 

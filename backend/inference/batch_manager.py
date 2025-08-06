@@ -392,4 +392,17 @@ class BatchedInferenceEngine:
         results = [f"Optimized response (max_tokens={max_tokens}): {p[:30]}..." for p in prompts]
         return results
 
+if __name__ == "__main__":
+    # Basic test of batch manager functionality
+    import asyncio
+    
+    async def test_batch_manager():
+        config = BatchConfig(max_batch_size=4, max_wait_time_ms=50)
+        manager = BatchManager(config)
+        print("BatchManager initialized successfully")
+        print(f"Config: max_batch_size={config.max_batch_size}, max_wait_time={config.max_wait_time_ms}ms")
+        print(f"Cache size: {config.cache_size}, Dynamic batching: {config.enable_dynamic_batching}")
+        
+    asyncio.run(test_batch_manager())
+    
 # Production code - demo removed

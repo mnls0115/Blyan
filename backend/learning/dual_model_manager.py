@@ -338,4 +338,16 @@ class DualModelManager:
             
         return stats
 
+if __name__ == "__main__":
+    # Basic test of dual model manager functionality
+    import torch.nn as nn
+    
+    base_model = nn.Linear(512, 512)
+    config = StreamConfig()
+    
+    manager = DualModelManager(base_model, config)
+    print("DualModelManager initialized successfully")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    print(f"Stream config: {config}")
+    
 # Production code - demo removed
