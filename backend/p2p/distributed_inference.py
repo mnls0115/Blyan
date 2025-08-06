@@ -958,7 +958,7 @@ class ExpertNodeServer:
     """Enhanced server that runs on expert nodes with expert group support."""
     
     def __init__(self, node_id: str, available_experts: List[str], expert_groups: List[ExpertGroup] = None, port: int = 8001):
-        print(f"DEBUG: ExpertNodeServer init - node_id: {node_id}, port: {port}")
+        logger.info(f"ExpertNodeServer init - node_id: {node_id}, port: {port}")
         self.node_id = node_id
         self.available_experts = available_experts
         self.expert_groups = expert_groups or []
@@ -1381,10 +1381,10 @@ if __name__ == "__main__":
     
     if len(sys.argv) > 1 and sys.argv[1] == "server":
         # Run as expert node server
-        print(f"DEBUG: sys.argv = {sys.argv}")
+        logger.debug(f"sys.argv = {sys.argv}")
         node_id = sys.argv[2] if len(sys.argv) > 2 else "test_node"
         port = int(sys.argv[3]) if len(sys.argv) > 3 else 8001
-        print(f"DEBUG: Parsed node_id={node_id}, port={port}")
+        logger.debug(f"Parsed node_id={node_id}, port={port}")
         
         # Mock experts for testing
         experts = [f"layer{i}.expert{j}" for i in range(2) for j in range(2)]

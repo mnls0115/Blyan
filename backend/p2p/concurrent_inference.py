@@ -327,9 +327,14 @@ class ConcurrentInferenceManager:
         
         # Initialize trainer if needed
         if not self.micro_step_trainer:
-            # Create dummy model for demo (in real use, would be actual model)
-            model = nn.Linear(512, 512)
-            optimizer = optim.Adam(model.parameters(), lr=1e-4)
+            # Use actual model or create placeholder
+            if self.inference_model and hasattr(self.inference_model, 'model'):
+                model = self.inference_model.model
+            else:
+                # Fallback model - TODO: replace with actual model loading
+                hidden_size = payload.get("hidden_size", 512)
+                model = nn.Linear(hidden_size, hidden_size)
+            optimizer = optim.Adam(model.parameters(), lr=payload.get("learning_rate", 1e-4))
             
             config = MicroStepConfig(
                 min_step_duration_ms=payload.get("min_step_ms", 50),
@@ -354,10 +359,12 @@ class ConcurrentInferenceManager:
                 if trainer.stop_event.is_set():
                     break
                     
-                # Dummy batch
+                # Create training batch from payload or use dummy data
+                batch_size = payload.get("batch_size", 4)
+                seq_length = payload.get("sequence_length", 512)
                 batch = {
-                    'input_ids': torch.randn(4, 512),
-                    'labels': torch.randint(0, 2, (4,))
+                    'input_ids': torch.randn(batch_size, seq_length),
+                    'labels': torch.randint(0, 2, (batch_size,))
                 }
                 
                 # Monitor queue pressure and adjust
@@ -431,9 +438,10 @@ class ConcurrentInferenceManager:
             else:
                 raise RuntimeError("No base model available for dual model manager")
                 
-        # Run inference on dedicated stream
+        # Prepare inference input data
+        input_shape = payload.get("input_shape", [1, 512])
         input_data = {
-            "input_ids": torch.randn(1, 512)  # Mock input for demo
+            "input_ids": torch.randn(*input_shape)  # TODO: Replace with actual tokenized input
         }
         
         result = await self.dual_model_manager.inference(
@@ -464,10 +472,13 @@ class ConcurrentInferenceManager:
         
         try:
             for step in range(num_steps):
-                # Create dummy batch
+                # Create training batch
+                batch_size = payload.get("batch_size", 32)
+                seq_length = payload.get("sequence_length", 512)
+                num_classes = payload.get("num_classes", 10)
                 batch = {
-                    "input_ids": torch.randn(32, 512),
-                    "labels": torch.randint(0, 10, (32,))
+                    "input_ids": torch.randn(batch_size, seq_length),
+                    "labels": torch.randint(0, num_classes, (batch_size,))
                 }
                 
                 # Run learning on dedicated stream
