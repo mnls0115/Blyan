@@ -345,6 +345,67 @@ curl -X GET "http://127.0.0.1:8000/content/quarantined"
 - **Zero-Waste Resource Recycling**: Validation-as-training system (95% GPU utilization target)
 - **Advanced Tile-Streaming for Giant Models**: GPT-4 scale support with out-of-core GEMM
 - **Comprehensive PoL Dataset Integration**: Cryptographic proof linking datasets to expert performance
+- **Concurrent Learning/Inference System**: See roadmap below for implementation plan
 
 ### 📊 **Overall Implementation Status: ~85% Complete**
 The project has strong foundations in security, blockchain, and MoE infrastructure. Main gaps are in automated quality filtering and resource optimization systems.
+
+## Learning ↔ Inference Conflict Resolution Roadmap
+
+### 🎯 Problem Statement
+When a single node is running model training and inference requests arrive, the system currently blocks, causing unacceptable latency. We need concurrent execution without sacrificing either learning progress or inference SLO.
+
+### 📋 4-Phase Implementation Plan
+
+#### Phase 1: Async Priority Queue System (Days 1-2)
+**Goal**: Handle queued requests without blocking
+```python
+# Core implementation points:
+- asyncio.PriorityQueue with SLO-based priority
+- Learning tasks: priority=LOW
+- Inference: priority = inverse(p95_predicted)
+- Max queue depth with backpressure
+```
+
+#### Phase 2: Micro-Step Learning (Days 3-4)
+**Goal**: 50-200ms learning chunks with yield points
+```python
+# Key features:
+- Micro-batch checkpointing
+- asyncio.Event() for immediate pause
+- if queue.qsize() > 0: await yield_control()
+- Resume within 100ms of queue clear
+```
+
+#### Phase 3: Dual Model Instances (Days 5-6)
+**Goal**: Concurrent GPU execution via stream separation
+```python
+# Architecture:
+- Learning model: FP16 + requires_grad=True
+- Inference model: weight.clone().eval() + INT8
+- torch.cuda.Stream(priority=-1) for inference
+- CuBLAS stream arbitration
+```
+
+#### Phase 4: Batch Combining & Cache (Days 7-8)
+**Goal**: Maximize throughput via intelligent batching
+```python
+# Components:
+- BatchMux: Group same-length prompts
+- Scatter results to Future objects
+- Hot path caching for frequent queries
+- Dynamic batch size based on memory
+```
+
+### 🛡️ Safety Mechanisms
+| Problem | Solution |
+|---------|----------|
+| GPU OOM | `torch.cuda.set_reserved_memory_fraction(0.6)` + gradient checkpointing |
+| DDoS | Per-node concurrent limit + token budget |
+| SLO breach | Prometheus `latency_p95 > 0.8*SLO` → auto-scale |
+
+### 📊 Expected Outcomes
+- **Inference latency**: <300ms p95 even during training
+- **Learning efficiency**: 95% GPU utilization maintained
+- **Queue capacity**: 100+ concurrent requests per node
+- **Memory overhead**: <15% for dual instances
