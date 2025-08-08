@@ -168,12 +168,57 @@ curl -X GET "http://localhost:8000/chain/A/blocks"
 - **🧬 Organic Growth**: Parallel expert development through DAG structure
 - **💰 Economic Incentives**: Usage-based automatic reward distribution
 
+## 🛠️ Operations Quick Reference
+
+### Deployment (summary)
+```bash
+# One-click DO deploy (details in docs/archive/DEPLOY_GUIDE.md)
+chmod +x deploy_digitalocean.sh && ./deploy_digitalocean.sh
+
+# Start services
+docker-compose up -d
+```
+
+### Healthchecks
+```bash
+curl http://localhost:8000/health
+docker-compose ps
+docker-compose logs -f api
+```
+
+### Testing (summary)
+```bash
+pytest tests/
+python scripts/demo_full_moe_flow.py
+```
+
+### DNS (summary)
+```text
+A: @    → <SERVER_IP>
+A: www  → <SERVER_IP>
+# verify
+nslookup your-domain.com
+```
+
+## 🧭 Documentation Map
+
+- `PROJECT_ARCHITECTURE_REVIEW.md` – Full system architecture
+- `DEVELOPMENT_ROADMAP.md` – Phased delivery plan and milestones
+- `NON_PRODUCTION_CODE_AUDIT.md` – Audit and production hardening
+- `CLAUDE.md` – Developer guide and conventions
+- `moe_dag_whitepaper.md` – MoE DAG whitepaper
+
+Detailed guides have been consolidated and archived under `docs/archive/`:
+- `docs/archive/TESTING_GUIDE.md`
+- `docs/archive/QUICK_REFERENCE.md`
+- `docs/archive/DEPLOY_GUIDE.md`
+- `docs/archive/DNS_SETUP.md`
+- `docs/archive/POL_SYSTEM_GUIDE.md`
+- `docs/archive/HUMAN_AI_PACT.md`
+
 ## 📚 Additional Documentation
 
-For more detailed information about the project, please refer to:
-- `CLAUDE.md` - Developer guide
-- `TESTING_GUIDE.md` - Testing methods
-- `POL_SYSTEM_GUIDE.md` - Proof-of-Learning system
+For more detailed information about the project, please refer to the documents above and the archived guides under `docs/archive/`.
 
 ---
 
