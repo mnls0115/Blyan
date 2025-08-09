@@ -1,0 +1,8 @@
+{
+  "max_model_memory_gb": 2.22296142578125,
+  "expert_cache_limit_gb": 1.111480712890625,
+  "inference_batch_size": 2,
+  "enable_gradient_checkpointing": true,
+  "use_cpu_offload": true,
+  "torch_cache_limit_gb": 1.0
+}

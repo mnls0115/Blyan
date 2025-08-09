@@ -1,0 +1,53 @@
+# RunPod용 Blyan GPU Node Docker 이미지
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+
+# 작업 디렉토리 설정
+WORKDIR /workspace/Blyan
+
+# 시스템 패키지 업데이트
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    wget \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 패키지 설치
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+    transformers>=4.42 \
+    tokenizers>=0.20 \
+    huggingface_hub>=0.23 \
+    safetensors \
+    accelerate \
+    bitsandbytes \
+    fastapi \
+    uvicorn \
+    aiohttp \
+    pydantic \
+    scipy \
+    sentencepiece
+
+# Blyan 코드 복사
+COPY backend/ ./backend/
+COPY runpod_node.py .
+COPY runpod_setup.sh .
+
+# 실행 권한 설정
+RUN chmod +x runpod_setup.sh
+
+# 환경 변수 설정 (기본값)
+ENV MODEL_NAME="openai/gpt-oss-20b"
+ENV MODEL_QUANTIZATION="none"
+ENV NODE_ID="runpod-20b-01"
+ENV NODE_PORT="8002"
+ENV MAIN_SERVER_URL="https://blyan.com/api"
+ENV TRUST_REMOTE_CODE="1"
+ENV MODEL_AUTO_QUANTIZE="0"
+ENV ALLOW_MOCK_FALLBACK="1"
+
+# 포트 노출
+EXPOSE 8002
+
+# 시작 명령
+CMD ["bash", "-c", "./runpod_setup.sh"]

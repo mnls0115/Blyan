@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from pathlib import Path
 from typing import Union, List, Dict, Optional
 
@@ -26,6 +27,9 @@ from backend.utils.json_canonical import dumps_fast, loads_fast, HAS_ORJSON
 
 # Internal token ledger
 from backend.core.ledger import Ledger
+
+# Set up logging
+logger = logging.getLogger(__name__)
 from backend.core.param_index import ParameterIndex
 
 from backend.core.chain import Chain

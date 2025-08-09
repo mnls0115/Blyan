@@ -1,43 +1,10 @@
-# Core
-fastapi
-uvicorn[standard]
-pydantic
-python-multipart
-
-# Authentication
-eth-account
-web3
-ecdsa
-pyjwt
-
-# Payment
-stripe
-
-# Database
-redis
-# psycopg2-binary  # Optional - only needed for PostgreSQL
-sqlalchemy
-asyncpg
-
-# AI/ML
-# torch
-transformers
-safetensors
-accelerate  # For multi-GPU and model parallelism
-# bitsandbytes  # For INT8/INT4 quantization (Linux/CUDA only)
-# xformers  # Optional: for memory-efficient attention
-
-# Monitoring
-prometheus-client
-
-# Utilities
-python-dotenv
-httpx
-aiohttp
-pyyaml
-requests
-psutil
-cryptography
-numpy
-sse_starlette
-python-multipart
+fastapi==0.116.1
+numpy==2.0.2
+psutil==6.1.1
+redis==5.0.1
+requests==2.32.4
+schedule==1.2.2
+tiktoken==0.11.0
+torch==2.7.1
+transformers==4.54.1
+uvicorn==0.35.0

@@ -183,7 +183,7 @@ class AtomicChatHandler:
         import json
         
         quote_key = f"quote:{quote_id}"
-        quote_data = await quote_redis.get(quote_key)
+        quote_data = quote_redis.get(quote_key)
         
         if not quote_data:
             raise HTTPException(
@@ -196,7 +196,7 @@ class AtomicChatHandler:
             
             # Check TTL
             if time.time() > quote["expires_at"]:
-                await quote_redis.delete(quote_key)
+                quote_redis.delete(quote_key)
                 raise HTTPException(
                     status_code=400,
                     detail="Quote has expired"
@@ -211,7 +211,7 @@ class AtomicChatHandler:
                 )
             
             # Mark quote as consumed (atomic operation)
-            await quote_redis.delete(quote_key)
+            quote_redis.delete(quote_key)
             ctx.quote_consumed = True
             
             # Add rollback operation
@@ -219,7 +219,7 @@ class AtomicChatHandler:
                 # Re-create the quote with remaining TTL
                 remaining_ttl = int(quote["expires_at"] - time.time())
                 if remaining_ttl > 0:
-                    await quote_redis.setex(quote_key, remaining_ttl, json.dumps(quote))
+                    quote_redis.setex(quote_key, remaining_ttl, json.dumps(quote))
             
             ctx.add_rollback(rollback_quote)
             

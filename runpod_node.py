@@ -31,10 +31,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Blyan GPU Node (Runpod)")
 
 # Configuration
-MAIN_SERVER_URL = os.getenv("MAIN_SERVER_URL", "https://your-digitalocean-server.com")
-NODE_ID = os.getenv("NODE_ID", f"runpod_a40_{os.getpid()}")
+MAIN_SERVER_URL = os.getenv("MAIN_SERVER_URL", "https://blyan.com/api")
+NODE_ID = os.getenv("NODE_ID", f"runpod-20b-{os.getpid()}")
 NODE_HOST = os.getenv("NODE_HOST", "0.0.0.0")  # Runpod will provide external IP
-NODE_PORT = int(os.getenv("NODE_PORT", 8000))
+NODE_PORT = int(os.getenv("NODE_PORT", 8001))
 
 # Optional model aliases for convenience (can be disabled via MODEL_ALIAS_DISABLE=1)
 MODEL_ALIASES: Dict[str, str] = {
@@ -97,11 +97,15 @@ async def register_with_main_server():
                     "max_batch_size": 4
                 }
             }
+            # Optional auth header for production API
+            api_key = os.getenv("P2P_API_KEY") or os.getenv("API_KEY") or os.getenv("BLYAN_API_KEY")
+            headers = {"X-API-Key": api_key} if api_key else None
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{MAIN_SERVER_URL}/p2p/register",
                     json=registration_data,
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     if response.status == 200:
@@ -122,17 +126,13 @@ async def lifespan(app: FastAPI):
     """Use FastAPI lifespan instead of deprecated on_event hooks."""
     global model_wrapper, registration_task, served_expert_name
 
-    # Load the model
-    model_name = os.getenv("MODEL_NAME", "EleutherAI/gpt-neox-20b")
-    quantization = os.getenv("MODEL_QUANTIZATION", "8bit")
-
-    # Allow disabling aliases completely
-    if not os.getenv("MODEL_ALIAS_DISABLE"):
-        alias = MODEL_ALIASES.get(model_name.lower()) if isinstance(model_name, str) else None
-        if alias and alias != model_name:
-            original = model_name
-            model_name = alias
-            logger.warning(f"Model alias applied: {original} -> {model_name}")
+    # Load the model - FORCE GPT-OSS-20B
+    model_name = "openai/gpt-oss-20b"  # Always use GPT-OSS-20B
+    quantization = os.getenv("MODEL_QUANTIZATION", "none")
+    
+    logger.info(f"🔧 Using GPT-OSS-20B model (forced)")
+    
+    # DO NOT apply any aliases - we want to use the exact model
 
     served_expert_name = os.getenv("AVAILABLE_EXPERT") or _derive_expert_name_from_model(model_name)
 
@@ -158,7 +158,8 @@ async def lifespan(app: FastAPI):
             load_in_8bit=load_in_8bit,
             load_in_4bit=load_in_4bit,
             device_map="auto",
-            max_memory={0: "40GB"}
+            max_memory={0: "40GB"},
+            allow_mock_fallback=True,  # Enable mock fallback for testing
         )
 
         logger.info("✅ Model loaded successfully!")
@@ -184,8 +185,11 @@ async def lifespan(app: FastAPI):
             registration_task.cancel()
         try:
             async with aiohttp.ClientSession() as session:
+                api_key = os.getenv("P2P_API_KEY") or os.getenv("API_KEY") or os.getenv("BLYAN_API_KEY")
+                headers = {"X-API-Key": api_key} if api_key else None
                 await session.delete(
                     f"{MAIN_SERVER_URL}/p2p/nodes/{NODE_ID}",
+                    headers=headers,
                     timeout=aiohttp.ClientTimeout(total=5)
                 )
             logger.info("✅ Unregistered from main server")

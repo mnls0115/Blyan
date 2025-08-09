@@ -163,8 +163,12 @@ class AutomaticRewardDistributor:
         rewards = []
         
         # Import PoDL recorder
-        from backend.data.podl_score_system import get_podl_recorder
-        recorder = get_podl_recorder()
+        try:
+            from backend.data.podl_score_system import get_podl_recorder
+            recorder = get_podl_recorder()
+        except ImportError as e:
+            logger.warning(f"PoDL system not available: {e}")
+            return []
         
         # Get recent validated contributions
         cutoff_time = datetime.utcnow() - timedelta(seconds=self.distribution_interval)
@@ -198,8 +202,12 @@ class AutomaticRewardDistributor:
         rewards = []
         
         # Import usage tracker
-        from backend.model.moe_infer import get_expert_usage_tracker
-        tracker = get_expert_usage_tracker()
+        try:
+            from backend.model.moe_infer import get_expert_usage_tracker
+            tracker = get_expert_usage_tracker()
+        except ImportError as e:
+            logger.warning(f"Expert usage tracker not available: {e}")
+            return []
         
         # Get recent usage stats
         cutoff_time = time.time() - self.distribution_interval
@@ -382,8 +390,12 @@ class AutomaticRewardDistributor:
         """Distribute reward to recipient."""
         try:
             # Import ledger
-            from backend.accounting.postgres_ledger import get_postgres_ledger
-            ledger = get_postgres_ledger()
+            try:
+                from backend.accounting.postgres_ledger import get_postgres_ledger
+                ledger = get_postgres_ledger()
+            except ImportError:
+                logger.warning("PostgreSQL ledger not available, skipping distribution")
+                return False
             
             # Ensure connection
             if not ledger.pool:

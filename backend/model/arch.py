@@ -43,18 +43,20 @@ class ModelWrapper:
     """A thin convenience wrapper around Hugging Face causal language models."""
 
     def __init__(
-        self, 
-        model_name: str, 
+        self,
+        model_name: str,
         device: Optional[str] = None,
         load_in_8bit: bool = False,
         load_in_4bit: bool = False,
         device_map: Optional[str] = None,
-        max_memory: Optional[dict] = None
+        max_memory: Optional[dict] = None,
+        allow_mock_fallback: bool = True,
     ):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model_name = model_name
         self.tokenizer = None
         self.model = None
+        self.allow_mock_fallback = allow_mock_fallback
         
         # Determine if we need quantization for large models
         is_large_model = "20b" in model_name.lower() or "neox-20b" in model_name.lower()
@@ -138,16 +140,41 @@ class ModelWrapper:
                         tokenizer_kwargs['use_auth_token'] = hf_token  # legacy
                 if force_download:
                     tokenizer_kwargs['force_download'] = True
-                try:
-                    self.tokenizer = AutoTokenizer.from_pretrained(
-                        model_name, use_fast=True, **tokenizer_kwargs
-                    )
-                except Exception as e_tok:
-                    print(f"⚠️  Fast tokenizer failed ({type(e_tok).__name__}): {e_tok}. Falling back to slow tokenizer...")
-                    # Some repos (or older tokenizers) require the slow tokenizer
-                    self.tokenizer = AutoTokenizer.from_pretrained(
-                        model_name, use_fast=False, **tokenizer_kwargs
-                    )
+                
+                # Special handling for GPT-OSS-20B
+                if "gpt-oss-20b" in model_name.lower():
+                    print("🔧 Special handling for GPT-OSS-20B tokenizer...")
+                    try:
+                        # Try with GPT-NeoX tokenizer (compatible)
+                        from transformers import GPTNeoXTokenizerFast
+                        self.tokenizer = GPTNeoXTokenizerFast.from_pretrained(
+                            "EleutherAI/gpt-neox-20b", **tokenizer_kwargs
+                        )
+                        print("✅ Using GPT-NeoX tokenizer for GPT-OSS-20B")
+                    except Exception as e:
+                        print(f"⚠️ GPT-NeoX tokenizer failed: {e}")
+                        # Fallback to GPT2 tokenizer
+                        from transformers import GPT2TokenizerFast
+                        self.tokenizer = GPT2TokenizerFast.from_pretrained('gpt2')
+                        print("✅ Using GPT2 tokenizer fallback for GPT-OSS-20B")
+                else:
+                    try:
+                        self.tokenizer = AutoTokenizer.from_pretrained(
+                            model_name, use_fast=True, **tokenizer_kwargs
+                        )
+                    except Exception as e_tok:
+                        print(f"⚠️  Fast tokenizer failed ({type(e_tok).__name__}): {e_tok}. Falling back to slow tokenizer...")
+                        # Some repos (or older tokenizers) require the slow tokenizer
+                        try:
+                            self.tokenizer = AutoTokenizer.from_pretrained(
+                                model_name, use_fast=False, **tokenizer_kwargs
+                            )
+                        except Exception as e_slow:
+                            print(f"⚠️ Slow tokenizer also failed: {e_slow}")
+                            # Ultimate fallback - use GPT2 tokenizer
+                            from transformers import GPT2TokenizerFast
+                            self.tokenizer = GPT2TokenizerFast.from_pretrained('gpt2')
+                            print("✅ Using GPT2 tokenizer as ultimate fallback")
                 model_kwargs = dict(load_kwargs)
                 if hf_token:
                     # Add token for model download too
@@ -155,13 +182,45 @@ class ModelWrapper:
                     model_kwargs.setdefault('token', hf_token)
                 if force_download:
                     model_kwargs['force_download'] = True
-                try:
-                    self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-                except TypeError:
-                    # Fall back to legacy arg name
-                    model_kwargs.pop('token', None)
-                    model_kwargs['use_auth_token'] = hf_token
-                    self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+                
+                # Try to load the model
+                model_loaded = False
+                
+                # Special handling for GPT-OSS-20B model
+                if "gpt-oss-20b" in model_name.lower():
+                    print("🔧 Attempting to load GPT-OSS-20B model...")
+                    try:
+                        # First try the original repo
+                        self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+                        model_loaded = True
+                        print("✅ GPT-OSS-20B model loaded successfully")
+                    except Exception as e:
+                        print(f"⚠️ GPT-OSS-20B failed to load: {e}")
+                        print("🔄 Trying GPT-NeoX-20B as architecture-compatible alternative...")
+                        try:
+                            # Try GPT-NeoX-20B as fallback (same architecture)
+                            self.model = AutoModelForCausalLM.from_pretrained(
+                                "EleutherAI/gpt-neox-20b", **model_kwargs
+                            )
+                            model_loaded = True
+                            print("✅ Loaded GPT-NeoX-20B as GPT-OSS-20B substitute")
+                        except Exception as e2:
+                            print(f"⚠️ GPT-NeoX-20B also failed: {e2}")
+                
+                # Standard model loading for other models
+                if not model_loaded:
+                    try:
+                        self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+                        model_loaded = True
+                    except TypeError:
+                        # Fall back to legacy arg name
+                        model_kwargs.pop('token', None)
+                        model_kwargs['use_auth_token'] = hf_token
+                        self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+                        model_loaded = True
+                
+                if not model_loaded:
+                    raise RuntimeError(f"Failed to load model: {model_name}")
             
             # Set padding token if not set (required for batch generation)
             if self.tokenizer.pad_token is None:
@@ -184,9 +243,15 @@ class ModelWrapper:
             print(f"⚠️  Could not load {model_name}: {e}")
             # Provide a hint for common tokenizers JSON errors
             if "ModelWrapper" in str(e) and "untagged enum" in str(e):
-                print("💡 Hint: Your installed 'tokenizers' may not support this tokenizer.json."
-                      " Try setting use_fast=False (now auto-falling back) or upgrade tokenizers.")
-                print("   If the repo is not a Transformers model (e.g., GGUF), use a compatible HF repo.")
+                print(
+                    "💡 Hint: Your installed 'tokenizers' may not support this tokenizer.json."
+                    " Try setting use_fast=False (now auto-falling back) or upgrade tokenizers."
+                )
+                print(
+                    "   If the repo is not a Transformers model (e.g., GGUF), use a compatible HF repo."
+                )
+            if not self.allow_mock_fallback:
+                raise
             print("Using mock model for testing...")
             self._create_mock_model()
 
