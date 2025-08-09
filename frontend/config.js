@@ -6,7 +6,7 @@ const API_CONFIG = {
               window.location.hostname === '127.0.0.1' ||
               window.location.hostname === '') 
         ? 'http://127.0.0.1:8000' 
-        : `https://${window.location.hostname}/api`,
+        : `http://${window.location.hostname}:8000`,
     
     // Individual endpoints
     chat: '/chat',

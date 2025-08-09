@@ -110,6 +110,12 @@ class ModelWrapper:
                 or os.getenv("HUGGINGFACEHUB_API_TOKEN")
                 or os.getenv("HUGGING_FACE_HUB_TOKEN")
             )
+
+            # Optional force re-download to bypass corrupted cache
+            force_download_env = os.getenv("HF_FORCE_DOWNLOAD")
+            force_download = False
+            if force_download_env and force_download_env.lower() not in {"0", "false", "no", "off"}:
+                force_download = True
             
             if os.path.exists(local_path):
                 print(f"🔍 Loading local model from {local_path}")
@@ -130,6 +136,8 @@ class ModelWrapper:
                         tokenizer_kwargs['token'] = hf_token  # new API
                     except Exception:
                         tokenizer_kwargs['use_auth_token'] = hf_token  # legacy
+                if force_download:
+                    tokenizer_kwargs['force_download'] = True
                 try:
                     self.tokenizer = AutoTokenizer.from_pretrained(
                         model_name, use_fast=True, **tokenizer_kwargs
@@ -145,6 +153,8 @@ class ModelWrapper:
                     # Add token for model download too
                     # Transformers supports 'token' (new) or 'use_auth_token' (legacy)
                     model_kwargs.setdefault('token', hf_token)
+                if force_download:
+                    model_kwargs['force_download'] = True
                 try:
                     self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
                 except TypeError:
