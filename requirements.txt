@@ -20,7 +20,7 @@ sqlalchemy
 asyncpg
 
 # AI/ML
-torch
+# torch
 transformers
 safetensors
 accelerate  # For multi-GPU and model parallelism

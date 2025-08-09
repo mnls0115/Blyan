@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
+import os
 import io
 
 # Third-party libraries are optional at runtime; silence type checkers if missing
@@ -57,8 +58,11 @@ class ModelWrapper:
         
         # Determine if we need quantization for large models
         is_large_model = "20b" in model_name.lower() or "neox-20b" in model_name.lower()
-        if is_large_model and not (load_in_8bit or load_in_4bit):
-            print(f"⚠️ Large model detected ({model_name}), enabling INT8 quantization")
+        # Allow disabling auto quantization via env
+        auto_quant_env = os.getenv("MODEL_AUTO_QUANTIZE") or os.getenv("AUTO_QUANTIZE")
+        auto_quantize = True if auto_quant_env is None else auto_quant_env.lower() not in {"0", "false", "no", "off"}
+        if is_large_model and not (load_in_8bit or load_in_4bit) and auto_quantize:
+            print(f"⚠️ Large model detected ({model_name}), enabling INT8 quantization (can disable with MODEL_AUTO_QUANTIZE=0)")
             load_in_8bit = True
         
         try:
@@ -90,19 +94,65 @@ class ModelWrapper:
                 load_kwargs['max_memory'] = max_memory
                 print(f"💾 Memory limits: {max_memory}")
             
-            # Some models need this
-            if "neox" in model_name.lower() or "pythia" in model_name.lower():
+            # Some models need this (and unknown community models may too)
+            if (
+                "neox" in model_name.lower()
+                or "pythia" in model_name.lower()
+                or "mpt" in model_name.lower()
+                or "llama" in model_name.lower()
+                or "gpt-oss" in model_name.lower()
+            ):
                 load_kwargs['trust_remote_code'] = True
+
+            # Authentication token (for gated/private models)
+            # Support both legacy and new parameter names
+            hf_token = (
+                os.getenv("HF_TOKEN")
+                or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+                or os.getenv("HUGGING_FACE_HUB_TOKEN")
+            )
             
             if os.path.exists(local_path):
                 print(f"🔍 Loading local model from {local_path}")
-                self.tokenizer = AutoTokenizer.from_pretrained(local_path)
+                # Try fast tokenizer, then fall back to slow
+                try:
+                    self.tokenizer = AutoTokenizer.from_pretrained(local_path, use_fast=True)
+                except Exception as e_tok:
+                    print(f"⚠️  Fast tokenizer failed ({type(e_tok).__name__}): {e_tok}. Falling back to slow tokenizer...")
+                    self.tokenizer = AutoTokenizer.from_pretrained(local_path, use_fast=False)
                 self.model = AutoModelForCausalLM.from_pretrained(local_path, **load_kwargs)
             else:
                 # Try loading from HuggingFace
                 print(f"🌐 Loading model from HuggingFace: {model_name}")
-                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+                tokenizer_kwargs = {}
+                # Token argument handling for different versions of Transformers/HF Hub
+                if hf_token:
+                    try:
+                        tokenizer_kwargs['token'] = hf_token  # new API
+                    except Exception:
+                        tokenizer_kwargs['use_auth_token'] = hf_token  # legacy
+                try:
+                    self.tokenizer = AutoTokenizer.from_pretrained(
+                        model_name, use_fast=True, **tokenizer_kwargs
+                    )
+                except Exception as e_tok:
+                    print(f"⚠️  Fast tokenizer failed ({type(e_tok).__name__}): {e_tok}. Falling back to slow tokenizer...")
+                    # Some repos (or older tokenizers) require the slow tokenizer
+                    self.tokenizer = AutoTokenizer.from_pretrained(
+                        model_name, use_fast=False, **tokenizer_kwargs
+                    )
+                model_kwargs = dict(load_kwargs)
+                if hf_token:
+                    # Add token for model download too
+                    # Transformers supports 'token' (new) or 'use_auth_token' (legacy)
+                    model_kwargs.setdefault('token', hf_token)
+                try:
+                    self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+                except TypeError:
+                    # Fall back to legacy arg name
+                    model_kwargs.pop('token', None)
+                    model_kwargs['use_auth_token'] = hf_token
+                    self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
             
             # Set padding token if not set (required for batch generation)
             if self.tokenizer.pad_token is None:
@@ -123,6 +173,11 @@ class ModelWrapper:
                 
         except Exception as e:
             print(f"⚠️  Could not load {model_name}: {e}")
+            # Provide a hint for common tokenizers JSON errors
+            if "ModelWrapper" in str(e) and "untagged enum" in str(e):
+                print("💡 Hint: Your installed 'tokenizers' may not support this tokenizer.json."
+                      " Try setting use_fast=False (now auto-falling back) or upgrade tokenizers.")
+                print("   If the repo is not a Transformers model (e.g., GGUF), use a compatible HF repo.")
             print("Using mock model for testing...")
             self._create_mock_model()
 
