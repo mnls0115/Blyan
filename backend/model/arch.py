@@ -67,7 +67,6 @@ class ModelWrapper:
         
         try:
             # Check if it's a local model path
-            import os
             local_path = f"./models/{model_name}"
             
             # Prepare loading kwargs
