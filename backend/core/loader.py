@@ -90,13 +90,24 @@ class TensorBlockLoader(BasePayloadLoader):
         return block.header.payload_type == "tensorblock"
     
     def load(self, block: Block) -> torch.Tensor:
-        # TODO: Implement actual zero-copy tensorblock loading
-        # This would use mmap and torch.frombuffer for zero-copy access
+        """Load tensor using zero-copy TensorBlock format."""
+        import tempfile
+        from backend.core.tensorblock import TensorBlockReader
+        
         try:
-            # For now, fall back to pickle loading
-            # In actual implementation, this would parse the TensorBlock header
-            # and create a tensor view directly from memory
-            return pickle.loads(block.payload)
+            # Write block payload to temporary file for memory mapping
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.tblock') as tmp:
+                tmp.write(block.payload)
+                tmp_path = tmp.name
+            
+            # Use TensorBlockReader for zero-copy loading
+            with TensorBlockReader(tmp_path) as reader:
+                tensor = reader.load_tensor_zero_copy(device="cpu")
+            
+            # Clean up temp file
+            Path(tmp_path).unlink()
+            
+            return tensor
         except Exception as e:
             raise ValueError(f"Failed to load TensorBlock payload: {e}")
     

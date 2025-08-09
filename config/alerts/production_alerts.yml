@@ -1,0 +1,149 @@
+groups:
+  - name: blyan_critical
+    interval: 30s
+    rules:
+      # Database down
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "PostgreSQL has been down for more than 1 minute. Immediate action required!"
+      
+      # API down
+      - alert: APIDown
+        expr: up{job="blyan-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "Blyan API is down"
+          description: "API endpoint has been unreachable for more than 1 minute"
+      
+      # High error rate
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(blyan_transactions_hourly{status="failed"}[5m]) /
+            (rate(blyan_transactions_hourly{status="failed"}[5m]) + rate(blyan_transactions_hourly{status="credited"}[5m]))
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "High transaction error rate"
+          description: "Error rate is above 10% for the last 5 minutes (current: {{ $value | humanizePercentage }})"
+
+  - name: blyan_warning
+    interval: 1m
+    rules:
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: blyan_cpu_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage has been above 80% for 5 minutes (current: {{ $value }}%)"
+      
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          (blyan_memory_usage_bytes{type="used"} / blyan_memory_usage_bytes{type="total"}) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 85% (current: {{ $value | humanizePercentage }})"
+      
+      # Low disk space
+      - alert: LowDiskSpace
+        expr: |
+          (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "Low disk space"
+          description: "Disk usage is above 85% (current: {{ $value | humanizePercentage }})"
+      
+      # Database connection pool exhausted
+      - alert: DatabasePoolExhausted
+        expr: |
+          (blyan_db_pool_size{state="used"} / blyan_db_pool_size{state="total"}) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "More than 90% of database connections are in use"
+      
+      # Backup age
+      - alert: BackupTooOld
+        expr: |
+          (time() - blyan_last_backup_timestamp) > 86400
+        for: 10m
+        labels:
+          severity: warning
+          service: backup
+        annotations:
+          summary: "Backup is too old"
+          description: "Last backup is more than 24 hours old"
+      
+      # High pending rewards
+      - alert: HighPendingRewards
+        expr: blyan_pending_rewards_total > 100000
+        for: 30m
+        labels:
+          severity: warning
+          service: rewards
+        annotations:
+          summary: "High pending rewards"
+          description: "Pending rewards exceed 100,000 BLY (current: {{ $value }})"
+      
+      # Too many active streams
+      - alert: TooManyActiveStreams
+        expr: blyan_active_streams > 500
+        for: 5m
+        labels:
+          severity: warning
+          service: streaming
+        annotations:
+          summary: "Too many active streaming sessions"
+          description: "More than 500 active streams (current: {{ $value }})"
+
+  - name: blyan_info
+    interval: 5m
+    rules:
+      # Daily active users milestone
+      - alert: DAUMilestone
+        expr: blyan_daily_active_users > 1000 and increase(blyan_daily_active_users[1h]) > 100
+        for: 5m
+        labels:
+          severity: info
+          service: business
+        annotations:
+          summary: "DAU milestone reached"
+          description: "Daily active users exceeded 1000 (current: {{ $value }})"
+      
+      # Successful DR rehearsal
+      - alert: DRRehearsalSuccess
+        expr: blyan_dr_rehearsal_rto < 1800 and blyan_dr_rehearsal_rpo < 3600
+        for: 1m
+        labels:
+          severity: info
+          service: backup
+        annotations:
+          summary: "DR rehearsal completed successfully"
+          description: "RTO: {{ $labels.rto }}s, RPO: {{ $labels.rpo }}s"

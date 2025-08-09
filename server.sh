@@ -30,19 +30,22 @@ start_server() {
     
     echo "🚀 Starting $name server on port $port..."
     
+    # Set PYTHONPATH for all servers
+    export PYTHONPATH=/Users/mnls/projects/aiblock:$PYTHONPATH
+    
     if [ "$name" = "api" ]; then
-        # 가상환경 경로 직접 사용
+        # Run API server directly with uvicorn
         if [ -f "myenv/bin/python3" ]; then
-            myenv/bin/python3 -m uvicorn $module --reload --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/aiblock myenv/bin/uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
         else
-            python3 -m uvicorn $module --reload --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/aiblock uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
         fi
     else
         echo "Debug: Starting P2P node with command: python3 -m $module server $name $port"
         if [ -f "myenv/bin/python3" ]; then
-            myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/aiblock myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
         else
-            python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/aiblock python3 -m $module server $name $port > logs/${name}.log 2>&1 &
         fi
     fi
     

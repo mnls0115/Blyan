@@ -41,28 +41,86 @@ def bytes_to_state_dict(data: bytes) -> dict:
 class ModelWrapper:
     """A thin convenience wrapper around Hugging Face causal language models."""
 
-    def __init__(self, model_name: str, device: Optional[str] = None):
+    def __init__(
+        self, 
+        model_name: str, 
+        device: Optional[str] = None,
+        load_in_8bit: bool = False,
+        load_in_4bit: bool = False,
+        device_map: Optional[str] = None,
+        max_memory: Optional[dict] = None
+    ):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model_name = model_name
         self.tokenizer = None
         self.model = None
         
+        # Determine if we need quantization for large models
+        is_large_model = "20b" in model_name.lower() or "neox-20b" in model_name.lower()
+        if is_large_model and not (load_in_8bit or load_in_4bit):
+            print(f"⚠️ Large model detected ({model_name}), enabling INT8 quantization")
+            load_in_8bit = True
+        
         try:
             # Check if it's a local model path
             import os
             local_path = f"./models/{model_name}"
+            
+            # Prepare loading kwargs
+            load_kwargs = {}
+            
+            # For large models or multi-GPU, use device_map
+            if device_map or is_large_model:
+                load_kwargs['device_map'] = device_map or "auto"
+                print(f"🚀 Using device_map={load_kwargs['device_map']} for model distribution")
+            
+            # Add quantization options
+            if load_in_8bit:
+                load_kwargs['load_in_8bit'] = True
+                print("📦 Loading model in INT8 (8-bit quantization)")
+            elif load_in_4bit:
+                load_kwargs['load_in_4bit'] = True
+                load_kwargs['bnb_4bit_compute_dtype'] = torch.float16
+                print("📦 Loading model in INT4 (4-bit quantization)")
+            else:
+                load_kwargs['torch_dtype'] = torch.float16 if torch.cuda.is_available() else torch.float32
+            
+            # Add memory limits if specified
+            if max_memory:
+                load_kwargs['max_memory'] = max_memory
+                print(f"💾 Memory limits: {max_memory}")
+            
+            # Some models need this
+            if "neox" in model_name.lower() or "pythia" in model_name.lower():
+                load_kwargs['trust_remote_code'] = True
+            
             if os.path.exists(local_path):
                 print(f"🔍 Loading local model from {local_path}")
                 self.tokenizer = AutoTokenizer.from_pretrained(local_path)
-                self.model = AutoModelForCausalLM.from_pretrained(local_path, torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
+                self.model = AutoModelForCausalLM.from_pretrained(local_path, **load_kwargs)
             else:
                 # Try loading from HuggingFace
+                print(f"🌐 Loading model from HuggingFace: {model_name}")
                 self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.model = AutoModelForCausalLM.from_pretrained(model_name)
+                self.model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
             
-            self.model.to(self.device)
+            # Set padding token if not set (required for batch generation)
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            # Only move to device if not using device_map (device_map handles placement)
+            if not device_map and not load_kwargs.get('device_map'):
+                self.model.to(self.device)
+            
             self.model.eval()
-            print(f"✓ Loaded model {model_name}")
+            
+            # Print model info
+            total_params = sum(p.numel() for p in self.model.parameters()) / 1e9
+            print(f"✓ Loaded model {model_name} ({total_params:.1f}B params)")
+            
+            if hasattr(self.model, 'hf_device_map'):
+                print(f"📍 Device placement: {self.model.hf_device_map}")
+                
         except Exception as e:
             print(f"⚠️  Could not load {model_name}: {e}")
             print("Using mock model for testing...")

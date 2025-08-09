@@ -1,0 +1,26 @@
+# Redis ACL Configuration for Blyan Network
+# Fine-grained access control for different services
+
+# Default user (disabled in production)
+user default on nopass ~* &* -@all
+
+# Admin user with full access (for maintenance only)
+user admin on >${REDIS_ADMIN_PASSWORD} ~* &* +@all
+
+# API service user (read/write for application data)
+user api-service on >${REDIS_API_PASSWORD} ~* &* +@read +@write +@list +@set +@hash +@stream -@dangerous
+
+# Ledger service user (for transaction data)
+user ledger-service on >${REDIS_LEDGER_PASSWORD} ~ledger:* ~transaction:* &* +@read +@write +@list +@transaction -FLUSHDB -FLUSHALL
+
+# Monitoring user (read-only for metrics)
+user monitoring on >${REDIS_MONITORING_PASSWORD} ~* &* +@read +ping +info +config|get -@dangerous
+
+# Backup user (for automated backups)
+user backup on >${REDIS_BACKUP_PASSWORD} ~* &* +@read +bgsave +lastsave -@dangerous
+
+# Quality gate service user
+user quality-gate on >${REDIS_QUALITY_PASSWORD} ~quality:* ~cache:* &* +@read +@write +@list +expire +ttl -@dangerous
+
+# Teacher model cache user
+user teacher-cache on >${REDIS_TEACHER_PASSWORD} ~teacher:* ~model:* &* +@read +@write +expire +ttl -@dangerous

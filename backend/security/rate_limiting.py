@@ -380,3 +380,56 @@ def create_contribution_proof(user_id: str, expert_hash: str, performance_improv
         user_id=user_id,
         proof_hash=proof_hash
     )
+
+
+class RateLimitMiddleware:
+    """FastAPI middleware for rate limiting with tier-based limits."""
+    
+    def __init__(self, default_limit: int = 60, premium_limit: int = 300, enterprise_limit: int = 1000):
+        self.rate_limiter = PoLBasedRateLimiter()
+        self.tier_limits = {
+            "basic": default_limit,
+            "premium": premium_limit,
+            "enterprise": enterprise_limit,
+            "unlimited": float('inf')
+        }
+        
+    async def __call__(self, request: Request, call_next):
+        """Rate limiting middleware."""
+        from backend.security.api_auth import get_api_key_info
+        
+        # Get API key info if available
+        key_info = getattr(request.state, "api_key_info", None)
+        
+        if key_info:
+            # Use tier-based rate limiting
+            tier = key_info.rate_limit_tier
+            limit = self.tier_limits.get(tier, 60)
+            
+            # Track requests per minute  
+            user_id = key_info.key_id
+            # Create mock request for rate limiter
+            from fastapi import Request
+            mock_request = type('MockRequest', (), {
+                'client': type('client', (), {'host': '127.0.0.1'}),
+                'headers': {'user-agent': 'api'},
+                'state': type('state', (), {'api_key_info': key_info})()
+            })()
+            result = self.rate_limiter.check_rate_limit(mock_request, "inference")
+            
+            if not result.allowed and limit != float('inf'):
+                # Apply tier-specific limit
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error": "Rate limit exceeded",
+                        "tier": tier,
+                        "limit": limit,
+                        "retry_after": result.retry_after or 60
+                    }
+                )
+        
+        # Process request
+        response = await call_next(request)
+        return response

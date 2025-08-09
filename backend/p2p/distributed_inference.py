@@ -156,7 +156,7 @@ class ExpertNodeRegistry:
         self.expert_to_nodes: Dict[str, List[str]] = {}  # expert_name -> [node_ids]
     
     def register_node(self, node: ExpertNode):
-        """Register a new expert node."""
+        """Register a new expert node with health monitoring."""
         self.nodes[node.node_id] = node
         node.last_heartbeat = time.time()
         
@@ -166,6 +166,12 @@ class ExpertNodeRegistry:
                 self.expert_to_nodes[expert_name] = []
             if node.node_id not in self.expert_to_nodes[expert_name]:
                 self.expert_to_nodes[expert_name].append(node.node_id)
+        
+        # Register for health monitoring if coordinator available
+        if hasattr(self, 'coordinator') and hasattr(self.coordinator, 'reputation_manager'):
+            self.coordinator.reputation_manager.register_node_endpoint(
+                node.node_id, node.endpoint
+            )
         
         print(f"✓ Registered node {node.node_id} with {len(node.available_experts)} experts")
     
@@ -257,12 +263,22 @@ class DistributedInferenceCoordinator:
         self.scheduler = PreemptiveScheduler()
         self.inference_metrics = {"request_count": 0, "total_latency": 0.0, "active_requests": 0}
         
+        # Node reputation and health monitoring
+        from backend.p2p.node_reputation import NodeReputationManager
+        self.reputation_manager = NodeReputationManager(health_check_interval=30)
+        self._health_monitor_task = None
+        
         # Connection pooling for reduced latency
         self.connection_pool = ConnectionPool(
             max_connections_per_host=20,
             keepalive_timeout=60,
             total_timeout=30
         )
+        
+        # Node reputation and failover management
+        from backend.p2p.node_reputation import get_reputation_manager, get_failover_coordinator
+        self.reputation_manager = get_reputation_manager()
+        self.failover_coordinator = get_failover_coordinator()
         
         self.integrity_coordinator = None
         self.security_orchestrator = None
@@ -281,8 +297,18 @@ class DistributedInferenceCoordinator:
                 security_policy
             )
     
+    async def start_health_monitoring(self):
+        """Start background health monitoring for all registered nodes."""
+        await self.reputation_manager.start_health_monitoring()
+        logger.info("Started distributed inference health monitoring")
+    
+    async def stop_health_monitoring(self):
+        """Stop background health monitoring."""
+        await self.reputation_manager.stop_health_monitoring()
+        logger.info("Stopped distributed inference health monitoring")
+    
     def register_expert_group_node(self, node_capability: NodeCapability):
-        """Register a node with expert group capabilities."""
+        """Register a node with expert group capabilities and health monitoring."""
         self.group_index.register_node(node_capability)
         
         # Also register in legacy registry for backward compatibility
@@ -295,6 +321,10 @@ class DistributedInferenceCoordinator:
             last_heartbeat=node_capability.last_heartbeat
         )
         self.registry.register_node(legacy_node)
+        
+        # Register for health monitoring
+        endpoint = f"http://{node_capability.host}:{node_capability.port}"
+        self.reputation_manager.register_node_endpoint(node_capability.node_id, endpoint)
     
     async def distribute_inference_optimized(
         self, 
@@ -649,6 +679,82 @@ class DistributedInferenceCoordinator:
         }
         
         return full_response, security_report
+    
+    async def distribute_inference_with_failover(
+        self,
+        prompt: str,
+        required_experts: List[str],
+        max_new_tokens: int = 64
+    ) -> Tuple[str, Dict[str, Any]]:
+        """Distribute inference with automatic failover and reputation-based routing."""
+        
+        request_id = hashlib.sha256(f"{prompt}{time.time()}".encode()).hexdigest()[:16]
+        
+        # Get nodes for each required expert
+        expert_to_nodes = {}
+        for expert in required_experts:
+            nodes = self.registry.get_nodes_for_expert(expert)
+            if not nodes:
+                return f"Error: No nodes available for expert {expert}", {"error": "no_nodes"}
+            
+            # Rank nodes by reputation
+            node_ids = [n.node_id for n in nodes]
+            ranked_nodes = self.reputation_manager.rank_nodes(node_ids)
+            expert_to_nodes[expert] = [nid for nid, _ in ranked_nodes]
+        
+        # Execute with failover for each expert
+        results = {}
+        metrics = {}
+        
+        async def execute_expert_inference(node_id: str, expert_name: str):
+            """Execute inference for a single expert on a node."""
+            node = self.registry.nodes[node_id]
+            payload = {
+                "prompt": prompt,
+                "expert": expert_name,
+                "max_new_tokens": max_new_tokens
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{node.endpoint}/inference",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30.0)
+                ) as response:
+                    if response.status != 200:
+                        raise Exception(f"Inference failed: HTTP {response.status}")
+                    return await response.json()
+        
+        # Process each expert with failover
+        for expert, node_candidates in expert_to_nodes.items():
+            success, result, successful_node = await self.failover_coordinator.execute_with_failover(
+                primary_node_id=node_candidates[0],
+                fallback_node_ids=node_candidates[1:] if len(node_candidates) > 1 else [],
+                execute_fn=execute_expert_inference,
+                expert_name=expert
+            )
+            
+            if success:
+                results[expert] = result
+                metrics[expert] = {
+                    "node_id": successful_node,
+                    "reputation": self.reputation_manager.get_node_reputation(successful_node),
+                    "success": True
+                }
+            else:
+                # All nodes failed
+                results[expert] = {"error": "All nodes failed"}
+                metrics[expert] = {"success": False}
+        
+        # Combine results
+        final_result = f"Failover-enabled inference for '{prompt[:50]}...' using experts {required_experts}"
+        
+        return final_result, {
+            "request_id": request_id,
+            "expert_metrics": metrics,
+            "failover_enabled": True,
+            "node_reputation_summary": self.reputation_manager.get_metrics_summary()
+        }
     
     async def distribute_inference(
         self, 

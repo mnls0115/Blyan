@@ -371,26 +371,88 @@ class BatchedInferenceEngine:
                 all_results.extend(results)
             return all_results
             
-        # Simple batch
+        # Simple batch - use actual MoEModelManager
         prompts = batch_inputs["prompts"]
+        max_new_tokens = batch_inputs.get("max_new_tokens", 64)
         
-        # Mock inference for demo
-        await asyncio.sleep(0.1)  # Simulate inference time
-        
-        results = [f"Response to: {prompt[:50]}..." for prompt in prompts]
-        return results
+        # Check if model is MoEModelManager
+        if hasattr(self.model, 'selective_generate'):
+            # Use MoE selective generation with KV-cache
+            results = []
+            for prompt in prompts:
+                try:
+                    response, _ = self.model.selective_generate(
+                        prompt=prompt,
+                        max_new_tokens=max_new_tokens,
+                        top_k_experts=2,
+                        use_kv_cache=True,
+                        use_continuous_batching=True
+                    )
+                    results.append(response)
+                except Exception as e:
+                    logger.error(f"MoE inference failed: {e}")
+                    results.append(f"Error: {str(e)}")
+            return results
+        else:
+            # Fallback to basic generation if available
+            try:
+                if hasattr(self.model, 'generate'):
+                    results = []
+                    for prompt in prompts:
+                        response = self.model.generate(prompt, max_new_tokens=max_new_tokens)
+                        results.append(response)
+                    return results
+                else:
+                    # No generation method available
+                    logger.warning("Model has no generation method, returning empty responses")
+                    return ["Model not configured for generation" for _ in prompts]
+            except Exception as e:
+                logger.error(f"Inference failed: {e}")
+                return [f"Error: {str(e)}" for _ in prompts]
         
     async def _run_sub_batch(self, sub_batch: Dict[str, Any]) -> List[str]:
-        """Process optimized sub-batch."""
-        # In real implementation, would handle padding and batching properly
+        """Process optimized sub-batch with actual inference."""
         prompts = sub_batch["prompts"]
         max_tokens = sub_batch["max_new_tokens"]
+        temperature = sub_batch.get("temperature", 1.0)
+        top_p = sub_batch.get("top_p", 1.0)
         
-        # Mock inference
-        await asyncio.sleep(0.05 * len(prompts))
-        
-        results = [f"Optimized response (max_tokens={max_tokens}): {p[:30]}..." for p in prompts]
-        return results
+        # Use actual model for sub-batch processing
+        if hasattr(self.model, 'selective_generate'):
+            # MoE model with selective generation
+            results = []
+            for prompt in prompts:
+                try:
+                    response, _ = self.model.selective_generate(
+                        prompt=prompt,
+                        max_new_tokens=max_tokens,
+                        top_k_experts=2,
+                        use_kv_cache=True
+                    )
+                    results.append(response)
+                except Exception as e:
+                    logger.error(f"Sub-batch MoE inference failed: {e}")
+                    results.append(f"Error: {str(e)}")
+            return results
+        elif hasattr(self.model, 'generate'):
+            # Standard generation
+            results = []
+            for prompt in prompts:
+                try:
+                    response = self.model.generate(
+                        prompt, 
+                        max_new_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p
+                    )
+                    results.append(response)
+                except Exception as e:
+                    logger.error(f"Sub-batch inference failed: {e}")
+                    results.append(f"Error: {str(e)}")
+            return results
+        else:
+            # No generation capability
+            return [f"No generation method (max_tokens={max_tokens})" for _ in prompts]
 
 if __name__ == "__main__":
     # Basic test of batch manager functionality

@@ -36,6 +36,88 @@
             border-radius: 0 0 12px 12px;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
         }
+        
+        /* Cost estimation modal */
+        .cost-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .cost-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+        }
+        
+        .cost-breakdown {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+        
+        .cost-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .cost-total {
+            border-top: 2px solid #e2e8f0;
+            padding-top: 10px;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        .limits-info {
+            background: #e0f2fe;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        
+        .challenge-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1001;
+        }
+        
+        .challenge-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        
+        .challenge-input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+            font-size: 18px;
+        }
         .message {
             margin-bottom: 20px;
             padding: 15px;
@@ -135,6 +217,38 @@
         </div>
     </div>
 
+    <!-- Cost Confirmation Modal -->
+    <div class="cost-modal" id="costModal">
+        <div class="cost-modal-content">
+            <h3>💰 Request Cost Estimate</h3>
+            <div class="cost-breakdown" id="costBreakdown">
+                <!-- Cost details will be populated here -->
+            </div>
+            <div class="limits-info" id="limitsInfo">
+                <!-- User limits info will be populated here -->
+            </div>
+            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="closeCostModal()">Cancel</button>
+                <button class="btn btn-primary" id="proceedButton" onclick="proceedWithRequest()">Proceed</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Challenge Modal -->
+    <div class="challenge-modal" id="challengeModal">
+        <div class="challenge-content">
+            <h3 id="challengeTitle">🔒 Security Challenge</h3>
+            <p id="challengeDescription">Please complete this challenge to continue.</p>
+            <div id="challengeInput">
+                <!-- Challenge-specific input will be populated here -->
+            </div>
+            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="closeChallengeModal()">Cancel</button>
+                <button class="btn btn-primary" id="submitChallenge" onclick="submitChallenge()">Submit</button>
+            </div>
+        </div>
+    </div>
+
     <script src="config.js"></script>
     <script src="common-header.js"></script>
     <script>
@@ -159,61 +273,11 @@
                 const message = chatInput.value.trim();
                 if (!message) return;
 
-                // Add user message
-                addMessage('user', message);
-                chatInput.value = '';
+                // Store the message for later use
+                window.pendingMessage = message;
                 
-                // Show typing indicator
-                showTyping(true);
-                
-                try {
-                    // Check if user has any active nodes
-                    const savedNode = localStorage.getItem('blyan-node');
-                    let hasActiveNode = false;
-                    
-                    if (savedNode) {
-                        try {
-                            const nodeData = JSON.parse(savedNode);
-                            // Check if node still exists
-                            const nodesResponse = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
-                            if (nodesResponse.ok) {
-                                const nodesData = await nodesResponse.json();
-                                hasActiveNode = nodesData.nodes.some(n => n.node_id === nodeData.nodeId);
-                            }
-                        } catch (e) {
-                            console.error('Node check failed:', e);
-                        }
-                    }
-                    
-                    if (!hasActiveNode) {
-                        addMessage('ai', '🙅 Sorry, I need at least one active node to process your request. Please start a node from the "Join Network" page first.');
-                        return;
-                    }
-                    
-                    const response = await fetch(`${API_CONFIG.baseURL}/chat`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            prompt: message,
-                            use_moe: true,
-                            top_k_experts: 2
-                        })
-                    });
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        addMessage('ai', data.response);
-                    } else {
-                        addMessage('ai', 'Sorry, I encountered an error. Please try again.');
-                    }
-                } catch (error) {
-                    console.error('Chat error:', error);
-                    addMessage('ai', 'Sorry, I\'m having trouble connecting to the network. Please try again later.');
-                } finally {
-                    showTyping(false);
-                }
+                // Show cost estimation first
+                await showCostEstimation(message);
             });
 
             function addMessage(sender, content, saveToHistory = true) {
@@ -286,6 +350,337 @@
             // Auto-focus input
             chatInput.focus();
         });
+
+        // Cost estimation and abuse prevention functions
+        let currentQuote = null;
+        let pendingChallenge = null;
+
+        async function showCostEstimation(message) {
+            const modal = document.getElementById('costModal');
+            const breakdownDiv = document.getElementById('costBreakdown');
+            const limitsDiv = document.getElementById('limitsInfo');
+            
+            try {
+                // Estimate tokens (simple word-based estimation)
+                const inputTokens = Math.ceil(message.split(' ').length * 1.3);
+                const outputTokensEst = 150; // Conservative estimate
+                
+                // Get cost quote
+                const quoteResponse = await fetch(`${API_CONFIG.baseURL}/economy/quote_chat?input_tokens=${inputTokens}&output_tokens_est=${outputTokensEst}&expert_quality=standard`, {
+                    headers: getUserHeaders()
+                });
+                
+                if (quoteResponse.ok) {
+                    currentQuote = await quoteResponse.json();
+                    
+                    // Get user limits
+                    const userAddress = getUserAddress();
+                    let userLimits = null;
+                    
+                    if (userAddress) {
+                        try {
+                            const limitsResponse = await fetch(`${API_CONFIG.baseURL}/leaderboard/me/summary?address=${userAddress}`);
+                            if (limitsResponse.ok) {
+                                userLimits = await limitsResponse.json();
+                            }
+                        } catch (e) {
+                            // User limits not available - new user
+                        }
+                    }
+                    
+                    // Populate cost breakdown
+                    breakdownDiv.innerHTML = `
+                        <h4>💎 Cost Breakdown</h4>
+                        <div class="cost-item">
+                            <span>Input tokens (${currentQuote.breakdown.input_tokens})</span>
+                            <span>${currentQuote.breakdown.input_cost} BLY</span>
+                        </div>
+                        <div class="cost-item">
+                            <span>Output tokens (~${currentQuote.breakdown.output_tokens_est})</span>
+                            <span>${currentQuote.breakdown.output_cost} BLY</span>
+                        </div>
+                        ${currentQuote.breakdown.user_discount ? `
+                        <div class="cost-item">
+                            <span>🎁 Trust discount</span>
+                            <span>-${((1 - parseFloat(currentQuote.breakdown.user_discount)) * 100).toFixed(1)}%</span>
+                        </div>` : ''}
+                        <div class="cost-item cost-total">
+                            <span>Total Cost</span>
+                            <span>${currentQuote.total_cost} BLY</span>
+                        </div>
+                    `;
+                    
+                    // Populate limits info
+                    if (userLimits && (userLimits.free_requests_remaining > 0 || userLimits.bonus_requests_available > 0)) {
+                        limitsDiv.innerHTML = `
+                            <h4>🎫 Your Free Tier Status</h4>
+                            <p><strong>Free requests remaining:</strong> ${userLimits.free_requests_remaining}</p>
+                            <p><strong>Bonus requests:</strong> ${userLimits.bonus_requests_available}</p>
+                            <p><strong>Trust level:</strong> ${userLimits.trust_level}</p>
+                            <p style="color: #10b981; font-weight: bold;">✅ This request will use your free tier!</p>
+                        `;
+                    } else if (userLimits) {
+                        limitsDiv.innerHTML = `
+                            <h4>💳 Payment Required</h4>
+                            <p><strong>Your balance:</strong> ${userLimits.balance} BLY</p>
+                            <p><strong>Free requests:</strong> ${userLimits.free_requests_remaining} remaining</p>
+                            <p style="color: #f59e0b;">⚠️ This request will be charged to your balance.</p>
+                        `;
+                    } else {
+                        limitsDiv.innerHTML = `
+                            <h4>🆕 New User</h4>
+                            <p>You have <strong>5 free requests</strong> as a new user!</p>
+                            <p style="color: #10b981;">✅ This request is free!</p>
+                        `;
+                    }
+                    
+                    modal.style.display = 'flex';
+                } else {
+                    // Handle quote error
+                    const errorData = await quoteResponse.json();
+                    if (quoteResponse.status === 429) {
+                        // Rate limited - might need challenge
+                        if (errorData.challenge_type) {
+                            await handleChallenge(errorData);
+                        } else {
+                            showError(`Rate limit exceeded: ${errorData.reason}`);
+                        }
+                    } else {
+                        showError('Failed to get cost estimate. Please try again.');
+                    }
+                }
+            } catch (error) {
+                console.error('Cost estimation error:', error);
+                showError('Failed to get cost estimate. Please try again.');
+            }
+        }
+
+        async function proceedWithRequest() {
+            const modal = document.getElementById('costModal');
+            modal.style.display = 'none';
+            
+            const message = window.pendingMessage;
+            const chatInput = document.getElementById('chat-input');
+            
+            // Add user message
+            addMessage('user', message);
+            chatInput.value = '';
+            
+            // Show typing indicator
+            showTyping(true);
+            
+            try {
+                const requestBody = {
+                    prompt: message,
+                    use_moe: true,
+                    top_k_experts: 2
+                };
+                
+                // Include quote ID if available
+                if (currentQuote) {
+                    requestBody.quote_id = currentQuote.quote_id;
+                }
+                
+                const response = await fetch(`${API_CONFIG.baseURL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getUserHeaders()
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    addMessage('ai', data.response);
+                } else {
+                    const errorData = await response.json();
+                    
+                    if (response.status === 429 && errorData.challenge_type) {
+                        // Need to complete challenge
+                        await handleChallenge(errorData);
+                    } else if (response.status === 402) {
+                        // Insufficient balance
+                        showError('Insufficient balance. Please add funds to your account.');
+                    } else {
+                        addMessage('ai', `Sorry, I encountered an error: ${errorData.detail || 'Please try again.'}`);
+                    }
+                }
+            } catch (error) {
+                console.error('Chat error:', error);
+                addMessage('ai', 'Sorry, I\'m having trouble connecting to the network. Please try again later.');
+            } finally {
+                showTyping(false);
+                currentQuote = null;
+            }
+        }
+
+        function closeCostModal() {
+            document.getElementById('costModal').style.display = 'none';
+            currentQuote = null;
+        }
+
+        function getUserAddress() {
+            return localStorage.getItem('userAddress') || '0x' + Math.random().toString(16).substr(2, 40);
+        }
+
+        function getUserHeaders() {
+            const userAddress = getUserAddress();
+            return {
+                'X-User-Address': userAddress
+            };
+        }
+
+        function showError(message) {
+            addMessage('ai', `❌ ${message}`);
+        }
+
+        // Challenge handling functions
+        async function handleChallenge(challengeData) {
+            const challengeModal = document.getElementById('challengeModal');
+            const titleEl = document.getElementById('challengeTitle');
+            const descEl = document.getElementById('challengeDescription');
+            const inputEl = document.getElementById('challengeInput');
+            
+            pendingChallenge = challengeData;
+            
+            if (challengeData.challenge_type === 'captcha') {
+                titleEl.textContent = '🔒 CAPTCHA Challenge';
+                descEl.textContent = challengeData.question || 'Please solve this CAPTCHA to continue.';
+                inputEl.innerHTML = '<input type="text" class="challenge-input" placeholder="Enter your answer" id="challengeAnswer">';
+            } else if (challengeData.challenge_type === 'proof_of_work') {
+                titleEl.textContent = '⚡ Proof of Work Challenge';
+                descEl.textContent = challengeData.description || 'Computing proof of work...';
+                inputEl.innerHTML = '<div style="text-align: center;"><div style="margin: 15px 0;">Computing solution...</div><div id="powProgress" style="width: 100%; background: #e2e8f0; height: 6px; border-radius: 3px;"><div style="width: 0%; height: 100%; background: #4f46e5; border-radius: 3px; transition: width 0.3s;"></div></div></div>';
+                
+                // Start computing proof of work
+                setTimeout(() => computeProofOfWork(challengeData), 100);
+                return; // Don't show modal yet for PoW
+            } else if (challengeData.challenge_type === 'rate_delay') {
+                titleEl.textContent = '⏰ Rate Limit';
+                descEl.textContent = `Please wait ${challengeData.retry_after} seconds before trying again.`;
+                inputEl.innerHTML = '<div style="text-align: center; color: #f59e0b;">Request rate limit exceeded</div>';
+                
+                // Auto-close after delay
+                setTimeout(() => {
+                    closeChallengeModal();
+                }, challengeData.retry_after * 1000);
+            }
+            
+            challengeModal.style.display = 'flex';
+        }
+
+        async function submitChallenge() {
+            if (!pendingChallenge) return;
+            
+            const answerInput = document.getElementById('challengeAnswer');
+            if (!answerInput) return;
+            
+            const answer = answerInput.value.trim();
+            if (!answer) return;
+            
+            try {
+                const response = await fetch('/abuse_prevention/verify_challenge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getUserHeaders()
+                    },
+                    body: JSON.stringify({
+                        challenge_id: pendingChallenge.challenge_id,
+                        challenge_type: pendingChallenge.challenge_type,
+                        response: answer
+                    })
+                });
+                
+                if (response.ok) {
+                    closeChallengeModal();
+                    // Retry original request
+                    await proceedWithRequest();
+                } else {
+                    const errorData = await response.json();
+                    showError(errorData.detail || 'Challenge verification failed');
+                    closeChallengeModal();
+                }
+            } catch (error) {
+                console.error('Challenge submission error:', error);
+                showError('Failed to verify challenge');
+                closeChallengeModal();
+            }
+        }
+
+        function closeChallengeModal() {
+            document.getElementById('challengeModal').style.display = 'none';
+            pendingChallenge = null;
+        }
+
+        async function computeProofOfWork(challengeData) {
+            // Simple proof of work computation (for demo)
+            const data = challengeData.data;
+            const difficulty = challengeData.difficulty;
+            const target = '0'.repeat(difficulty);
+            
+            let nonce = 0;
+            let found = false;
+            
+            while (!found && nonce < 1000000) { // Limit iterations
+                const hash = await crypto.subtle.digest('SHA-256', 
+                    new TextEncoder().encode(data + nonce.toString())
+                );
+                const hashHex = Array.from(new Uint8Array(hash))
+                    .map(b => b.toString(16).padStart(2, '0'))
+                    .join('');
+                
+                if (hashHex.startsWith(target)) {
+                    found = true;
+                    
+                    // Auto-submit PoW solution
+                    try {
+                        const response = await fetch('/abuse_prevention/verify_challenge', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...getUserHeaders()
+                            },
+                            body: JSON.stringify({
+                                challenge_id: challengeData.challenge_id,
+                                challenge_type: 'proof_of_work',
+                                response: nonce.toString()
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            await proceedWithRequest(); // Retry original request
+                        } else {
+                            showError('Proof of work verification failed');
+                        }
+                    } catch (error) {
+                        console.error('PoW submission error:', error);
+                        showError('Failed to submit proof of work');
+                    }
+                } else {
+                    nonce++;
+                    
+                    // Update progress (every 1000 iterations)
+                    if (nonce % 1000 === 0) {
+                        const progress = Math.min(100, (nonce / 10000) * 100);
+                        const progressBar = document.querySelector('#powProgress > div');
+                        if (progressBar) {
+                            progressBar.style.width = `${progress}%`;
+                        }
+                    }
+                }
+            }
+            
+            if (!found) {
+                showError('Proof of work computation timed out');
+            }
+        }
+
+        // Auto-generate user address for demo
+        if (!localStorage.getItem('userAddress')) {
+            localStorage.setItem('userAddress', '0x' + Math.random().toString(16).substr(2, 40));
+        }
     </script>
 </body>
 </html>

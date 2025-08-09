@@ -4,10 +4,15 @@ Economy API endpoints for Blyan Network
 Provides token supply, distribution, and leaderboard data
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from decimal import Decimal
 import logging
+import time
+import redis
+import json
+import secrets
 
 from backend.core.reward_engine import get_reward_engine
 from backend.core.chain import Chain
@@ -16,13 +21,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/economy", tags=["economy"])
 
+# Redis for quote caching and TTL management
+redis_client = redis.Redis(host='localhost', port=6379, db=4, decode_responses=True)
+
 # Foundation wallet address (would be from config in production)
 FOUNDATION_ADDRESS = "0xABC123DEF456789...foundation.blyan"
 
 @router.get("/supply")
 async def get_token_supply() -> Dict[str, Any]:
     """
-    Get current token supply information.
+    Get current token supply information with ledger integration.
     
     Returns:
         - total: Total supply cap (1B BLY)
@@ -41,7 +49,16 @@ async def get_token_supply() -> Dict[str, Any]:
         total_cap = 1_000_000_000
         genesis_supply = 100_000_000
         minted = stats["inflation"]["minted_total"]
-        burned = 0  # Track burns when implemented
+        
+        # Get burned amount from ledger
+        burned = 0
+        try:
+            from backend.accounting.ledger import get_ledger
+            ledger = get_ledger()
+            burned = float(ledger.get_balance("burned_tokens"))
+        except Exception as e:
+            logger.warning(f"Could not get burn amount from ledger: {e}")
+            burned = 0
         
         # Vesting calculations (simplified)
         current_time = datetime.now()
@@ -215,6 +232,293 @@ async def get_leaderboard(
     except Exception as e:
         logger.error(f"Failed to get leaderboard: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Token cost calculation constants
+BASE_COST_PER_INPUT_TOKEN = Decimal("0.001")   # 0.001 BLY per input token
+BASE_COST_PER_OUTPUT_TOKEN = Decimal("0.002")  # 0.002 BLY per output token
+DYNAMIC_MULTIPLIER_MIN = Decimal("0.5")        # 50% minimum during low demand
+DYNAMIC_MULTIPLIER_MAX = Decimal("3.0")        # 300% maximum during high demand
+
+@router.get("/quote_chat")
+async def get_chat_quote(
+    input_tokens: int = Query(..., ge=1, le=32000, description="Estimated input tokens"),
+    output_tokens_est: int = Query(100, ge=1, le=4000, description="Estimated output tokens"),
+    expert_quality: str = Query("standard", regex="^(basic|standard|premium)$"),
+    request: Request = None
+) -> Dict[str, Any]:
+    """
+    Get cost estimate for chat request with TTL guarantee.
+    
+    ### Cost Factors ###
+    - Input token count
+    - Estimated output tokens
+    - Expert quality tier (basic/standard/premium)
+    - Current network demand (dynamic pricing)
+    - User trust level (potential discounts)
+    
+    ### Quote Validity ###
+    - Valid for 5 minutes from generation
+    - Price guaranteed within validity period
+    - Dynamic pricing adjusts based on load
+    
+    Args:
+        input_tokens: Number of input tokens in prompt
+        output_tokens_est: Estimated output tokens
+        expert_quality: Quality tier of experts to use
+        
+    Returns:
+        Quote with cost, validity period, and pricing breakdown
+    """
+    try:
+        # Generate unique quote ID
+        quote_id = f"quote_{secrets.token_hex(8)}_{int(time.time())}"
+        
+        # Calculate base costs
+        input_cost = Decimal(str(input_tokens)) * BASE_COST_PER_INPUT_TOKEN
+        output_cost = Decimal(str(output_tokens_est)) * BASE_COST_PER_OUTPUT_TOKEN
+        base_total = input_cost + output_cost
+        
+        # Expert quality multiplier
+        quality_multipliers = {
+            "basic": Decimal("0.7"),      # 30% discount for basic experts
+            "standard": Decimal("1.0"),   # Standard pricing
+            "premium": Decimal("1.5")     # 50% premium for best experts
+        }
+        quality_multiplier = quality_multipliers[expert_quality]
+        
+        # Dynamic pricing based on current load
+        network_load = get_current_network_load()
+        demand_multiplier = calculate_demand_multiplier(network_load)
+        
+        # User-specific discounts (if authenticated)
+        user_discount = Decimal("1.0")
+        user_address = None
+        
+        if request:
+            # Try to get user from API key or headers
+            user_address = request.headers.get("X-User-Address")
+            if user_address:
+                user_discount = calculate_user_discount(user_address)
+        
+        # Final cost calculation
+        total_cost = base_total * quality_multiplier * demand_multiplier * user_discount
+        
+        # Round to 4 decimal places
+        total_cost = total_cost.quantize(Decimal('0.0001'))
+        
+        # Quote validity (5 minutes)
+        quote_expires = time.time() + 300
+        
+        # Store quote in Redis with TTL
+        quote_data = {
+            "quote_id": quote_id,
+            "input_tokens": input_tokens,
+            "output_tokens_est": output_tokens_est,
+            "expert_quality": expert_quality,
+            "base_cost": str(base_total),
+            "quality_multiplier": str(quality_multiplier),
+            "demand_multiplier": str(demand_multiplier),
+            "user_discount": str(user_discount),
+            "total_cost": str(total_cost),
+            "user_address": user_address,
+            "created_at": time.time(),
+            "expires_at": quote_expires
+        }
+        
+        redis_client.setex(f"quote:{quote_id}", 300, json.dumps(quote_data))
+        
+        # Prepare response
+        quote_response = {
+            "quote_id": quote_id,
+            "total_cost": str(total_cost),
+            "currency": "BLY",
+            "expires_at": quote_expires,
+            "expires_in_seconds": 300,
+            "breakdown": {
+                "input_tokens": input_tokens,
+                "output_tokens_est": output_tokens_est,
+                "input_cost": str(input_cost),
+                "output_cost": str(output_cost),
+                "base_total": str(base_total),
+                "expert_quality": expert_quality,
+                "quality_multiplier": str(quality_multiplier),
+                "network_load": f"{network_load:.1%}",
+                "demand_multiplier": str(demand_multiplier),
+                "user_discount": str(user_discount) if user_discount < 1 else None
+            },
+            "pricing_info": {
+                "input_token_rate": str(BASE_COST_PER_INPUT_TOKEN),
+                "output_token_rate": str(BASE_COST_PER_OUTPUT_TOKEN),
+                "dynamic_pricing_active": demand_multiplier != 1,
+                "user_discounts_applied": user_discount < 1
+            }
+        }
+        
+        logger.info(f"Generated quote {quote_id}: {total_cost} BLY for {input_tokens}+{output_tokens_est} tokens")
+        
+        return quote_response
+        
+    except Exception as e:
+        logger.error(f"Failed to generate chat quote: {e}")
+        raise HTTPException(status_code=500, detail=f"Quote generation failed: {str(e)}")
+
+@router.get("/quote/{quote_id}")
+async def get_quote_details(quote_id: str) -> Dict[str, Any]:
+    """
+    Get details of a previously generated quote.
+    Used to verify quote validity during chat request.
+    
+    Args:
+        quote_id: Quote identifier from previous quote_chat call
+        
+    Returns:
+        Quote details if valid, 404 if expired or not found
+    """
+    quote_key = f"quote:{quote_id}"
+    quote_data = redis_client.get(quote_key)
+    
+    if not quote_data:
+        raise HTTPException(404, "Quote not found or expired")
+    
+    try:
+        quote = json.loads(quote_data)
+        
+        # Check if still valid
+        if time.time() > quote["expires_at"]:
+            redis_client.delete(quote_key)
+            raise HTTPException(404, "Quote has expired")
+        
+        return {
+            "quote_id": quote_id,
+            "total_cost": quote["total_cost"],
+            "expires_at": quote["expires_at"],
+            "time_remaining": quote["expires_at"] - time.time(),
+            "breakdown": {
+                "input_tokens": quote["input_tokens"],
+                "output_tokens_est": quote["output_tokens_est"], 
+                "expert_quality": quote["expert_quality"],
+                "total_cost": quote["total_cost"]
+            }
+        }
+        
+    except json.JSONDecodeError:
+        logger.error(f"Invalid quote data for {quote_id}")
+        raise HTTPException(500, "Quote data corrupted")
+
+def get_current_network_load() -> float:
+    """Get current network load percentage (0.0 to 1.0)."""
+    # In production, this would check:
+    # - Active inference requests in queue
+    # - Node availability and response times
+    # - System resource usage
+    
+    # Mock implementation - in production query actual metrics
+    try:
+        from backend.p2p.node_reputation import get_reputation_manager
+        
+        reputation_manager = get_reputation_manager()
+        metrics = reputation_manager.get_metrics_summary()
+        
+        # Calculate load based on average response times
+        response_times = []
+        for node_metrics in metrics.values():
+            avg_time_str = node_metrics.get("avg_response_time", "1.0s")
+            avg_time = float(avg_time_str.rstrip('s'))
+            response_times.append(avg_time)
+        
+        if response_times:
+            avg_response_time = sum(response_times) / len(response_times)
+            # Map response time to load (0.5s = 0% load, 2.0s = 100% load)
+            load = min(1.0, max(0.0, (avg_response_time - 0.5) / 1.5))
+        else:
+            load = 0.3  # Default moderate load
+            
+        return load
+        
+    except Exception as e:
+        logger.warning(f"Failed to get network load: {e}")
+        return 0.3  # Default to moderate load
+
+def calculate_demand_multiplier(network_load: float) -> Decimal:
+    """Calculate pricing multiplier based on network demand."""
+    if network_load <= 0.3:
+        # Low demand - discount pricing
+        multiplier = DYNAMIC_MULTIPLIER_MIN + (Decimal(str(network_load)) / Decimal("0.3")) * (Decimal("1.0") - DYNAMIC_MULTIPLIER_MIN)
+    elif network_load <= 0.7:
+        # Normal demand - standard pricing
+        multiplier = Decimal("1.0")
+    else:
+        # High demand - premium pricing
+        excess_load = Decimal(str(network_load)) - Decimal("0.7")
+        multiplier = Decimal("1.0") + (excess_load / Decimal("0.3")) * (DYNAMIC_MULTIPLIER_MAX - Decimal("1.0"))
+    
+    return multiplier
+
+def calculate_user_discount(user_address: str) -> Decimal:
+    """Calculate discount multiplier for user based on trust/contribution."""
+    try:
+        # Get user trust level and contribution score
+        user_limits_key = f"user_limits:{user_address}"
+        user_data = redis_client.hgetall(user_limits_key)
+        
+        trust_level = int(user_data.get("trust_level", 1))
+        contribution_score = float(user_data.get("contribution_score", 0))
+        
+        # Trust level discount (5% per level above 1)
+        trust_discount = max(0, (trust_level - 1) * 0.05)
+        
+        # Contribution score discount (up to 20% for high contributors)
+        contrib_discount = min(0.2, contribution_score / 10000 * 0.2)
+        
+        # Combined discount (but not more than 30% total)
+        total_discount = min(0.3, trust_discount + contrib_discount)
+        
+        return Decimal("1.0") - Decimal(str(total_discount))
+        
+    except Exception as e:
+        logger.warning(f"Failed to calculate user discount for {user_address}: {e}")
+        return Decimal("1.0")
+
+@router.get("/ledger/balance/{address}")
+async def get_user_ledger_balance(address: str) -> Dict[str, Any]:
+    """
+    Get user's BLY balance from ledger.
+    """
+    try:
+        from backend.accounting.ledger import get_ledger
+        ledger = get_ledger()
+        
+        balance = ledger.get_user_balance(address)
+        
+        return {
+            "address": address,
+            "balance": float(balance),
+            "currency": "BLY",
+            "last_updated": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get ledger balance: {e}")
+        return {
+            "address": address,
+            "balance": 0,
+            "currency": "BLY",
+            "error": str(e)
+        }
+
+@router.get("/ledger/trial_balance")
+async def get_trial_balance() -> Dict[str, Any]:
+    """
+    Get trial balance from ledger for accounting verification.
+    """
+    try:
+        from backend.accounting.ledger import get_ledger
+        ledger = get_ledger()
+        
+        return ledger.export_trial_balance()
+    except Exception as e:
+        logger.error(f"Failed to get trial balance: {e}")
+        raise HTTPException(500, str(e))
 
 @router.get("/rewards/calculate")
 async def calculate_reward(

@@ -41,7 +41,7 @@ class APIKeyManager:
         self.keys_db: Dict[str, APIKeyInfo] = {}
         self.key_hash_to_id: Dict[str, str] = {}  # For fast lookups
         
-        # Permission levels
+        # Permission levels with sensitive endpoints restricted
         self.permission_sets = {
             "basic": {
                 "/chat", "/chain/*/blocks", "/health", "/status", 
@@ -49,13 +49,26 @@ class APIKeyManager:
             },
             "contributor": {
                 "/upload_moe_experts", "/datasets/upload", "/auth/pol_challenge",
-                "/experts/stats/*", "/experts/top"
+                "/experts/stats/*", "/experts/top", "/voting/create", "/voting/vote"
             },
             "node_operator": {
                 "/p2p/register", "/p2p/heartbeat/*", "/p2p/nodes", 
-                "/chat/distributed", "/chat/distributed_optimized"
+                "/chat/distributed", "/chat/distributed_optimized", 
+                "/chat/distributed_secure", "/p2p/register_optimized"
+            },
+            "financial": {
+                "/economy/*", "/payment/*", "/wallet/*", "/ledger/*",
+                "/rewards/*", "/balance/*"
             },
             "admin": {"*"}  # All endpoints
+        }
+        
+        # Rate limits per tier (requests per minute)
+        self.rate_limits = {
+            "basic": 60,      # 1 req/sec
+            "premium": 300,   # 5 req/sec
+            "enterprise": 1000,  # ~16 req/sec
+            "unlimited": float('inf')
         }
         
         self._load_keys_db()
@@ -233,13 +246,22 @@ class ProductionSecurityMiddleware:
         
         # Public endpoints that don't require authentication
         self.public_endpoints = {
-            "/health", "/status", "/", "/docs", "/openapi.json",
+            "/health", "/status", "/", "/docs", "/openapi.json", "/redoc",
             "/chain/A/blocks", "/chain/B/blocks",  # Read-only blockchain data
-            "/genesis/hash"  # Genesis verification
+            # "/genesis/hash"  # Genesis verification should require auth in production
         }
+        
+        # Sensitive endpoints requiring enhanced security
+        self.sensitive_endpoints = {
+            "/wallet/", "/economy/", "/payment/", "/rewards/",
+            "/voting/", "/admin/", "/keys/", "/security/"
+        }
+        
+        # Rate limit tracking
+        self.request_counts = {}  # {api_key_id: {minute: count}}
     
     async def __call__(self, request: Request, call_next):
-        """Main middleware function."""
+        """Main middleware function with enhanced security."""
         # 1. HTTPS enforcement in production
         if self.environment == "production" and request.url.scheme != "https":
             https_url = str(request.url).replace("http://", "https://", 1)
@@ -248,11 +270,17 @@ class ProductionSecurityMiddleware:
         # 2. Check if endpoint requires authentication
         endpoint = request.url.path
         requires_auth = not any(
-            endpoint == public or endpoint.startswith(public.rstrip("*"))
+            endpoint == public or (public.endswith("*") and endpoint.startswith(public.rstrip("*")))
             for public in self.public_endpoints
         )
         
-        # 3. API key validation for protected endpoints
+        # 3. Check if this is a sensitive endpoint
+        is_sensitive = any(
+            endpoint.startswith(sensitive)
+            for sensitive in self.sensitive_endpoints
+        )
+        
+        # 4. API key validation for protected endpoints
         if requires_auth:
             api_key = self._extract_api_key(request)
             if not api_key:
@@ -286,6 +314,27 @@ class ProductionSecurityMiddleware:
                     }
                 )
             
+            # Enhanced validation for sensitive endpoints
+            if is_sensitive:
+                # Check for financial permissions on financial endpoints
+                if endpoint.startswith(("/wallet/", "/economy/", "/payment/", "/rewards/")):
+                    if "financial" not in key_info.permissions and "*" not in key_info.permissions:
+                        return JSONResponse(
+                            status_code=403,
+                            content={"error": "Financial permissions required for this endpoint"}
+                        )
+                
+                # Rate limiting for sensitive endpoints
+                if not self._check_rate_limit(key_info):
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "error": "Rate limit exceeded",
+                            "rate_limit": self.rate_limits.get(key_info.rate_limit_tier, 60),
+                            "retry_after": 60  # seconds
+                        }
+                    )
+            
             # Add key info to request state for downstream use
             request.state.api_key_info = key_info
         
@@ -311,6 +360,33 @@ class ProductionSecurityMiddleware:
             return auth_header[7:]  # Remove "Bearer " prefix
         
         return None
+    
+    def _check_rate_limit(self, key_info: APIKeyInfo) -> bool:
+        """Check if request is within rate limit."""
+        current_minute = int(time.time() / 60)
+        key_id = key_info.key_id
+        
+        # Initialize tracking for this key
+        if key_id not in self.request_counts:
+            self.request_counts[key_id] = {}
+        
+        # Clean old entries (keep only last 2 minutes)
+        self.request_counts[key_id] = {
+            minute: count 
+            for minute, count in self.request_counts[key_id].items()
+            if minute >= current_minute - 1
+        }
+        
+        # Count requests in current minute
+        current_count = self.request_counts[key_id].get(current_minute, 0)
+        rate_limit = self.rate_limits.get(key_info.rate_limit_tier, 60)
+        
+        if current_count >= rate_limit:
+            return False
+        
+        # Increment counter
+        self.request_counts[key_id][current_minute] = current_count + 1
+        return True
 
 
 # Global instances
@@ -355,6 +431,19 @@ class APIKeyGenerator:
             name=name,
             permissions=permissions,
             rate_limit_tier="enterprise"
+        )
+    
+    @staticmethod
+    def create_financial_key(name: str) -> str:
+        """Create financial operations API key."""
+        permissions = (
+            api_key_manager.permission_sets["basic"] |
+            api_key_manager.permission_sets["financial"]
+        )
+        return api_key_manager.create_api_key(
+            name=name,
+            permissions=permissions,
+            rate_limit_tier="premium"
         )
     
     @staticmethod

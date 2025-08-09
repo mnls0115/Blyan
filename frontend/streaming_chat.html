@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Chat - Blyan Network</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .chat-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .chat-header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+        }
+        
+        .connection-status {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+            background: #10b981;
+        }
+        
+        .status-indicator.disconnected {
+            background: #ef4444;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+        
+        .message {
+            margin-bottom: 20px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message.user {
+            text-align: right;
+        }
+        
+        .message-content {
+            display: inline-block;
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+        
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .message.ai .message-content {
+            background: white;
+            color: #333;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .message.ai.streaming .message-content::after {
+            content: '▋';
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+        
+        .cost-indicator {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(102, 126, 234, 0.1);
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            color: #667eea;
+            font-weight: 500;
+        }
+        
+        .streaming-metrics {
+            background: white;
+            padding: 15px 20px;
+            border-top: 1px solid #e5e7eb;
+            display: none;
+        }
+        
+        .streaming-metrics.active {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .metric {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .metric-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .metric-label {
+            font-size: 0.75rem;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-top: 2px;
+        }
+        
+        .progress-bar {
+            flex: 1;
+            height: 4px;
+            background: #e5e7eb;
+            border-radius: 2px;
+            margin: 0 20px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chat-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 25px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        .chat-input:focus {
+            border-color: #667eea;
+        }
+        
+        .send-button, .cancel-button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .send-button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .send-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .cancel-button {
+            background: #ef4444;
+            color: white;
+            display: none;
+        }
+        
+        .cancel-button.active {
+            display: block;
+        }
+        
+        .connection-type {
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        .connection-type button {
+            padding: 8px 16px;
+            margin: 0 5px;
+            border: 1px solid #e5e7eb;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .connection-type button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>⚡ Streaming Chat</h1>
+            <p>Real-time token streaming with cost tracking</p>
+            <div class="connection-status">
+                <span class="status-indicator"></span>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div class="message ai">
+                <div class="message-content">
+                    Welcome to Blyan's streaming chat! I provide real-time responses with transparent cost tracking.
+                </div>
+            </div>
+        </div>
+        
+        <div class="streaming-metrics" id="streamingMetrics">
+            <div class="metric">
+                <div class="metric-value" id="tokenCount">0</div>
+                <div class="metric-label">Tokens</div>
+            </div>
+            
+            <div class="metric">
+                <div class="metric-value" id="tokenSpeed">0</div>
+                <div class="metric-label">Tokens/sec</div>
+            </div>
+            
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            
+            <div class="metric">
+                <div class="metric-value" id="currentCost">0.000</div>
+                <div class="metric-label">BLY Cost</div>
+            </div>
+        </div>
+        
+        <div class="chat-input-container">
+            <div class="input-wrapper">
+                <input 
+                    type="text" 
+                    class="chat-input" 
+                    id="chatInput" 
+                    placeholder="Type your message..."
+                    onkeypress="if(event.key === 'Enter') sendMessage()"
+                >
+                <button class="cancel-button" id="cancelButton" onclick="cancelStream()">
+                    Cancel
+                </button>
+                <button class="send-button" id="sendButton" onclick="sendMessage()">
+                    Send
+                </button>
+            </div>
+            
+            <div class="connection-type">
+                <button id="sseBtn" class="active" onclick="switchConnectionType('sse')">SSE</button>
+                <button id="wsBtn" onclick="switchConnectionType('websocket')">WebSocket</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:8000';
+        let connectionType = 'sse';
+        let eventSource = null;
+        let websocket = null;
+        let currentStreamId = null;
+        let isStreaming = false;
+        let currentMessageElement = null;
+        let accumulatedTokens = '';
+        
+        // Get user address (mock for demo)
+        const userAddress = localStorage.getItem('userAddress') || '0x' + Math.random().toString(16).substr(2, 40);
+        localStorage.setItem('userAddress', userAddress);
+        
+        function switchConnectionType(type) {
+            connectionType = type;
+            
+            // Update UI
+            document.getElementById('sseBtn').classList.toggle('active', type === 'sse');
+            document.getElementById('wsBtn').classList.toggle('active', type === 'websocket');
+            
+            // Close existing connections
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+            
+            // Connect WebSocket if selected
+            if (type === 'websocket') {
+                connectWebSocket();
+            }
+            
+            updateConnectionStatus(type === 'websocket' && websocket ? 'connected' : 'ready');
+        }
+        
+        function connectWebSocket() {
+            const wsUrl = `ws://localhost:8000/ws/chat?token=${userAddress}`;
+            websocket = new WebSocket(wsUrl);
+            
+            websocket.onopen = () => {
+                console.log('WebSocket connected');
+                updateConnectionStatus('connected');
+            };
+            
+            websocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleStreamData(data);
+            };
+            
+            websocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateConnectionStatus('error');
+            };
+            
+            websocket.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateConnectionStatus('disconnected');
+                websocket = null;
+            };
+        }
+        
+        function updateConnectionStatus(status) {
+            const statusText = document.getElementById('statusText');
+            const indicator = document.querySelector('.status-indicator');
+            
+            switch(status) {
+                case 'connected':
+                    statusText.textContent = 'Connected';
+                    indicator.classList.remove('disconnected');
+                    break;
+                case 'disconnected':
+                    statusText.textContent = 'Disconnected';
+                    indicator.classList.add('disconnected');
+                    break;
+                case 'ready':
+                    statusText.textContent = 'Ready';
+                    indicator.classList.remove('disconnected');
+                    break;
+                case 'streaming':
+                    statusText.textContent = 'Streaming...';
+                    indicator.classList.remove('disconnected');
+                    break;
+                case 'error':
+                    statusText.textContent = 'Error';
+                    indicator.classList.add('disconnected');
+                    break;
+            }
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message || isStreaming) return;
+            
+            // Add user message to chat
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Start streaming
+            if (connectionType === 'sse') {
+                streamWithSSE(message);
+            } else {
+                streamWithWebSocket(message);
+            }
+        }
+        
+        function streamWithSSE(message) {
+            isStreaming = true;
+            updateStreamingUI(true);
+            updateConnectionStatus('streaming');
+            
+            // Create AI message element
+            currentMessageElement = addMessage('', 'ai', true);
+            accumulatedTokens = '';
+            
+            // Construct SSE URL
+            const params = new URLSearchParams({
+                prompt: message,
+                max_new_tokens: 100
+            });
+            
+            eventSource = new EventSource(
+                `${API_BASE}/chat/stream?${params}`,
+                {
+                    headers: {
+                        'X-User-Address': userAddress
+                    }
+                }
+            );
+            
+            eventSource.addEventListener('stream_start', (event) => {
+                const data = JSON.parse(event.data);
+                currentStreamId = data.stream_id;
+                console.log('Stream started:', currentStreamId);
+            });
+            
+            eventSource.addEventListener('token', (event) => {
+                const data = JSON.parse(event.data);
+                handleStreamData(data);
+            });
+            
+            eventSource.addEventListener('stream_end', (event) => {
+                const data = JSON.parse(event.data);
+                handleStreamEnd(data);
+            });
+            
+            eventSource.addEventListener('error', (event) => {
+                console.error('SSE error:', event);
+                handleStreamError(event);
+            });
+        }
+        
+        function streamWithWebSocket(message) {
+            if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+                alert('WebSocket not connected. Please wait and try again.');
+                return;
+            }
+            
+            isStreaming = true;
+            updateStreamingUI(true);
+            updateConnectionStatus('streaming');
+            
+            // Create AI message element
+            currentMessageElement = addMessage('', 'ai', true);
+            accumulatedTokens = '';
+            
+            // Send chat message
+            websocket.send(JSON.stringify({
+                type: 'chat',
+                prompt: message,
+                max_tokens: 100
+            }));
+        }
+        
+        function handleStreamData(data) {
+            if (data.type === 'token') {
+                // Append token to message
+                accumulatedTokens += data.token;
+                if (currentMessageElement) {
+                    currentMessageElement.textContent = accumulatedTokens;
+                }
+                
+                // Update metrics
+                updateMetrics(
+                    data.token_number,
+                    data.tokens_per_second,
+                    data.cumulative_cost
+                );
+            } else if (data.type === 'stream_end') {
+                handleStreamEnd(data);
+            } else if (data.type === 'error') {
+                handleStreamError(data);
+            }
+        }
+        
+        function handleStreamEnd(data) {
+            console.log('Stream ended:', data);
+            
+            // Remove streaming indicator
+            if (currentMessageElement) {
+                currentMessageElement.parentElement.classList.remove('streaming');
+            }
+            
+            // Final metrics update
+            if (data.total_tokens && data.total_cost) {
+                updateMetrics(
+                    data.total_tokens,
+                    data.tokens_per_second,
+                    data.total_cost
+                );
+            }
+            
+            // Cleanup
+            cleanupStream();
+        }
+        
+        function handleStreamError(error) {
+            console.error('Stream error:', error);
+            
+            if (currentMessageElement) {
+                currentMessageElement.textContent = 'Error: Failed to generate response';
+                currentMessageElement.parentElement.classList.remove('streaming');
+            }
+            
+            cleanupStream();
+        }
+        
+        function cleanupStream() {
+            isStreaming = false;
+            currentStreamId = null;
+            currentMessageElement = null;
+            accumulatedTokens = '';
+            
+            updateStreamingUI(false);
+            updateConnectionStatus(connectionType === 'websocket' && websocket ? 'connected' : 'ready');
+            
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+        }
+        
+        async function cancelStream() {
+            if (!currentStreamId) return;
+            
+            if (connectionType === 'sse') {
+                // Cancel via API
+                try {
+                    const response = await fetch(`${API_BASE}/chat/stream/cancel`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ stream_id: currentStreamId })
+                    });
+                    
+                    if (response.ok) {
+                        console.log('Stream cancelled');
+                    }
+                } catch (error) {
+                    console.error('Failed to cancel stream:', error);
+                }
+            } else if (websocket) {
+                // Cancel via WebSocket
+                websocket.send(JSON.stringify({
+                    type: 'cancel'
+                }));
+            }
+            
+            cleanupStream();
+        }
+        
+        function addMessage(text, sender, streaming = false) {
+            const messagesContainer = document.getElementById('chatMessages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}${streaming ? ' streaming' : ''}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = text;
+            
+            messageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            return contentDiv;
+        }
+        
+        function updateStreamingUI(active) {
+            const metricsPanel = document.getElementById('streamingMetrics');
+            const sendButton = document.getElementById('sendButton');
+            const cancelButton = document.getElementById('cancelButton');
+            
+            metricsPanel.classList.toggle('active', active);
+            sendButton.disabled = active;
+            cancelButton.classList.toggle('active', active);
+            
+            if (!active) {
+                // Reset metrics after delay
+                setTimeout(() => {
+                    if (!isStreaming) {
+                        document.getElementById('tokenCount').textContent = '0';
+                        document.getElementById('tokenSpeed').textContent = '0';
+                        document.getElementById('currentCost').textContent = '0.000';
+                        document.getElementById('progressFill').style.width = '0%';
+                    }
+                }, 2000);
+            }
+        }
+        
+        function updateMetrics(tokens, speed, cost) {
+            document.getElementById('tokenCount').textContent = tokens || 0;
+            document.getElementById('tokenSpeed').textContent = speed ? speed.toFixed(1) : '0';
+            document.getElementById('currentCost').textContent = 
+                cost ? parseFloat(cost).toFixed(4) : '0.0000';
+            
+            // Update progress bar (assume max 100 tokens)
+            const progress = Math.min(100, (tokens / 100) * 100);
+            document.getElementById('progressFill').style.width = `${progress}%`;
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            updateConnectionStatus('ready');
+        });
+    </script>
+</body>
+</html>

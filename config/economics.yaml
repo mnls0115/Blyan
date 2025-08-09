@@ -1,0 +1,105 @@
+# Blyan Network Economics Configuration
+# Core economic parameters for sustainable token economics
+
+# Token Burn & Distribution
+economy:
+  burn_ratio: 0.50                    # 50% of revenue gets burned
+  pool_ratio: 0.50                    # 50% goes to reward pool
+  
+  # Reward Pool Allocation  
+  pool_allocation:
+    learning: 0.40                    # 40% for learning/training
+    inference: 0.60                   # 60% for inference serving
+    
+  # Budget Controls
+  max_weekly_train_budget: 0.20       # Max 20% of pool per week for training
+  min_demand_ratio: 0.60              # Min 60% revenue/cost ratio to enable training
+  
+  # Alert Thresholds
+  alert_threshold_days: 7             # Alert if deficit for N consecutive days
+  pending_queue_alert: 100            # Alert if > 100 rewards pending
+  
+  # Safety Margins
+  cost_margin: 1.20                  # Add 20% margin to actual costs
+  min_pool_reserve: 10000            # Keep minimum 10k BLY in pool
+
+# Pricing Tiers (per 1K tokens)
+pricing:
+  basic:
+    usd_per_1k: 0.0008               # 10x cheaper than GPT-3.5
+    quality_multiplier: 0.8
+  standard:
+    usd_per_1k: 0.0010
+    quality_multiplier: 1.0
+  premium:
+    usd_per_1k: 0.0015
+    quality_multiplier: 1.2
+
+# Training Cost Scenarios
+training_scenarios:
+  # Initial pretrain (one-time)
+  pretrain:
+    gpt_20b:
+      tokens_B: 300
+      cost_usd: 218571
+      days: 496
+      bly_required: 2622857
+    gpt_120b:
+      tokens_B: 300
+      cost_usd: 1311429
+      days: 532
+      bly_required: 15737143
+      
+  # Regular finetune (common use case)
+  finetune:
+    gpt_20b:
+      dataset_gb: 10
+      epochs: 0.25
+      cost_usd: 152
+      hours: 8.3
+      bly_required: 1821
+    gpt_120b:
+      dataset_gb: 10
+      epochs: 0.25
+      cost_usd: 911
+      hours: 8.9
+      bly_required: 10929
+
+# Minimum Demand Calculations
+sustainability:
+  # For GPT-20B finetune sustainability
+  finetune_20b:
+    daily_cost_usd: 152                # One finetune per day
+    required_daily_revenue_usd: 304    # 2x for pool split
+    required_daily_tokens_M: 304       # 304M tokens @ $0.001/1K
+    required_monthly_tokens_B: 9.1     # 9.1B tokens/month
+    
+  # For GPT-120B finetune sustainability  
+  finetune_120b:
+    daily_cost_usd: 911
+    required_daily_revenue_usd: 1822
+    required_daily_tokens_M: 1822
+    required_monthly_tokens_B: 54.7
+    
+  # Break-even analysis
+  breakeven:
+    daily_finetunes: 10                # Support 10 finetunes/day
+    required_daily_revenue_usd: 3040   # For GPT-20B
+    required_daily_tokens_B: 3.04      # 3B tokens/day
+    monthly_revenue_usd: 91200         # ~$91K/month
+    
+# Dashboard Metrics
+metrics:
+  display:
+    - demand_ratio                     # Revenue/Cost ratio
+    - pending_reward_backlog           # Queue size
+    - burn_rate_daily                  # Daily BLY burned
+    - pool_balance                     # Current pool BLY
+    - training_enabled                 # Training on/off
+    - deficit_days                     # Consecutive deficit days
+    
+  alerts:
+    demand_ratio_min: 0.6
+    pool_balance_min: 10000
+    pending_queue_max: 100
+    deficit_days_max: 7

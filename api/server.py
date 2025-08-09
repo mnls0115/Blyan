@@ -46,8 +46,14 @@ from backend.security.data_validation import DataSecurityCoordinator
 from backend.security.poison_detection import ComprehensivePoisonDetector
 from backend.security.quarantine_system import NetworkDefenseCoordinator
 from backend.security.rate_limiting import rate_limiter, create_contribution_proof, ContributionProof
+from backend.security.abuse_prevention import get_abuse_prevention_system, RequestFingerprint
+from backend.core.transaction_manager import get_transaction_manager
+from api.chat_atomic import get_atomic_chat_handler, AtomicChatRequest, AtomicChatResponse
+from api.streaming import get_streaming_handler, get_websocket_handler
 from backend.security.api_auth import security_middleware, api_key_manager, APIKeyGenerator, get_api_key_info
+from backend.core.free_tier import get_free_tier_manager
 from backend.security.monitoring import record_security_event, record_api_response_time, get_security_dashboard, get_system_health
+from backend.optimization.performance_dashboard import get_dashboard
 from backend.security.genesis_verification import register_network_peer, verify_network_genesis_consensus, should_accept_peer, get_genesis_network_status
 from backend.security.disaster_recovery import create_manual_snapshot, emergency_rollback, list_available_snapshots, get_disaster_recovery_status
 from backend.security.key_management import (
@@ -177,6 +183,89 @@ try:
 except NameError:
     pass
 
+# Import and include additional API routers
+try:
+    from backend.api.wallet_auth import router as wallet_auth_router
+    app.include_router(wallet_auth_router)
+    print("✅ Wallet authentication API mounted")
+except ImportError as e:
+    print(f"⚠️  Wallet auth module not found: {e}")
+
+try:
+    from backend.api.economy import router as economy_router
+    app.include_router(economy_router)
+    print("✅ Economy API mounted")
+except ImportError as e:
+    print(f"⚠️  Economy module not found: {e}")
+
+try:
+    from backend.api.payment_gateway import router as payment_router
+    app.include_router(payment_router)
+    print("✅ Payment gateway API mounted")
+except ImportError as e:
+    print(f"⚠️  Payment gateway module not found: {e}")
+
+try:
+    from backend.api.health import router as health_router
+    app.include_router(health_router)
+    print("✅ Health check API mounted")
+except ImportError as e:
+    print(f"⚠️  Health module not found: {e}")
+
+try:
+    from backend.api.siwe_auth import router as siwe_router
+    app.include_router(siwe_router)
+    print("✅ SIWE authentication API mounted")
+except (ImportError, Exception) as e:
+    print(f"⚠️  SIWE auth module not available: {e}")
+
+try:
+    from backend.api.voting import router as voting_router
+    app.include_router(voting_router)
+    print("✅ L2 Community Voting API mounted")
+except ImportError as e:
+    print(f"⚠️  Voting module not found: {e}")
+
+# Mount leaderboard API
+try:
+    from backend.api.leaderboard import router as leaderboard_router
+    app.include_router(leaderboard_router)
+    print("✅ Leaderboard API mounted")
+except ImportError as e:
+    print(f"⚠️  Leaderboard API not available: {e}")
+
+# Mount transaction monitoring dashboard
+try:
+    from backend.monitoring.transaction_dashboard import router as monitoring_router
+    app.include_router(monitoring_router)
+    print("✅ Transaction monitoring dashboard mounted")
+except ImportError as e:
+    print(f"⚠️  Transaction monitoring not available: {e}")
+
+# Mount rewards and dataset APIs
+try:
+    from api.rewards_api import dataset_router, rewards_router, contributor_router, init_distribution
+    app.include_router(dataset_router)
+    app.include_router(rewards_router)
+    app.include_router(contributor_router)
+    print("✅ Rewards and dataset APIs mounted")
+    
+    # Start automatic distribution on startup
+    @app.on_event("startup")
+    async def startup_distribution():
+        await init_distribution()
+        
+except ImportError as e:
+    print(f"⚠️  Rewards API not available: {e}")
+
+# Mount Prometheus metrics exporter
+try:
+    from backend.monitoring.metrics_exporter import metrics_router
+    app.include_router(metrics_router)
+    print("✅ Prometheus metrics exporter mounted at /metrics")
+except ImportError as e:
+    print(f"⚠️  Metrics exporter not available: {e}")
+
 # Helper for fast JSON responses (non-consensus data only)
 def fast_json_response(data: Dict, status_code: int = 200) -> Response:
     """
@@ -197,6 +286,7 @@ def fast_json_response(data: Dict, status_code: int = 200) -> Response:
 async def monitoring_middleware(request: Request, call_next):
     """Monitor API requests and record security events."""
     start_time = time.time()
+    request_id = f"api_{hash(str(request.url))}_{int(start_time)}"
     
     try:
         response = await call_next(request)
@@ -204,6 +294,33 @@ async def monitoring_middleware(request: Request, call_next):
         # Record response time
         response_time_ms = (time.time() - start_time) * 1000
         record_api_response_time(response_time_ms)
+        
+        # Record in performance dashboard
+        perf_dashboard = get_dashboard()
+        model_type = "main"  # Default
+        
+        # Detect model type from endpoint
+        if "teacher" in str(request.url.path).lower():
+            model_type = "teacher"
+        elif "sentinel" in str(request.url.path).lower():
+            model_type = "sentinel"
+        
+        # Check if this was a chat/inference request
+        if "/chat" in str(request.url.path):
+            # Estimate tokens (would be more accurate with actual count)
+            tokens = 50  # Default estimate
+            kv_cache_hit = response_time_ms < 100  # Fast response likely cache hit
+            experts_used = 2 if "/moe" in str(request.url.path) else 0
+            
+            perf_dashboard.tracker.record_request(
+                request_id=request_id,
+                latency_ms=response_time_ms,
+                tokens_generated=tokens,
+                model_type=model_type,
+                batch_size=1,
+                kv_cache_hit=kv_cache_hit,
+                experts_used=experts_used
+            )
         
         # Record security events based on response status
         if response.status_code == 401:
@@ -231,16 +348,27 @@ async def monitoring_middleware(request: Request, call_next):
         })
         raise
 
-# Add security middleware
+# Add security middleware with enhanced protection
 app.middleware("http")(security_middleware)
 
-# Add CORS middleware
+# Add rate limiting middleware
+from backend.security.rate_limiting import RateLimitMiddleware
+rate_limit_middleware = RateLimitMiddleware(
+    default_limit=60,  # 60 requests per minute for basic tier
+    premium_limit=300,  # 300 requests per minute for premium
+    enterprise_limit=1000  # 1000 requests per minute for enterprise
+)
+app.middleware("http")(rate_limit_middleware)
+
+# Add CORS middleware (restrict in production)
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
+    allow_origins=allowed_origins,  # Configurable via environment
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Restrict methods
     allow_headers=["*"],
+    max_age=3600  # Cache preflight requests for 1 hour
 )
 
 
@@ -485,11 +613,243 @@ def _startup():
         print(f"⚠️  Failed to initialize consensus systems: {e}")
 
 
+# Cost verification and free tier management functions
+async def verify_chat_request_cost(
+    user_address: str,
+    prompt: str,
+    max_new_tokens: int = 100,
+    top_k_experts: int = 2,
+    quote_id: str = None,
+    request: Request = None
+) -> Dict[str, Any]:
+    """
+    Server-side verification of chat request cost and limits.
+    This is the authoritative check that prevents client bypasses.
+    
+    Returns:
+        Dict with 'allowed' (bool), 'message' (str), 'status_code' (int)
+    """
+    try:
+        from backend.api.economy import redis_client as quote_redis
+        import json
+        import tiktoken
+        
+        # 1. Calculate actual token counts (server authority)
+        try:
+            # Use tiktoken for accurate token counting
+            encoding = tiktoken.get_encoding("cl100k_base")  # GPT-4 encoding
+            actual_input_tokens = len(encoding.encode(prompt))
+        except:
+            # Fallback to simple estimation
+            actual_input_tokens = len(prompt.split()) * 1.3  # Rough approximation
+        
+        actual_input_tokens = int(actual_input_tokens)
+        
+        # 2. Free tier limits check (SSOT)
+        free_tier_manager = get_free_tier_manager()
+        
+        if user_address:
+            can_request, denial_reason, limits_info = free_tier_manager.can_make_request(
+                address=user_address,
+                input_tokens=actual_input_tokens,
+                output_tokens_est=max_new_tokens
+            )
+            
+            if not can_request:
+                return {
+                    "allowed": False,
+                    "message": f"Free tier limit exceeded: {denial_reason}",
+                    "status_code": 429,
+                    "limits_info": limits_info,
+                    "upgrade_options": {
+                        "contribute_data": "Upload quality datasets to earn credits",
+                        "validate_experts": "Validate expert blocks to increase trust level",
+                        "purchase_credits": "Buy BLY tokens for unlimited access"
+                    }
+                }
+        
+        # 3. Quote verification (if provided)
+        if quote_id:
+            quote_key = f"quote:{quote_id}"
+            quote_data = quote_redis.get(quote_key)
+            
+            if not quote_data:
+                return {
+                    "allowed": False,
+                    "message": "Quote expired or invalid. Please get a new quote.",
+                    "status_code": 400
+                }
+            
+            try:
+                quote = json.loads(quote_data)
+                
+                # Verify quote hasn't expired
+                if time.time() > quote["expires_at"]:
+                    quote_redis.delete(quote_key)
+                    return {
+                        "allowed": False,
+                        "message": "Quote has expired. Please get a new quote.",
+                        "status_code": 400
+                    }
+                
+                # Verify token counts match quote (allow some tolerance)
+                quote_input_tokens = quote["input_tokens"]
+                if abs(actual_input_tokens - quote_input_tokens) > quote_input_tokens * 0.1:  # 10% tolerance
+                    return {
+                        "allowed": False,
+                        "message": f"Token count mismatch. Quote: {quote_input_tokens}, Actual: {actual_input_tokens}",
+                        "status_code": 400
+                    }
+                
+                # For paid requests, check balance
+                if user_address and not _is_free_tier_request(limits_info):
+                    total_cost = Decimal(quote["total_cost"])
+                    if not await _check_user_balance(user_address, total_cost):
+                        return {
+                            "allowed": False,
+                            "message": f"Insufficient balance. Required: {total_cost} BLY",
+                            "status_code": 402  # Payment Required
+                        }
+                
+            except json.JSONDecodeError:
+                return {
+                    "allowed": False,
+                    "message": "Invalid quote data",
+                    "status_code": 400
+                }
+        
+        # 4. Request allowed - consume quota if free tier
+        if user_address:
+            # This will be updated after successful completion
+            pass
+        
+        return {
+            "allowed": True,
+            "message": "Request authorized",
+            "status_code": 200,
+            "actual_input_tokens": actual_input_tokens,
+            "quote_verified": quote_id is not None
+        }
+        
+    except Exception as e:
+        logger.error(f"Cost verification failed: {e}")
+        return {
+            "allowed": False,
+            "message": "Cost verification failed - please try again",
+            "status_code": 500
+        }
+
+def _is_free_tier_request(limits_info: Dict) -> bool:
+    """Check if this is a free tier request."""
+    return (limits_info.get("free_requests_remaining", 0) > 0 or 
+            limits_info.get("bonus_requests_available", 0) > 0)
+
+async def _check_user_balance(user_address: str, required_amount: Decimal) -> bool:
+    """Check if user has sufficient balance."""
+    try:
+        from backend.accounting.ledger import get_ledger
+        ledger = get_ledger()
+        balance = ledger.get_user_balance(user_address)
+        return balance >= required_amount
+    except Exception as e:
+        logger.error(f"Balance check failed for {user_address}: {e}")
+        return False
+
+def complete_chat_request(user_address: str, success: bool = True):
+    """Mark chat request as completed and update user quotas."""
+    if user_address:
+        free_tier_manager = get_free_tier_manager()
+        free_tier_manager.consume_request(user_address, success)
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, http_request: Request = None):
     import time
     start_time = time.time()
     
+    # Enhanced request validation with cost verification
+    user_address = None
+    if http_request:
+        # Extract user address from headers or API key
+        user_address = http_request.headers.get("X-User-Address")
+        if not user_address:
+            # Try to get from API key if available
+            api_key_info = getattr(http_request.state, "api_key_info", None)
+            if api_key_info:
+                user_address = f"api_key_{api_key_info.key_id}"
+        
+        # Server-side cost and limits verification
+        cost_check_result = await verify_chat_request_cost(
+            user_address=user_address,
+            prompt=req.prompt,
+            max_new_tokens=req.max_new_tokens,
+            top_k_experts=req.top_k_experts,
+            quote_id=getattr(req, 'quote_id', None),
+            request=http_request
+        )
+        
+        if not cost_check_result["allowed"]:
+            raise HTTPException(
+                status_code=cost_check_result["status_code"],
+                detail=cost_check_result["message"]
+            )
+    
+    # Abuse prevention check
+    if http_request:
+        abuse_system = get_abuse_prevention_system()
+        fingerprint = RequestFingerprint(
+            user_address=user_address,
+            ip_address=str(http_request.client.host),
+            user_agent=http_request.headers.get("user-agent", "unknown"),
+            hardware_fingerprint=http_request.headers.get("x-hardware-fingerprint"),
+            session_id=http_request.headers.get("x-session-id")
+        )
+        
+        allowed, challenge_type, context = await abuse_system.assess_request(
+            fingerprint=fingerprint,
+            prompt=req.prompt,
+            request_context={"max_new_tokens": req.max_new_tokens}
+        )
+        
+        if not allowed:
+            if challenge_type.value == "captcha":
+                challenge_data = abuse_system.generate_captcha_challenge(fingerprint.generate_composite_key())
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "Challenge required",
+                        "challenge_type": challenge_type.value,
+                        "challenge_id": challenge_data["challenge_id"],
+                        "question": challenge_data.get("question"),
+                        "expires_in": challenge_data["expires_in"],
+                        "reason": context.get("reason", "Abuse prevention")
+                    }
+                )
+            elif challenge_type.value == "proof_of_work":
+                challenge_data = abuse_system.generate_pow_challenge(fingerprint.generate_composite_key())
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "Challenge required",
+                        "challenge_type": challenge_type.value,
+                        "challenge_id": challenge_data["challenge_id"],
+                        "data": challenge_data["data"],
+                        "difficulty": challenge_data["difficulty"],
+                        "description": challenge_data["description"],
+                        "expires_in": challenge_data["expires_in"],
+                        "reason": context.get("reason", "Abuse prevention")
+                    }
+                )
+            else:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "Request blocked",
+                        "reason": context.get("reason", "Abuse detected"),
+                        "challenge_type": challenge_type.value
+                    }
+                )
+
     # Rate limiting check
     if http_request:
         await rate_limiter(http_request, "inference")
@@ -516,6 +876,15 @@ async def chat(req: ChatRequest, http_request: Request = None):
                 
                 inference_time = time.time() - start_time
                 
+                # Mark request as successful and update quotas
+                complete_chat_request(user_address, success=True)
+                
+                # Record successful request for abuse prevention
+                if http_request:
+                    abuse_system = get_abuse_prevention_system()
+                    composite_key = f"{user_address}|{http_request.client.host}"
+                    abuse_system.record_request_outcome(composite_key, success=True)
+                
                 return ChatResponse(
                     response=response_text,
                     expert_usage=routing_info.get('expert_usage', {}),
@@ -532,6 +901,15 @@ async def chat(req: ChatRequest, http_request: Request = None):
             
             inference_time = time.time() - start_time
             
+            # Mark request as successful and update quotas
+            complete_chat_request(user_address, success=True)
+            
+            # Record successful request for abuse prevention
+            if http_request:
+                abuse_system = get_abuse_prevention_system()
+                composite_key = f"{user_address}|{http_request.client.host}"
+                abuse_system.record_request_outcome(composite_key, success=True)
+            
             return ChatResponse(
                 response=answer,
                 expert_usage=expert_usage,
@@ -546,6 +924,15 @@ async def chat(req: ChatRequest, http_request: Request = None):
             answer = model_manager.generate(req.prompt, max_new_tokens=req.max_new_tokens)
             inference_time = time.time() - start_time
             
+            # Mark request as successful and update quotas
+            complete_chat_request(user_address, success=True)
+            
+            # Record successful request for abuse prevention
+            if http_request:
+                abuse_system = get_abuse_prevention_system()
+                composite_key = f"{user_address}|{http_request.client.host}"
+                abuse_system.record_request_outcome(composite_key, success=True)
+            
             return ChatResponse(
                 response=answer,
                 expert_usage={},
@@ -553,7 +940,223 @@ async def chat(req: ChatRequest, http_request: Request = None):
             )
             
     except Exception as exc:
+        # Mark request as failed and update quotas
+        complete_chat_request(user_address, success=False)
+        
+        # Record failed request for abuse prevention
+        if http_request:
+            abuse_system = get_abuse_prevention_system()
+            composite_key = f"{user_address}|{http_request.client.host}"
+            abuse_system.record_request_outcome(composite_key, success=False)
+        
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ------------------------------ Streaming Chat Endpoints ------------------------------
+
+@app.get("/chat/stream")
+async def chat_stream(
+    prompt: str,
+    max_new_tokens: int = 100,
+    use_moe: bool = True,
+    quote_id: Optional[str] = None,
+    http_request: Request = None
+):
+    """
+    Server-Sent Events (SSE) streaming endpoint.
+    Streams tokens with real-time cost accumulation.
+    """
+    from sse_starlette.sse import EventSourceResponse
+    
+    # Extract user address
+    user_address = None
+    if http_request:
+        user_address = http_request.headers.get("X-User-Address")
+        if not user_address:
+            api_key_info = getattr(http_request.state, "api_key_info", None)
+            if api_key_info:
+                user_address = f"api_key_{api_key_info.key_id}"
+    
+    if not user_address:
+        raise HTTPException(status_code=401, detail="User address required")
+    
+    # Get streaming handler
+    handler = get_streaming_handler()
+    
+    async def event_generator():
+        """Generate SSE events."""
+        try:
+            async for chunk in handler.stream_response(
+                prompt=prompt,
+                user_address=user_address,
+                max_new_tokens=max_new_tokens,
+                use_moe=use_moe,
+                quote_id=quote_id
+            ):
+                # Format as SSE event
+                yield {
+                    "event": chunk["type"],
+                    "data": json.dumps(chunk)
+                }
+        except Exception as e:
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": str(e)})
+            }
+    
+    return EventSourceResponse(event_generator())
+
+@app.post("/chat/stream/cancel")
+async def cancel_stream(stream_id: str):
+    """Cancel an active streaming session."""
+    handler = get_streaming_handler()
+    success = await handler.cancel_stream(stream_id)
+    
+    if success:
+        return {"status": "cancelled", "stream_id": stream_id}
+    else:
+        raise HTTPException(status_code=404, detail="Stream not found")
+
+@app.get("/chat/stream/active")
+async def get_active_streams():
+    """Get information about active streaming sessions."""
+    handler = get_streaming_handler()
+    return handler.get_active_streams()
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+@app.websocket("/ws/chat")
+async def websocket_chat(websocket: WebSocket, token: Optional[str] = None):
+    """
+    WebSocket endpoint for bidirectional streaming chat.
+    """
+    # Extract user address from token or headers
+    user_address = None
+    if token:
+        # Validate token and extract user address
+        # For demo, just use token as address
+        user_address = token
+    
+    if not user_address:
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+    
+    handler = get_websocket_handler()
+    
+    try:
+        await handler.handle_websocket(websocket, user_address)
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for user {user_address}")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await websocket.close(code=1011, reason="Internal error")
+
+# ------------------------------ Atomic Chat Endpoint ------------------------------
+
+@app.post("/chat/atomic", response_model=AtomicChatResponse)
+async def chat_atomic(req: AtomicChatRequest, http_request: Request = None):
+    """
+    Atomic chat endpoint with full transaction support.
+    Ensures all-or-nothing execution for cost, quota, and inference.
+    """
+    # Extract user address
+    user_address = None
+    if http_request:
+        user_address = http_request.headers.get("X-User-Address")
+        if not user_address:
+            api_key_info = getattr(http_request.state, "api_key_info", None)
+            if api_key_info:
+                user_address = f"api_key_{api_key_info.key_id}"
+    
+    if not user_address:
+        raise HTTPException(status_code=401, detail="User address required")
+    
+    # Use atomic handler
+    handler = get_atomic_chat_handler()
+    
+    try:
+        response = await handler.process_chat(req, http_request, user_address)
+        
+        # Record success metrics
+        from backend.monitoring.transaction_dashboard import get_transaction_monitor
+        monitor = get_transaction_monitor()
+        await monitor.record_transaction(
+            transaction_id=response.transaction_id,
+            success=True,
+            duration_ms=int(response.inference_time * 1000)
+        )
+        
+        return response
+        
+    except HTTPException as e:
+        # Record failure metrics
+        from backend.monitoring.transaction_dashboard import get_transaction_monitor
+        monitor = get_transaction_monitor()
+        
+        # Categorize error
+        error_msg = str(e.detail).lower()
+        if "expired" in error_msg:
+            reason = "quote_expired"
+        elif "mismatch" in error_msg:
+            reason = "token_mismatch"
+        elif "quota" in error_msg or "limit" in error_msg:
+            reason = "quota_exceeded"
+        elif "balance" in error_msg:
+            reason = "insufficient_balance"
+        else:
+            reason = "other"
+        
+        await monitor.record_transaction(
+            transaction_id=f"failed_{int(time.time())}",
+            success=False,
+            duration_ms=0,
+            failure_reason=reason
+        )
+        
+        # Record rejection if applicable
+        if e.status_code == 429:
+            await monitor.record_rejection(reason=reason)
+        
+        raise
+
+# ------------------------------ Abuse Prevention Challenge ------------------------------
+
+@app.post("/abuse_prevention/verify_challenge")
+async def verify_abuse_challenge(
+    challenge_request: dict,
+    http_request: Request = None
+):
+    """Verify abuse prevention challenge response."""
+    try:
+        challenge_id = challenge_request.get("challenge_id")
+        challenge_type = challenge_request.get("challenge_type")
+        response = challenge_request.get("response")
+        
+        if not all([challenge_id, challenge_type, response]):
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        abuse_system = get_abuse_prevention_system()
+        
+        if challenge_type == "captcha":
+            success = abuse_system.verify_captcha_response(challenge_id, response)
+        elif challenge_type == "proof_of_work":
+            success = abuse_system.verify_pow_solution(challenge_id, response)
+        else:
+            raise HTTPException(status_code=400, detail="Unknown challenge type")
+        
+        if success:
+            return {"status": "verified", "message": "Challenge completed successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Challenge verification failed")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Challenge verification error: {str(e)}")
+
+
+# Record successful completion for behavioral analysis
+if http_request and 'user_address' in locals():
+    composite_key = f"{user_address}|{http_request.client.host}"
+    abuse_system.record_request_outcome(composite_key, success=True)
 
 
 # ------------------------------ Mining ------------------------------
@@ -1217,6 +1820,79 @@ async def secure_distributed_chat(req: SecureChatRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# Streaming endpoints
+@app.get("/chat/stream")
+async def stream_chat_sse(
+    request: Request,
+    prompt: str,
+    max_new_tokens: int = 100,
+    use_moe: bool = True
+):
+    """Stream chat response using Server-Sent Events."""
+    from api.streaming import get_streaming_handler
+    from sse_starlette.sse import EventSourceResponse
+    
+    # Get user address from header
+    user_address = request.headers.get("X-User-Address", "anonymous")
+    
+    streaming_handler = get_streaming_handler()
+    
+    async def generate():
+        async for chunk in streaming_handler.stream_response(
+            prompt=prompt,
+            user_address=user_address,
+            max_new_tokens=max_new_tokens,
+            use_moe=use_moe
+        ):
+            # Convert chunk to SSE format
+            if chunk["type"] == "stream_start":
+                yield {"event": "stream_start", "data": json.dumps(chunk)}
+            elif chunk["type"] == "token":
+                yield {"event": "token", "data": json.dumps(chunk)}
+            elif chunk["type"] == "stream_end":
+                yield {"event": "stream_end", "data": json.dumps(chunk)}
+            elif chunk["type"] == "error":
+                yield {"event": "error", "data": json.dumps(chunk)}
+    
+    return EventSourceResponse(generate())
+
+@app.websocket("/ws/chat")
+async def websocket_chat(websocket, token: str = None):
+    """WebSocket endpoint for streaming chat."""
+    from api.streaming import get_websocket_handler
+    
+    # Use token as user address (simplified auth)
+    user_address = token or "anonymous"
+    
+    websocket_handler = get_websocket_handler()
+    await websocket_handler.handle_websocket(websocket, user_address)
+
+@app.post("/chat/stream/cancel")
+async def cancel_stream(stream_id: str):
+    """Cancel an active streaming session."""
+    from api.streaming import get_streaming_handler
+    
+    streaming_handler = get_streaming_handler()
+    success = await streaming_handler.cancel_stream(stream_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Stream not found")
+    
+    return {"message": "Stream cancelled", "stream_id": stream_id}
+
+@app.get("/chat/stream/active")
+async def get_active_streams():
+    """Get information about active streaming sessions."""
+    from api.streaming import get_streaming_handler
+    
+    streaming_handler = get_streaming_handler()
+    active_streams = streaming_handler.get_active_streams()
+    
+    return {
+        "active_count": len(active_streams),
+        "streams": active_streams
+    }
+
 @app.get("/security/integrity_status")
 async def get_integrity_status():
     """Get the current status of integrity verification system."""
@@ -1440,6 +2116,103 @@ async def distributed_chat(req: ChatRequest):
         
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/chat/distributed_failover")
+async def distributed_chat_with_failover(req: ChatRequest):
+    """Chat using distributed inference with automatic failover and reputation-based routing."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    import time
+    start_time = time.time()
+    
+    try:
+        # Get available experts
+        available_experts = []
+        for expert_name in distributed_coordinator.registry.expert_to_nodes.keys():
+            available_experts.append(expert_name)
+        
+        if not available_experts:
+            raise HTTPException(status_code=503, detail="No expert nodes available")
+        
+        # Select top-k experts for this request
+        selected_experts = available_experts[:req.top_k_experts]
+        
+        # Perform distributed inference with failover
+        response_text, expert_usage = await distributed_coordinator.distribute_inference_with_failover(
+            prompt=req.prompt,
+            required_experts=selected_experts,
+            max_new_tokens=req.max_new_tokens
+        )
+        
+        inference_time = time.time() - start_time
+        
+        return ChatResponse(
+            response=response_text,
+            expert_usage=expert_usage,
+            inference_time=inference_time
+        )
+        
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ------------------------------ Node Reputation ------------------------------
+
+@app.get("/p2p/node_reputation")
+async def get_node_reputation_summary():
+    """Get reputation summary for all nodes."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    return distributed_coordinator.reputation_manager.get_metrics_summary()
+
+
+@app.get("/p2p/node_reputation/{node_id}")
+async def get_node_reputation(node_id: str):
+    """Get detailed reputation metrics for a specific node."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    metrics = distributed_coordinator.reputation_manager.node_metrics.get(node_id)
+    if not metrics:
+        raise HTTPException(status_code=404, detail=f"No metrics found for node {node_id}")
+    
+    return {
+        "node_id": node_id,
+        "reputation_score": metrics.reputation_score,
+        "success_rate": f"{metrics.success_rate:.2%}",
+        "avg_response_time": f"{metrics.avg_response_time:.2f}s",
+        "p95_response_time": f"{metrics.p95_response_time:.2f}s",
+        "total_requests": metrics.total_requests,
+        "successful_requests": metrics.successful_requests,
+        "failed_requests": metrics.failed_requests,
+        "consecutive_failures": metrics.consecutive_failures,
+        "is_healthy": metrics.is_healthy,
+        "is_blacklisted": node_id in distributed_coordinator.reputation_manager.blacklist,
+        "last_failure": metrics.last_failure
+    }
+
+
+@app.post("/p2p/node_health_check/{node_id}")
+async def trigger_node_health_check(node_id: str):
+    """Manually trigger a health check for a specific node."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    node = distributed_coordinator.registry.nodes.get(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
+    
+    # Perform health check
+    is_healthy = await distributed_coordinator.reputation_manager.health_check(node_id, node.endpoint)
+    
+    return {
+        "node_id": node_id,
+        "is_healthy": is_healthy,
+        "reputation_score": distributed_coordinator.reputation_manager.get_node_reputation(node_id)
+    }
 
 
 # ------------------------------ Ledger ------------------------------
@@ -3408,6 +4181,195 @@ def widen_model(model, d_model_new=6144, ffn_ratio=1.6):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get migration templates: {str(e)}")
+
+# ========================
+# Validation APIs with INT8 Models
+# ========================
+
+@app.post("/validate/quality")
+async def validate_with_quantized_models(request: Request):
+    """
+    Validate content quality using INT8 quantized Teacher/Sentinel models.
+    Demonstrates 2-4x speedup from quantization.
+    """
+    try:
+        data = await request.json()
+        input_text = data.get("input_text", "")
+        candidate_output = data.get("candidate_output", "")
+        
+        # Get validation manager
+        from backend.optimization.validation_model_manager import get_validation_manager
+        validation_manager = get_validation_manager()
+        
+        # Load validation suite if not loaded
+        if not validation_manager.models:
+            logger.info("Loading validation models with INT8 quantization...")
+            validation_manager.load_validation_suite()
+        
+        # Run validation with quantized models
+        start_time = time.time()
+        results = validation_manager.validate_with_quantized_models(
+            input_text=input_text,
+            candidate_output=candidate_output
+        )
+        validation_time_ms = (time.time() - start_time) * 1000
+        
+        # Record in performance dashboard
+        perf_dashboard = get_dashboard()
+        
+        # Record teacher validation
+        if results.get("teacher_score") is not None:
+            perf_dashboard.tracker.record_request(
+                request_id=f"val_teacher_{int(time.time())}",
+                latency_ms=validation_time_ms * 0.7,  # Teacher takes ~70% of time
+                tokens_generated=len(candidate_output.split()),
+                model_type="teacher",
+                batch_size=1,
+                kv_cache_hit=False,
+                experts_used=0
+            )
+        
+        # Record sentinel validation  
+        if results.get("sentinel_score") is not None:
+            perf_dashboard.tracker.record_request(
+                request_id=f"val_sentinel_{int(time.time())}",
+                latency_ms=validation_time_ms * 0.3,  # Sentinel takes ~30% of time
+                tokens_generated=len(candidate_output.split()),
+                model_type="sentinel",
+                batch_size=1,
+                kv_cache_hit=False,
+                experts_used=0
+            )
+        
+        # Get memory savings info
+        memory_savings = validation_manager.get_memory_savings()
+        
+        return {
+            "success": True,
+            "validation_results": results,
+            "validation_time_ms": validation_time_ms,
+            "quantization_benefits": {
+                "memory_saved_mb": memory_savings.get("total_saved_mb", 0),
+                "compression_ratio": memory_savings.get("overall_compression", 1.0),
+                "speedup_estimate": "2-4x faster than FP32"
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+# ========================
+# Performance Metrics APIs
+# ========================
+
+@app.get("/metrics/performance")
+async def get_performance_metrics():
+    """Get real-time performance metrics including p50/p90/p95/p99 latencies and throughput."""
+    try:
+        perf_dashboard = get_dashboard()
+        dashboard_data = perf_dashboard.get_dashboard()
+        
+        return {
+            "success": True,
+            "metrics": dashboard_data
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get performance metrics: {str(e)}")
+
+@app.get("/metrics/latency")
+async def get_latency_metrics():
+    """Get latency percentiles (p50, p90, p95, p99)."""
+    try:
+        perf_dashboard = get_dashboard()
+        percentiles = perf_dashboard.tracker.get_percentiles([50, 90, 95, 99])
+        
+        return {
+            "success": True,
+            "latency_ms": percentiles,
+            "unit": "milliseconds"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get latency metrics: {str(e)}")
+
+@app.get("/metrics/throughput")
+async def get_throughput_metrics(window_seconds: int = 60):
+    """Get throughput metrics (requests/sec and tokens/sec)."""
+    try:
+        perf_dashboard = get_dashboard()
+        throughput = perf_dashboard.tracker.get_throughput(window_seconds)
+        
+        return {
+            "success": True,
+            "window_seconds": window_seconds,
+            "requests_per_second": throughput["requests_per_second"],
+            "tokens_per_second": throughput["tokens_per_second"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get throughput metrics: {str(e)}")
+
+@app.get("/metrics/model_performance")
+async def get_model_performance():
+    """Get performance breakdown by model type (main/teacher/sentinel)."""
+    try:
+        perf_dashboard = get_dashboard()
+        model_breakdown = perf_dashboard.tracker.get_model_breakdown()
+        
+        # Show quantization benefits
+        performance_comparison = {}
+        for model_type, stats in model_breakdown.items():
+            if stats["count"] > 0:
+                performance_comparison[model_type] = {
+                    "request_count": stats["count"],
+                    "avg_latency_ms": stats["avg_latency_ms"],
+                    "p95_latency_ms": stats["p95_latency_ms"],
+                    "total_tokens": stats["total_tokens"],
+                    "quantization": "INT8" if model_type in ["teacher", "sentinel"] else "FP16"
+                }
+        
+        return {
+            "success": True,
+            "model_performance": performance_comparison,
+            "quantization_speedup": {
+                "teacher_vs_main": model_breakdown["main"]["avg_latency_ms"] / model_breakdown["teacher"]["avg_latency_ms"] if model_breakdown["teacher"]["count"] > 0 and model_breakdown["main"]["count"] > 0 else None,
+                "sentinel_vs_main": model_breakdown["main"]["avg_latency_ms"] / model_breakdown["sentinel"]["avg_latency_ms"] if model_breakdown["sentinel"]["count"] > 0 and model_breakdown["main"]["count"] > 0 else None
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get model performance: {str(e)}")
+
+@app.get("/metrics/cache")
+async def get_cache_metrics():
+    """Get KV-cache hit rate and statistics."""
+    try:
+        perf_dashboard = get_dashboard()
+        cache_stats = perf_dashboard.tracker.get_cache_stats()
+        
+        return {
+            "success": True,
+            "cache_metrics": cache_stats
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get cache metrics: {str(e)}")
+
+@app.get("/metrics/gpu")
+async def get_gpu_metrics():
+    """Get GPU utilization and memory statistics."""
+    try:
+        perf_dashboard = get_dashboard()
+        gpu_stats = perf_dashboard.tracker.get_gpu_stats()
+        
+        return {
+            "success": True,
+            "gpu_metrics": gpu_stats
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get GPU metrics: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

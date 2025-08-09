@@ -183,7 +183,7 @@ class DatasetChain(Chain):
         
         return True, f"Vote recorded for {dataset_id}: {'APPROVE' if vote else 'REJECT'}"
     
-    def finalize_community_vote(self, dataset_id: str) -> Tuple[bool, str]:
+    def finalize_community_vote(self, dataset_id: str, consensus_result: Optional[bool] = None) -> Tuple[bool, str]:
         """
         Finalize community voting and move to Stage 4: Approved/Rejected
         """
