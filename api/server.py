@@ -1154,9 +1154,7 @@ async def verify_abuse_challenge(
 
 
 # Record successful completion for behavioral analysis
-if http_request and 'user_address' in locals():
-    composite_key = f"{user_address}|{http_request.client.host}"
-    abuse_system.record_request_outcome(composite_key, success=True)
+# Note: This should be called within endpoint functions where http_request is available
 
 
 # ------------------------------ Mining ------------------------------

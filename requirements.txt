@@ -39,3 +39,5 @@ requests
 psutil
 cryptography
 numpy
+sse_starlette
+python-multipart
