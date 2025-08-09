@@ -270,13 +270,7 @@ yarn-error.log*
 package-lock.json
 yarn.lock
 
-# =============================================================================
-# Docker
-# =============================================================================
-.dockerignore
-Dockerfile.dev
-docker-compose.override.yml
-*.dockerfile
+# Docker removed - using direct Python deployment
 
 # =============================================================================
 # Backup & Archive

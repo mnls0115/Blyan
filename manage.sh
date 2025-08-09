@@ -52,18 +52,19 @@ case "$1" in
     
     # ====== 배포 (처음 한 번만) ======
     "deploy")
-        echo "🚀 프로덕션 배포"
-        if [ "$2" = "digitalocean" ]; then
-            # 기본 배포 명령들
-            sudo apt update && sudo apt upgrade -y
-            sudo apt install -y nginx python3 python3-pip python3-venv certbot python3-certbot-nginx
+        echo "🚀 간단한 배포"
+        if [ "$2" = "init" ]; then
+            # 최소한의 설정만
+            sudo apt update
+            sudo apt install -y python3 python3-pip python3-venv nginx
             python3 -m venv .venv
             source .venv/bin/activate
             pip install -r requirements.txt
             
-            echo "✅ 기본 설정 완료. SSL 설정 등은 수동으로 진행하세요."
+            echo "✅ 설정 완료!"
+            echo "이제 ./manage.sh start 로 서버 시작하세요."
         else
-            echo "사용법: $0 deploy digitalocean"
+            echo "사용법: $0 deploy init"
         fi
         ;;
     
