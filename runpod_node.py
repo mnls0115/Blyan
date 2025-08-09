@@ -18,6 +18,7 @@ import logging
 sys.path.append(str(Path(__file__).parent))
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import uvicorn
 
@@ -35,16 +36,27 @@ NODE_ID = os.getenv("NODE_ID", f"runpod_a40_{os.getpid()}")
 NODE_HOST = os.getenv("NODE_HOST", "0.0.0.0")  # Runpod will provide external IP
 NODE_PORT = int(os.getenv("NODE_PORT", 8000))
 
-# Known model aliases to valid HuggingFace repos
+# Optional model aliases for convenience (can be disabled via MODEL_ALIAS_DISABLE=1)
 MODEL_ALIASES: Dict[str, str] = {
     "openai/gpt-oss-20b": "EleutherAI/gpt-neox-20b",
     "gpt-oss-20b": "EleutherAI/gpt-neox-20b",
     "neox-20b": "EleutherAI/gpt-neox-20b",
 }
 
-# Global model instance
+# Global model state
 model_wrapper: Optional[ModelWrapper] = None
 registration_task = None
+served_expert_name: Optional[str] = None
+
+
+def _derive_expert_name_from_model(model_name: str) -> str:
+    """Derive a stable expert name from a HuggingFace repo path."""
+    try:
+        # Use the last segment of the repo path as the expert name
+        slug = model_name.split("/")[-1].strip()
+        return slug.lower() or "full_model"
+    except Exception:
+        return "full_model"
 
 class InferenceRequest(BaseModel):
     prompt: str
@@ -74,7 +86,10 @@ async def register_with_main_server():
                 "node_id": NODE_ID,
                 "host": public_ip,
                 "port": NODE_PORT,
-                "available_experts": ["gpt-neox-20b"],  # What this node can serve
+                # Advertise the derived expert name (or env override)
+                "available_experts": [
+                    os.getenv("AVAILABLE_EXPERT", served_expert_name or "full_model")
+                ],
                 "capabilities": {
                     "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none",
                     "vram_gb": torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0,
@@ -102,26 +117,29 @@ async def register_with_main_server():
             logger.error(f"Registration error: {e}")
             await asyncio.sleep(10)  # Retry after 10 seconds
 
-@app.on_event("startup")
-async def startup_event():
-    """Load model and register with main server on startup."""
-    global model_wrapper, registration_task
-    
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Use FastAPI lifespan instead of deprecated on_event hooks."""
+    global model_wrapper, registration_task, served_expert_name
+
     # Load the model
     model_name = os.getenv("MODEL_NAME", "EleutherAI/gpt-neox-20b")
     quantization = os.getenv("MODEL_QUANTIZATION", "8bit")
 
-    # Normalize model name via aliases
-    alias = MODEL_ALIASES.get(model_name.lower()) if isinstance(model_name, str) else None
-    if alias:
-        original = model_name
-        model_name = alias
-        logger.warning(f"Model alias applied: {original} -> {model_name}")
-    
+    # Allow disabling aliases completely
+    if not os.getenv("MODEL_ALIAS_DISABLE"):
+        alias = MODEL_ALIASES.get(model_name.lower()) if isinstance(model_name, str) else None
+        if alias and alias != model_name:
+            original = model_name
+            model_name = alias
+            logger.warning(f"Model alias applied: {original} -> {model_name}")
+
+    served_expert_name = os.getenv("AVAILABLE_EXPERT") or _derive_expert_name_from_model(model_name)
+
     logger.info(f"🚀 Starting Blyan GPU Node: {NODE_ID}")
     logger.info(f"📦 Loading model: {model_name}")
     logger.info(f"🔧 Quantization: {quantization}")
-    
+
     # Check GPU
     if torch.cuda.is_available():
         gpu_name = torch.cuda.get_device_name(0)
@@ -129,53 +147,53 @@ async def startup_event():
         logger.info(f"🎮 GPU: {gpu_name} ({gpu_memory:.1f}GB)")
     else:
         logger.warning("⚠️ No GPU detected!")
-    
+
     # Load model
     try:
         load_in_8bit = quantization == "8bit"
         load_in_4bit = quantization == "4bit"
-        
+
         model_wrapper = ModelWrapper(
             model_name=model_name,
             load_in_8bit=load_in_8bit,
             load_in_4bit=load_in_4bit,
             device_map="auto",
-            max_memory={0: "40GB"}  # A40 has 48GB
+            max_memory={0: "40GB"}
         )
-        
-        logger.info(f"✅ Model loaded successfully!")
-        
-        # Print memory usage
+
+        logger.info("✅ Model loaded successfully!")
+
         if torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / 1e9
             reserved = torch.cuda.memory_reserved() / 1e9
             logger.info(f"💾 GPU Memory: {allocated:.1f}GB allocated, {reserved:.1f}GB reserved")
-            
+
     except Exception as e:
         logger.error(f"❌ Failed to load model: {e}")
         raise
-    
+
     # Start registration task
     registration_task = asyncio.create_task(register_with_main_server())
     logger.info(f"📡 Started registration with main server: {MAIN_SERVER_URL}")
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Unregister from main server on shutdown."""
-    global registration_task
-    
-    if registration_task:
-        registration_task.cancel()
-    
     try:
-        async with aiohttp.ClientSession() as session:
-            await session.delete(
-                f"{MAIN_SERVER_URL}/p2p/nodes/{NODE_ID}",
-                timeout=aiohttp.ClientTimeout(total=5)
-            )
-        logger.info(f"✅ Unregistered from main server")
-    except Exception as e:
-        logger.error(f"Failed to unregister: {e}")
+        yield
+    finally:
+        # Shutdown logic
+        if registration_task:
+            registration_task.cancel()
+        try:
+            async with aiohttp.ClientSession() as session:
+                await session.delete(
+                    f"{MAIN_SERVER_URL}/p2p/nodes/{NODE_ID}",
+                    timeout=aiohttp.ClientTimeout(total=5)
+                )
+            logger.info("✅ Unregistered from main server")
+        except Exception as e:
+            logger.error(f"Failed to unregister: {e}")
+
+# Register lifespan handler
+app.router.lifespan_context = lifespan
 
 @app.get("/")
 async def health_check():
@@ -230,7 +248,8 @@ async def expert_inference(expert_name: str, request: InferenceRequest):
     Compatible with Blyan's distributed inference system.
     """
     # For now, we serve the full model as one "expert"
-    if expert_name == "gpt-neox-20b" or expert_name in ["layer0.expert0", "full_model"]:
+    valid_names = {served_expert_name or "full_model", "full_model", "layer0.expert0", "gpt-neox-20b"}
+    if expert_name in valid_names:
         return await run_inference(request)
     else:
         raise HTTPException(status_code=404, detail=f"Expert {expert_name} not available on this node")

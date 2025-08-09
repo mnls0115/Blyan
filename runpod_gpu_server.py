@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 
 from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 import torch
 import uvicorn
@@ -38,19 +39,19 @@ class InferenceResponse(BaseModel):
     inference_time_ms: float
     model_name: str
 
-@app.on_event("startup")
-async def load_model():
-    """Load the model on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Use FastAPI lifespan events instead of deprecated on_event."""
     global model_wrapper
-    
+
     # Get model configuration from environment
     model_name = os.getenv("MODEL_NAME", "EleutherAI/gpt-neox-20b")
     quantization = os.getenv("MODEL_QUANTIZATION", "8bit")
-    
-    print(f"🚀 Starting Blyan GPU Server on Runpod A40")
+
+    print("🚀 Starting Blyan GPU Server on Runpod A40")
     print(f"📦 Loading model: {model_name}")
     print(f"🔧 Quantization: {quantization}")
-    
+
     # Check GPU
     if torch.cuda.is_available():
         gpu_name = torch.cuda.get_device_name(0)
@@ -58,12 +59,12 @@ async def load_model():
         print(f"🎮 GPU: {gpu_name} ({gpu_memory:.1f}GB)")
     else:
         print("⚠️ No GPU detected!")
-    
+
     # Load model with appropriate settings for A40
     try:
         load_in_8bit = quantization == "8bit"
         load_in_4bit = quantization == "4bit"
-        
+
         model_wrapper = ModelWrapper(
             model_name=model_name,
             load_in_8bit=load_in_8bit,
@@ -71,18 +72,27 @@ async def load_model():
             device_map="auto",  # Auto-distribute on available GPUs
             max_memory={0: "40GB"}  # A40 has 48GB, leave some headroom
         )
-        
-        print(f"✅ Model loaded successfully!")
-        
+
+        print("✅ Model loaded successfully!")
+
         # Print memory usage
         if torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / 1e9
             reserved = torch.cuda.memory_reserved() / 1e9
             print(f"💾 GPU Memory: {allocated:.1f}GB allocated, {reserved:.1f}GB reserved")
-            
+
     except Exception as e:
         print(f"❌ Failed to load model: {e}")
         raise
+
+    try:
+        yield
+    finally:
+        # No special teardown required here
+        pass
+
+# Register lifespan handler
+app.router.lifespan_context = lifespan
 
 @app.get("/")
 async def health_check():
