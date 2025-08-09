@@ -35,6 +35,13 @@ NODE_ID = os.getenv("NODE_ID", f"runpod_a40_{os.getpid()}")
 NODE_HOST = os.getenv("NODE_HOST", "0.0.0.0")  # Runpod will provide external IP
 NODE_PORT = int(os.getenv("NODE_PORT", 8000))
 
+# Known model aliases to valid HuggingFace repos
+MODEL_ALIASES: Dict[str, str] = {
+    "openai/gpt-oss-20b": "EleutherAI/gpt-neox-20b",
+    "gpt-oss-20b": "EleutherAI/gpt-neox-20b",
+    "neox-20b": "EleutherAI/gpt-neox-20b",
+}
+
 # Global model instance
 model_wrapper: Optional[ModelWrapper] = None
 registration_task = None
@@ -52,6 +59,9 @@ class InferenceResponse(BaseModel):
     inference_time_ms: float
     node_id: str
     model_name: str
+
+    # Silence pydantic warning about fields starting with "model_"
+    model_config = {"protected_namespaces": ()}
 
 async def register_with_main_server():
     """Register this node with the main DigitalOcean server."""
@@ -100,6 +110,13 @@ async def startup_event():
     # Load the model
     model_name = os.getenv("MODEL_NAME", "EleutherAI/gpt-neox-20b")
     quantization = os.getenv("MODEL_QUANTIZATION", "8bit")
+
+    # Normalize model name via aliases
+    alias = MODEL_ALIASES.get(model_name.lower()) if isinstance(model_name, str) else None
+    if alias:
+        original = model_name
+        model_name = alias
+        logger.warning(f"Model alias applied: {original} -> {model_name}")
     
     logger.info(f"🚀 Starting Blyan GPU Node: {NODE_ID}")
     logger.info(f"📦 Loading model: {model_name}")
@@ -237,4 +254,25 @@ async def get_metrics():
 
 if __name__ == "__main__":
     # Run the node server
+    # Resolve a free port ahead of time to avoid bind errors
+    import socket
+
+    def _find_available_port(host: str, start_port: int, max_tries: int = 25) -> int:
+        port = start_port
+        for _ in range(max_tries):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    sock.bind((host, port))
+                    return port
+                except OSError:
+                    port += 1
+        return start_port
+
+    resolved_port = _find_available_port(NODE_HOST, NODE_PORT)
+    if resolved_port != NODE_PORT:
+        logger.warning(f"Port {NODE_PORT} is in use. Switching to {resolved_port}")
+        NODE_PORT = resolved_port
+        os.environ["NODE_PORT"] = str(NODE_PORT)
+
     uvicorn.run(app, host=NODE_HOST, port=NODE_PORT)
