@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blyan Network - Leaderboard</title>
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="style.css">
     <style>
         * {
             margin: 0;
@@ -278,6 +280,9 @@
             }
         }
     </style>
+    <script src="language.js"></script>
+    <script src="config.js"></script>
+    <script src="common-header.js"></script>
 </head>
 <body>
     <div id="header-container"></div>
@@ -300,9 +305,9 @@
 
         <!-- Tab Navigation -->
         <div class="tab-navigation">
-            <button class="tab-btn active" onclick="switchTab('nodes')">🖥️ Top Nodes</button>
-            <button class="tab-btn" onclick="switchTab('experts')">🧠 Top Experts</button>
-            <button class="tab-btn" onclick="switchTab('users')">👥 Top Contributors</button>
+            <button class="tab-btn active" onclick="switchTab('nodes', this)">🖥️ Top Nodes</button>
+            <button class="tab-btn" onclick="switchTab('experts', this)">🧠 Top Experts</button>
+            <button class="tab-btn" onclick="switchTab('users', this)">👥 Top Contributors</button>
         </div>
 
         <!-- Leaderboard Sections -->
@@ -385,17 +390,11 @@
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', async () => {
-            // Header
-            try {
-                const hdr = document.createElement('script');
-                hdr.src = 'common-header.js';
-                hdr.onload = () => {
-                    if (typeof createAIBlockHeader === 'function') {
-                        document.getElementById('header-container').innerHTML = createAIBlockHeader('leaderboard');
-                    }
-                };
-                document.head.appendChild(hdr);
-            } catch {}
+            // Header render
+            if (typeof createAIBlockHeader === 'function') {
+                document.getElementById('header-container').innerHTML = createAIBlockHeader('leaderboard');
+                if (typeof updatePageLanguage === 'function') updatePageLanguage();
+            }
 
             await loadUserAddress();
             await loadPersonalDashboard();
@@ -611,10 +610,10 @@
             }
         }
 
-        function switchTab(tab) {
+        function switchTab(tab, btn) {
             // Update tab buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
 
             // Hide all sections
             document.getElementById('nodesLeaderboard').style.display = 'none';

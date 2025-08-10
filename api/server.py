@@ -241,13 +241,7 @@ try:
 except ImportError as e:
     print(f"⚠️  Leaderboard API not available: {e}")
 
-# Mount community API
-try:
-    from backend.api.community import router as community_router
-    app.include_router(community_router)
-    print("✅ Community API mounted")
-except ImportError as e:
-    print(f"⚠️  Community API not available: {e}")
+# Community API removed
 
 # Mount transaction monitoring dashboard
 try:

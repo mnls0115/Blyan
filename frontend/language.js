@@ -8,7 +8,7 @@ const translations = {
         // Header
         home: 'Home',
         chat: 'Chat',
-        community: 'Community',
+        
         leaderboard: 'Leaderboard',
         joinNetwork: 'Join Network',
         technical: 'Technical',
@@ -189,7 +189,7 @@ const translations = {
         // Header
         home: '홈',
         chat: '채팅',
-        community: '커뮤니티',
+        
         leaderboard: '리더보드',
         joinNetwork: '네트워크 참여',
         technical: '기술 정보',
