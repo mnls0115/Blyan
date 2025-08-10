@@ -1,11 +1,10 @@
 fastapi
 uvicorn
-redis
-aioredis
+redis>=4.5.0
 psutil
 requests
 tiktoken
-torch
+# torch
 transformers
 huggingface-hub
 safetensors
@@ -21,3 +20,4 @@ ecdsa
 eth-account
 web3
 asyncpg
+cryptography

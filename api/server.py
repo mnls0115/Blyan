@@ -48,6 +48,9 @@ from backend.core.pol_validator import create_pol_validator, ChainValidator
 # Security systems
 from backend.security.data_validation import DataSecurityCoordinator
 from backend.security.poison_detection import ComprehensivePoisonDetector
+
+# Authentication dependencies
+from backend.api.auth_dependencies import verify_main_node, verify_any_authorized_node, maybe_verify_main_node
 from backend.security.quarantine_system import NetworkDefenseCoordinator
 from backend.security.rate_limiting import rate_limiter, create_contribution_proof, ContributionProof
 from backend.security.abuse_prevention import get_abuse_prevention_system, RequestFingerprint
@@ -237,6 +240,14 @@ try:
     print("✅ Leaderboard API mounted")
 except ImportError as e:
     print(f"⚠️  Leaderboard API not available: {e}")
+
+# Mount community API
+try:
+    from backend.api.community import router as community_router
+    app.include_router(community_router)
+    print("✅ Community API mounted")
+except ImportError as e:
+    print(f"⚠️  Community API not available: {e}")
 
 # Mount transaction monitoring dashboard
 try:
@@ -1331,7 +1342,7 @@ class MoEExpertResponse(BaseModel):
 
 
 @app.post("/upload_moe_experts", response_model=MoEExpertResponse)
-async def upload_moe_expert(req: MoEExpertRequest, http_request: Request = None):
+async def upload_moe_expert(req: MoEExpertRequest, http_request: Request = None, node_id: str = Depends(verify_main_node)):
     """Upload a single MoE expert or router block to the DAG chain."""
     
     # Rate limiting check

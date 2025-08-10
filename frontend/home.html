@@ -54,7 +54,7 @@
         .vision-comparison {
             background: linear-gradient(135deg, #f0f4ff, #fff0f5);
             border-radius: 12px;
-            padding: 30px;
+            padding: 40px 30px 30px 30px; /* extra top padding to avoid overlap */
             margin: 40px 0;
             font-size: 1.2em;
             line-height: 1.8;
@@ -64,12 +64,11 @@
         .vision-comparison::before {
             content: '💡';
             position: absolute;
-            top: -15px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 2em;
-            background: white;
-            padding: 0 10px;
+            top: 10px;     /* move into the container to avoid covering text */
+            right: 12px;   /* pin to top-right corner */
+            font-size: 1.5em;
+            background: transparent;
+            padding: 0;
         }
         .language-selector {
             background: white;
@@ -189,6 +188,10 @@
         <div class="hero-title" data-i18n="heroTitle">Blyan</div>
         <div class="hero-subtitle" data-i18n="heroSubtitle">The World's First Decentralized AI Network</div>
         <p data-i18n="heroDescription">Experience AI powered by collective intelligence. Chat with AI or contribute your computing power to earn rewards.</p>
+        <div style="margin-top:24px;">
+            <a href="chat.html" class="action-button" data-i18n="startChatting">Start Chatting</a>
+            <a href="contribute.html" class="action-button secondary-button" style="margin-left:10px;" data-i18n="joinNow">Join Now</a>
+        </div>
     </div>
 
     <!-- Vision Section -->

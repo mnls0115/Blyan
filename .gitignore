@@ -139,6 +139,13 @@ credentials.json
 *.p12
 *.pfx
 
+# Security - NEVER commit these!
+config/node_auth.json
+*_secret*
+*_token*
+BLYAN_MAIN_NODE_SECRET
+BLYAN_MAIN_NODE_TOKEN
+
 # =============================================================================
 # Testing & Coverage
 # =============================================================================

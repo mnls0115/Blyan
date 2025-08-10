@@ -8,6 +8,7 @@ const translations = {
         // Header
         home: 'Home',
         chat: 'Chat',
+        community: 'Community',
         joinNetwork: 'Join Network',
         technical: 'Technical',
         connectWallet: 'Connect Wallet',
@@ -26,8 +27,8 @@ const translations = {
         
         // Vision section (new)
         visionTitle: 'Why We Built Blyan',
-        visionTrustworthy: 'Creating Trustworthy AI',
-        visionTrustworthyDesc: 'In a world of black-box AI systems, Blyan offers transparency through blockchain-verified computation.',
+        visionTrustworthy: '🔍 Transparent AI',
+        visionTrustworthyDesc: 'Every weight, every decision, every improvement is recorded immutably on the blockchain.',
         visionDemocratic: 'Democratizing AI Development',
         visionDemocraticDesc: 'Not just for tech giants anymore. Together, we can build and evolve AI models collectively.',
         visionEvolution: 'Blockchain Evolution',
@@ -167,13 +168,27 @@ const translations = {
         loading: 'Loading...',
         viewDetails: 'View Details',
         download: 'Download',
-        noDataAvailable: 'No data available'
+        noDataAvailable: 'No data available',
+        // Community
+        communityTitle: 'Community',
+        newPost: 'New Post',
+        writePost: 'Write Post',
+        postTitlePlaceholder: 'Title',
+        postContentPlaceholder: 'Write something...',
+        publish: 'Publish',
+        cancel: 'Cancel',
+        comments: 'Comments',
+        addComment: 'Add a comment...',
+        reply: 'Reply',
+        like: 'Like',
+        unlike: 'Unlike'
     },
     
     ko: {
         // Header
         home: '홈',
         chat: '채팅',
+        community: '커뮤니티',
         joinNetwork: '네트워크 참여',
         technical: '기술 정보',
         connectWallet: '지갑 연결',
@@ -192,8 +207,8 @@ const translations = {
         
         // Vision section (new)
         visionTitle: '왜 Blyan을 만들었나',
-        visionTrustworthy: '신뢰할 수 있는 AI',
-        visionTrustworthyDesc: '블랙박스 AI 시스템의 시대에, Blyan은 블록체인 검증을 통한 투명성을 제공합니다.',
+        visionTrustworthy: '🔍 투명한 AI',
+        visionTrustworthyDesc: '모든 가중치, 모든 결정, 모든 개선사항이 블록체인에 불변하게 기록됩니다.',
         visionDemocratic: 'AI 개발의 민주화',
         visionDemocraticDesc: '더 이상 대기업만의 전유물이 아닙니다. 함께라면 우리도 AI 모델을 만들고 발전시킬 수 있습니다.',
         visionEvolution: '블록체인의 진화',
@@ -333,7 +348,20 @@ const translations = {
         loading: '로딩 중...',
         viewDetails: '상세 보기',
         download: '다운로드',
-        noDataAvailable: '데이터 없음'
+        noDataAvailable: '데이터 없음',
+        // Community
+        communityTitle: '커뮤니티',
+        newPost: '새 글',
+        writePost: '글쓰기',
+        postTitlePlaceholder: '제목',
+        postContentPlaceholder: '내용을 입력하세요...',
+        publish: '게시',
+        cancel: '취소',
+        comments: '댓글',
+        addComment: '댓글을 입력하세요...',
+        reply: '답글',
+        like: '좋아요',
+        unlike: '좋아요 취소'
     }
 };
 

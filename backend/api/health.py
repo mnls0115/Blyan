@@ -6,7 +6,14 @@ Comprehensive status checks for all critical components
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any, Optional
 import asyncio
-import aioredis
+try:
+    from redis import asyncio as aioredis
+except ImportError:
+    # Fallback for older versions
+    try:
+        import aioredis
+    except ImportError:
+        aioredis = None
 import asyncpg
 import os
 import time
@@ -27,16 +34,33 @@ class HealthChecker:
         
     async def check_redis(self) -> Dict[str, Any]:
         """Check Redis connectivity and performance"""
+        if aioredis is None:
+            return {
+                "status": "unavailable",
+                "message": "Redis client not installed"
+            }
+            
         try:
             redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
             redis_password = os.getenv("REDIS_PASSWORD")
             
             start_time = time.time()
-            redis = await aioredis.from_url(
-                redis_url,
-                password=redis_password,
-                decode_responses=True
-            )
+            
+            # Handle both new redis.asyncio and old aioredis API
+            if hasattr(aioredis, 'Redis'):
+                # New redis.asyncio API
+                redis = aioredis.Redis.from_url(
+                    redis_url,
+                    password=redis_password,
+                    decode_responses=True
+                )
+            else:
+                # Old aioredis API
+                redis = await aioredis.from_url(
+                    redis_url,
+                    password=redis_password,
+                    decode_responses=True
+                )
             
             # Test basic operations
             await redis.set("health_check", str(time.time()), ex=60)

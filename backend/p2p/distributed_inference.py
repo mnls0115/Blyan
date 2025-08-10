@@ -9,6 +9,7 @@ from collections import OrderedDict
 from typing import Dict, List, Optional, Any, Tuple, Set
 from dataclasses import dataclass, asdict
 from pathlib import Path
+from datetime import datetime
 import aiohttp
 from aiohttp import web
 
@@ -268,11 +269,22 @@ class DistributedInferenceCoordinator:
         self.reputation_manager = NodeReputationManager(health_check_interval=30)
         self._health_monitor_task = None
         
-        # Connection pooling for reduced latency
+        # Connection pooling for reduced latency with authentication
+        import os
+        auth_headers = {}
+        node_id = os.environ.get('BLYAN_NODE_ID')
+        auth_token = os.environ.get('BLYAN_MAIN_NODE_TOKEN')
+        if node_id and auth_token:
+            auth_headers = {
+                'X-Node-ID': node_id,
+                'X-Node-Auth-Token': auth_token
+            }
+        
         self.connection_pool = ConnectionPool(
             max_connections_per_host=20,
             keepalive_timeout=60,
-            total_timeout=30
+            total_timeout=30,
+            auth_headers=auth_headers
         )
         
         # Node reputation and failover management
@@ -1072,6 +1084,9 @@ class ExpertNodeServer:
         self.app = web.Application()
         self.current_load = 0.0
         
+        # Add authentication middleware
+        self.app.middlewares.append(self._auth_middleware)
+        
         # Initialize MoE model manager for actual inference
         try:
             from pathlib import Path
@@ -1101,6 +1116,53 @@ class ExpertNodeServer:
         self.app.router.add_get('/health', self.handle_health)
         self.app.router.add_get('/experts', self.handle_list_experts)
         self.app.router.add_get('/expert_groups', self.handle_list_expert_groups)
+    
+    @web.middleware
+    async def _auth_middleware(self, request, handler):
+        """Middleware to verify requests come from authorized main node."""
+        # Skip auth for health check
+        if request.path == '/health':
+            return await handler(request)
+        
+        # Check authentication headers
+        node_id = request.headers.get('X-Node-ID')
+        auth_token = request.headers.get('X-Node-Auth-Token')
+        
+        if not node_id or not auth_token:
+            logger.warning(f"Missing auth headers from {request.remote}")
+            return web.json_response(
+                {"error": "Missing authentication headers"},
+                status=401
+            )
+        
+        # Verify with node authenticator
+        try:
+            from backend.api.node_auth import NodeAuthenticator
+            authenticator = NodeAuthenticator()
+            
+            # For now, only main node can call worker endpoints
+            if not authenticator.verify_main_node(node_id, auth_token):
+                logger.warning(f"Invalid auth from node {node_id}")
+                authenticator._log_security_event({
+                    "type": "unauthorized_worker_access",
+                    "node_id": node_id,
+                    "endpoint": request.path,
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                return web.json_response(
+                    {"error": "Unauthorized"},
+                    status=403
+                )
+            
+        except Exception as e:
+            logger.error(f"Auth verification error: {e}")
+            return web.json_response(
+                {"error": "Authentication system error"},
+                status=500
+            )
+        
+        # Auth passed, continue to handler
+        return await handler(request)
     
     async def handle_inference(self, request: web.Request) -> web.Response:
         """Handle inference request for a specific expert."""

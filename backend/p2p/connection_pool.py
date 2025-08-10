@@ -31,7 +31,8 @@ class ConnectionPool:
         max_connections_per_host: int = 10,
         keepalive_timeout: int = 30,
         total_timeout: int = 300,
-        ssl_verify: bool = True
+        ssl_verify: bool = True,
+        auth_headers: Optional[Dict[str, str]] = None
     ):
         """
         Initialize connection pool.
@@ -41,11 +42,13 @@ class ConnectionPool:
             keepalive_timeout: Keep-alive timeout in seconds
             total_timeout: Total session timeout in seconds
             ssl_verify: Whether to verify SSL certificates
+            auth_headers: Optional authentication headers to include in all requests
         """
         self.max_connections_per_host = max_connections_per_host
         self.keepalive_timeout = keepalive_timeout
         self.total_timeout = total_timeout
         self.ssl_verify = ssl_verify
+        self.auth_headers = auth_headers or {}
         
         # Connection statistics
         self.stats = {
@@ -141,6 +144,12 @@ class ConnectionPool:
         session = await self._get_or_create_session(base_url)
         
         self.stats['total_requests'] += 1
+        
+        # Merge auth headers with any provided headers
+        if self.auth_headers:
+            headers = kwargs.get('headers', {})
+            headers.update(self.auth_headers)
+            kwargs['headers'] = headers
         
         try:
             response = await session.request(method, url, **kwargs)
