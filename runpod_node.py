@@ -37,11 +37,7 @@ NODE_HOST = os.getenv("NODE_HOST", "0.0.0.0")  # Runpod will provide external IP
 NODE_PORT = int(os.getenv("NODE_PORT", 8001))
 
 # Optional model aliases for convenience (can be disabled via MODEL_ALIAS_DISABLE=1)
-MODEL_ALIASES: Dict[str, str] = {
-    "openai/gpt-oss-20b": "EleutherAI/gpt-neox-20b",
-    "gpt-oss-20b": "EleutherAI/gpt-neox-20b",
-    "neox-20b": "EleutherAI/gpt-neox-20b",
-}
+MODEL_ALIASES: Dict[str, str] = {}
 
 # Global model state
 model_wrapper: Optional[ModelWrapper] = None
@@ -132,7 +128,7 @@ async def lifespan(app: FastAPI):
     
     logger.info(f"🔧 Using GPT-OSS-20B model (forced)")
     
-    # DO NOT apply any aliases - we want to use the exact model
+    # DO NOT apply any aliases - we want to use the exact model (no neox fallback)
 
     served_expert_name = os.getenv("AVAILABLE_EXPERT") or _derive_expert_name_from_model(model_name)
 
@@ -252,7 +248,7 @@ async def expert_inference(expert_name: str, request: InferenceRequest):
     Compatible with Blyan's distributed inference system.
     """
     # For now, we serve the full model as one "expert"
-    valid_names = {served_expert_name or "full_model", "full_model", "layer0.expert0", "gpt-neox-20b"}
+    valid_names = {served_expert_name or "full_model", "full_model", "layer0.expert0"}
     if expert_name in valid_names:
         return await run_inference(request)
     else:

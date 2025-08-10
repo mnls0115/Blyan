@@ -407,7 +407,7 @@ class MineRequest(BaseModel):
     miner_pub: str  # hex compressed public key
     payload_sig: str  # hex signature of candidate_payload_b64 decoded bytes
     candidate_payload_b64: str
-    candidate_loss: float
+    candidate_loss: Optional[float] = None  # Optional when PoL is enabled
     previous_loss: Union[float, None] = None
 
 
@@ -1178,13 +1178,16 @@ async def mine(req: MineRequest):
     If PoL check passes, the payload is stored as a new block on the parameter
     chain. Returns the resulting block hash.
     """
-    # 1) PoL check
-    passed = evaluate_candidate(
-        candidate_loss_fn=lambda: req.candidate_loss,
-        previous_loss=req.previous_loss,
-    )
-    if not passed:
-        raise HTTPException(status_code=400, detail="PoL check failed: insufficient improvement")
+    # 1) PoL check (only if PoL is disabled and candidate_loss is provided)
+    if not enable_pol and req.candidate_loss is not None:
+        passed = evaluate_candidate(
+            candidate_loss_fn=lambda: req.candidate_loss,
+            previous_loss=req.previous_loss,
+        )
+        if not passed:
+            raise HTTPException(status_code=400, detail="PoL check failed: insufficient improvement")
+    elif not enable_pol and req.candidate_loss is None:
+        raise HTTPException(status_code=400, detail="candidate_loss required when PoL is disabled")
 
     # 2) Decode payload & verify sig
     try:
@@ -1235,7 +1238,7 @@ class UploadParamsRequest(BaseModel):
     miner_pub: str
     file_b64: str
     payload_sig: str  # signature over raw file bytes
-    candidate_loss: float
+    candidate_loss: Optional[float] = None  # Optional when PoL is enabled
     previous_loss: Union[float, None] = None
 
 
@@ -1327,8 +1330,9 @@ class MoEExpertRequest(BaseModel):
     block_type: str  # 'expert' or 'router'
     depends_on: List[str]
     tensor_data_b64: str
-    candidate_loss: float
+    candidate_loss: Optional[float] = None  # Optional when PoL is enabled
     previous_loss: Union[float, None] = None
+    base_block_hash: Optional[str] = None  # For version control (CAS)
 
 
 class MoEExpertResponse(BaseModel):
@@ -1349,14 +1353,16 @@ async def upload_moe_expert(req: MoEExpertRequest, http_request: Request = None,
     if enable_pol and chain_validator:
         print(f"🧠 Using advanced PoL validation for {req.expert_name}")
         # PoL validation will be handled by the chain during block creation
-    else:
-        # Fallback to simple PoL check
+    elif not enable_pol and req.candidate_loss is not None:
+        # Fallback to simple PoL check only if candidate_loss provided
         passed = evaluate_candidate(
             candidate_loss_fn=lambda: req.candidate_loss,
             previous_loss=req.previous_loss,
         )
         if not passed:
             raise HTTPException(status_code=400, detail="PoL failed: insufficient improvement")
+    elif not enable_pol and req.candidate_loss is None:
+        raise HTTPException(status_code=400, detail="candidate_loss required when PoL is disabled")
     
     # 2. Validate block type
     if req.block_type not in ['expert', 'router']:
@@ -1380,7 +1386,32 @@ async def upload_moe_expert(req: MoEExpertRequest, http_request: Request = None,
     except Exception as ex:
         raise HTTPException(status_code=400, detail=f"Invalid tensor data: {ex}")
     
-    # 5. Validate dependencies exist
+    # 5. CAS (Compare-and-Swap) check if base_block_hash is provided
+    if req.base_block_hash:
+        # Find existing expert block for this expert_name
+        existing_blocks = [
+            block for block in param_chain.storage.iter_blocks()
+            if (getattr(block.header, 'block_type', None) in ('expert', 'router') and
+                getattr(block.header, 'expert_name', None) == req.expert_name)
+        ]
+        
+        if existing_blocks:
+            # Get the latest (head) block for this expert
+            latest_block = sorted(existing_blocks, key=lambda b: b.header.timestamp)[-1]
+            latest_hash = latest_block.compute_hash()
+            
+            # CAS check: ensure we're updating from the expected base version
+            if latest_hash != req.base_block_hash:
+                raise HTTPException(
+                    status_code=409,  # Conflict
+                    detail=f"Version mismatch: expected base {req.base_block_hash}, but current is {latest_hash}. Please rebase."
+                )
+    
+    # Ensure base dependency is included if provided
+    if req.base_block_hash and req.base_block_hash not in (req.depends_on or []):
+        req.depends_on = [req.base_block_hash] + (req.depends_on or [])
+
+    # 6. Validate dependencies exist
     for dep_hash in req.depends_on:
         # Check if dependency exists in meta chain or param chain
         meta_blocks = list(meta_chain.storage.iter_blocks())

@@ -241,7 +241,7 @@ class ProductionSecurityMiddleware:
             "Referrer-Policy": "strict-origin-when-cross-origin",
             "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
             "X-API-Version": "v2.0",
-            "X-Powered-By": "Blyan-AI-Blockchain"
+            "X-Powered-By": "Blyan-Blyanchain"
         }
         
         # Public endpoints that don't require authentication

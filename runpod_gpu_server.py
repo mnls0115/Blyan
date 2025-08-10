@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     global model_wrapper
 
     # Get model configuration from environment
-    model_name = os.getenv("MODEL_NAME", "EleutherAI/gpt-neox-20b")
+    model_name = os.getenv("MODEL_NAME", "openai/gpt-oss-20b")
     quantization = os.getenv("MODEL_QUANTIZATION", "8bit")
 
     print("🚀 Starting Blyan GPU Server on Runpod A40")

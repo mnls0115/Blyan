@@ -327,7 +327,7 @@ config/
 
 ---
 
-# 🔗 Part 3: AI-Blockchain Integration
+# 🔗 Part 3: Blyanchain Integration
 
 ## 3.1 Expert → Block 변환
 

@@ -30,8 +30,7 @@ except ImportError:
     print("torch and transformers required for MoE model processing")
     exit(1)
 
-API_URL = "http://127.0.0.1:8000/upload_moe_experts"
-CHECK_EXPERT_URL = "http://127.0.0.1:8000/chain/B/blocks"
+DEFAULT_API_BASE = os.environ.get("AIBLOCK_API_URL", "http://127.0.0.1:8000")
 
 
 class MoEExpertExtractor:
@@ -189,9 +188,20 @@ class MoEExpertExtractor:
 class ExpertBlockUploader:
     """Upload expert blocks to the DAG blockchain."""
     
-    def __init__(self, miner_address: str, private_key: Optional[str] = None, reuse_existing: bool = False):
+    def __init__(
+        self,
+        miner_address: str,
+        private_key: Optional[str] = None,
+        reuse_existing: bool = False,
+        api_base: str = DEFAULT_API_BASE,
+        node_id: Optional[str] = None,
+        node_token: Optional[str] = None,
+    ):
         self.miner_address = miner_address
         self.reuse_existing = reuse_existing
+        self.api_base = api_base.rstrip("/")
+        self.node_id = node_id or os.environ.get("BLYAN_NODE_ID")
+        self.node_token = node_token or os.environ.get("BLYAN_MAIN_NODE_TOKEN")
         
         # Setup ECDSA signing
         if private_key:
@@ -221,7 +231,8 @@ class ExpertBlockUploader:
         layer_id: str,
         meta_hash: str,
         candidate_loss: float,
-        previous_loss: Optional[float] = None
+        previous_loss: Optional[float] = None,
+        base_block_hash: Optional[str] = None
     ) -> Dict:
         """Create payload for expert block upload."""
         
@@ -239,11 +250,20 @@ class ExpertBlockUploader:
             "expert_name": expert_name,
             "layer_id": layer_id,
             "block_type": "expert",
-            "depends_on": [],
+            # Always depend on the meta block to anchor experts to the current spec
+            "depends_on": ([meta_hash] if meta_hash else []),
             "tensor_data_b64": tensor_b64,
             "candidate_loss": candidate_loss,
             "previous_loss": previous_loss,
         }
+
+        # Include base_block_hash for CAS and add to dependencies
+        if base_block_hash:
+            payload["base_block_hash"] = base_block_hash
+            if payload["depends_on"] is None:
+                payload["depends_on"] = []
+            if base_block_hash not in payload["depends_on"]:
+                payload["depends_on"].append(base_block_hash)
         
         return payload
     
@@ -254,7 +274,8 @@ class ExpertBlockUploader:
         layer_id: str,
         meta_hash: str,
         candidate_loss: float,
-        previous_loss: Optional[float] = None
+        previous_loss: Optional[float] = None,
+        base_block_hash: Optional[str] = None
     ) -> Dict:
         """Create payload for router block upload."""
         
@@ -272,21 +293,31 @@ class ExpertBlockUploader:
             "expert_name": router_name,
             "layer_id": layer_id,
             "block_type": "router",
-            "depends_on": [],
+            # Anchor routers to the same meta spec
+            "depends_on": ([meta_hash] if meta_hash else []),
             "tensor_data_b64": tensor_b64,
             "candidate_loss": candidate_loss,
             "previous_loss": previous_loss,
         }
+
+        if base_block_hash:
+            payload["base_block_hash"] = base_block_hash
+            if payload["depends_on"] is None:
+                payload["depends_on"] = []
+            if base_block_hash not in payload["depends_on"]:
+                payload["depends_on"].append(base_block_hash)
         
         return payload
     
     def upload_expert_block(self, payload: Dict) -> Dict:
         """Upload a single expert block to the API."""
-        req = request.Request(
-            API_URL,
-            data=json.dumps(payload).encode(),
-            headers={"Content-Type": "application/json"}
-        )
+        url = f"{self.api_base}/upload_moe_experts"
+        headers = {"Content-Type": "application/json"}
+        # Attach main-node auth headers if available (required by server)
+        if self.node_id and self.node_token:
+            headers["X-Node-ID"] = self.node_id
+            headers["X-Node-Auth-Token"] = self.node_token
+        req = request.Request(url, data=json.dumps(payload).encode(), headers=headers)
         
         try:
             with request.urlopen(req) as resp:
@@ -304,7 +335,7 @@ class ExpertBlockUploader:
         
         try:
             # Fetch all blocks from parameter chain (B)
-            req = request.Request(CHECK_EXPERT_URL)
+            req = request.Request(f"{self.api_base}/chain/B/blocks")
             with request.urlopen(req) as resp:
                 response_data = json.load(resp)
                 blocks = response_data.get('blocks', [])
@@ -370,7 +401,8 @@ class ExpertBlockUploader:
                 layer_id=expert_data['layer_id'],
                 meta_hash=meta_hash,
                 candidate_loss=candidate_loss,
-                previous_loss=previous_loss
+                previous_loss=previous_loss,
+                base_block_hash=existing_experts.get(expert_name)
             )
             
             try:
@@ -398,7 +430,8 @@ class ExpertBlockUploader:
                 layer_id=router_data['layer_id'],
                 meta_hash=meta_hash,
                 candidate_loss=candidate_loss,
-                previous_loss=previous_loss
+                previous_loss=previous_loss,
+                base_block_hash=existing_experts.get(router_name)
             )
             
             try:
@@ -417,19 +450,27 @@ def main():
     parser.add_argument("--address", required=True, help="Miner wallet address")
     parser.add_argument("--model-file", required=True, help="Path to MoE model file")
     parser.add_argument("--meta-hash", required=True, help="MetaBlock hash to depend on")
-    parser.add_argument("--candidate-loss", type=float, required=True, help="Model loss score")
+    parser.add_argument("--candidate-loss", type=float, required=False, default=None, help="Model loss score (used only when PoL is disabled)")
     parser.add_argument("--prev-loss", type=float, default=None, help="Previous model loss")
+    parser.add_argument("--base-block-hash", type=str, default=None, help="Base expert block hash for CAS (version control)")
     parser.add_argument("--privkey", help="Private key for signing (hex)")
     parser.add_argument("--dry-run", action="store_true", help="Extract experts but don't upload")
     parser.add_argument("--reuse-existing", action="store_true", help="Skip uploading experts that already exist in chain")
     parser.add_argument("--skip-pow", action="store_true", help="Skip proof-of-work mining (development mode)")
+    parser.add_argument("--api-url", default=DEFAULT_API_BASE, help="Main node API base URL (e.g., http://MAIN:8000)")
+    parser.add_argument("--node-id", default=os.environ.get("BLYAN_NODE_ID"), help="Main node ID for auth (header X-Node-ID)")
+    parser.add_argument("--node-token", default=os.environ.get("BLYAN_MAIN_NODE_TOKEN"), help="Main node token for auth (header X-Node-Auth-Token)")
     
     args = parser.parse_args()
     
-    # Validate model file exists
-    if not Path(args.model_file).exists():
-        print(f"Error: Model file {args.model_file} not found")
-        return 1
+    # Allow HF repo id OR local file path
+    if not (Path(args.model_file).exists() or 
+            (isinstance(args.model_file, str) and 
+             ("/" not in args.model_file and ":" not in args.model_file))):
+        # If it neither exists locally nor looks like a repo id, fail
+        if not Path(args.model_file).exists():
+            print(f"Error: Model file {args.model_file} not found")
+            return 1
     
     try:
         # Extract MoE experts
@@ -470,12 +511,19 @@ def main():
         
         # Upload to blockchain
         print(f"\nUploading to DAG blockchain (meta_hash: {args.meta_hash})...")
-        uploader = ExpertBlockUploader(args.address, args.privkey, args.reuse_existing)
+        uploader = ExpertBlockUploader(
+            miner_address=args.address,
+            private_key=args.privkey,
+            reuse_existing=args.reuse_existing,
+            api_base=args.api_url,
+            node_id=args.node_id,
+            node_token=args.node_token,
+        )
         
         block_hashes = uploader.upload_all_experts(
             extracted_data=extracted_data,
             meta_hash=args.meta_hash,
-            candidate_loss=args.candidate_loss,
+            candidate_loss=args.candidate_loss if args.candidate_loss is not None else 0.0,
             previous_loss=args.prev_loss
         )
         

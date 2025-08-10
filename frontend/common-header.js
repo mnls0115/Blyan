@@ -70,7 +70,7 @@ function createPageTabs(tabs, activeTab = '') {
             ${tabs.map(tab => `
                 <button class="page-tab ${activeTab === tab.id ? 'active' : ''}" 
                         onclick="switchTab('${tab.id}')">
-                    ${tab.icon} ${tab.name}
+                    ${tab.icon} ${tab.nameKey ? `<span data-i18n="${tab.nameKey}">${typeof t !== 'undefined' ? t(tab.nameKey) : tab.nameKey}</span>` : (tab.name || '')}
                 </button>
             `).join('')}
         </div>

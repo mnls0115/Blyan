@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blyan Network - Leaderboard</title>
+    <title data-i18n="leaderboardPageTitle">Blyan Network - Leaderboard</title>
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -288,13 +288,13 @@
     <div id="header-container"></div>
     <div class="container">
         <div class="header">
-            <h1>🏆 Blyan Network Leaderboard</h1>
-            <p>Top contributors and nodes powering decentralized AI</p>
+            <h1 data-i18n="leaderboardPageTitle">🏆 Blyan Network Leaderboard</h1>
+            <p data-i18n="leaderboardPageSubtitle">Top contributors and nodes powering decentralized AI</p>
         </div>
 
         <!-- Personal Dashboard -->
         <div class="personal-dashboard" id="personalDashboard">
-            <h2>📊 My Dashboard</h2>
+            <h2>📊 <span data-i18n="myDashboard">My Dashboard</span></h2>
             <div class="dashboard-grid" id="dashboardStats">
                 <!-- Stats will be populated dynamically -->
             </div>
@@ -305,77 +305,77 @@
 
         <!-- Tab Navigation -->
         <div class="tab-navigation">
-            <button class="tab-btn active" onclick="switchTab('nodes', this)">🖥️ Top Nodes</button>
-            <button class="tab-btn" onclick="switchTab('experts', this)">🧠 Top Experts</button>
-            <button class="tab-btn" onclick="switchTab('users', this)">👥 Top Contributors</button>
+            <button class="tab-btn active" onclick="switchTab('nodes', this)">🖥️ <span data-i18n="topNodes">Top Nodes</span></button>
+            <button class="tab-btn" onclick="switchTab('experts', this)">🧠 <span data-i18n="topExperts">Top Experts</span></button>
+            <button class="tab-btn" onclick="switchTab('users', this)">👥 <span data-i18n="topContributors">Top Contributors</span></button>
         </div>
 
         <!-- Leaderboard Sections -->
         <div class="leaderboard-section" id="nodesLeaderboard">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3>🖥️ Node Performance Rankings</h3>
-                <button class="refresh-btn" onclick="refreshLeaderboard()">🔄 Refresh</button>
+                <h3>🖥️ <span data-i18n="nodePerformanceRankings">Node Performance Rankings</span></h3>
+                <button class="refresh-btn" onclick="refreshLeaderboard()">🔄 <span data-i18n="refresh">Refresh</span></button>
             </div>
             <div class="table-container">
                 <table id="nodesTable">
                     <thead>
                         <tr>
-                            <th>Rank</th>
-                            <th>Node ID</th>
-                            <th>Status</th>
-                            <th>Reputation</th>
-                            <th>Success Rate</th>
-                            <th>Avg Response</th>
-                            <th>Total Requests</th>
-                            <th>Experts Served</th>
+                            <th data-i18n="rank">Rank</th>
+                            <th data-i18n="nodeId">Node ID</th>
+                            <th data-i18n="statusHeader">Status</th>
+                            <th data-i18n="reputation">Reputation</th>
+                            <th data-i18n="successRate">Success Rate</th>
+                            <th data-i18n="avgResponse">Avg Response</th>
+                            <th data-i18n="totalRequests">Total Requests</th>
+                            <th data-i18n="expertsServed">Experts Served</th>
                         </tr>
                     </thead>
                     <tbody id="nodesTableBody">
-                        <tr><td colspan="8" class="loading">Loading node rankings...</td></tr>
+                        <tr><td colspan="8" class="loading" data-i18n="loadingNodeRankings">Loading node rankings...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <div class="leaderboard-section" id="expertsLeaderboard" style="display: none;">
-            <h3>🧠 Expert Usage Rankings</h3>
+            <h3>🧠 <span data-i18n="expertUsageRankings">Expert Usage Rankings</span></h3>
             <div class="table-container">
                 <table id="expertsTable">
                     <thead>
                         <tr>
-                            <th>Rank</th>
-                            <th>Expert Name</th>
-                            <th>Call Count</th>
-                            <th>Quality Score</th>
-                            <th>Avg Response Time</th>
-                            <th>Total Rewards</th>
-                            <th>Specialization</th>
+                            <th data-i18n="rank">Rank</th>
+                            <th data-i18n="expertName">Expert Name</th>
+                            <th data-i18n="callCount">Call Count</th>
+                            <th data-i18n="qualityScore">Quality Score</th>
+                            <th data-i18n="avgResponseTime">Avg Response Time</th>
+                            <th data-i18n="totalRewards">Total Rewards</th>
+                            <th data-i18n="specialization">Specialization</th>
                         </tr>
                     </thead>
                     <tbody id="expertsTableBody">
-                        <tr><td colspan="7" class="loading">Loading expert rankings...</td></tr>
+                        <tr><td colspan="7" class="loading" data-i18n="loadingExpertRankings">Loading expert rankings...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <div class="leaderboard-section" id="usersLeaderboard" style="display: none;">
-            <h3>👥 Top Contributors</h3>
+            <h3>👥 <span data-i18n="topContributors">Top Contributors</span></h3>
             <div class="table-container">
                 <table id="usersTable">
                     <thead>
                         <tr>
-                            <th>Rank</th>
-                            <th>Address</th>
-                            <th>Trust Level</th>
-                            <th>Contribution Score</th>
-                            <th>Total Rewards</th>
-                            <th>Validations</th>
-                            <th>Datasets</th>
+                            <th data-i18n="rank">Rank</th>
+                            <th data-i18n="address">Address</th>
+                            <th data-i18n="trustLevel">Trust Level</th>
+                            <th data-i18n="contributionScore">Contribution Score</th>
+                            <th data-i18n="totalRewards">Total Rewards</th>
+                            <th data-i18n="validations">Validations</th>
+                            <th data-i18n="datasets">Datasets</th>
                         </tr>
                     </thead>
                     <tbody id="usersTableBody">
-                        <tr><td colspan="7" class="loading">Loading contributor rankings...</td></tr>
+                        <tr><td colspan="7" class="loading" data-i18n="loadingContributorRankings">Loading contributor rankings...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -437,12 +437,12 @@
             const badgesContainer = document.getElementById('userBadges');
 
             const stats = [
-                { label: 'My Rank', value: userData.rank || 'Unranked', icon: '🏆' },
-                { label: 'Trust Level', value: userData.trust_level, icon: '🛡️' },
-                { label: 'Contribution Score', value: Math.round(userData.contribution_score), icon: '⭐' },
-                { label: 'Total Rewards', value: `${userData.total_rewards} BLY`, icon: '💰' },
-                { label: 'Free Requests', value: userData.free_requests_remaining, icon: '🎫' },
-                { label: 'Total Requests', value: userData.total_requests_made, icon: '📊' }
+                { label: t('myRank'), value: userData.rank || 'Unranked', icon: '🏆' },
+                { label: t('trustLevel'), value: userData.trust_level, icon: '🛡️' },
+                { label: t('contributionScore'), value: Math.round(userData.contribution_score), icon: '⭐' },
+                { label: t('totalRewards'), value: `${userData.total_rewards} BLY`, icon: '💰' },
+                { label: t('freeRequests'), value: userData.free_requests_remaining, icon: '🎫' },
+                { label: t('totalRequests'), value: userData.total_requests_made, icon: '📊' }
             ];
 
             statsGrid.innerHTML = stats.map(stat => `
@@ -454,12 +454,12 @@
 
             if (userData.badges && userData.badges.length > 0) {
                 badgesContainer.innerHTML = `
-                    <h4 style="margin-bottom: 10px; color: #4f46e5;">🏅 Achievements</h4>
+                    <h4 style="margin-bottom: 10px; color: #4f46e5;">🏅 <span data-i18n="achievements">Achievements</span></h4>
                     ${userData.badges.map(badge => `<span class="badge">${badge}</span>`).join('')}
                 `;
             } else {
                 badgesContainer.innerHTML = `
-                    <p style="color: #64748b; font-style: italic;">Complete your first contribution to earn badges!</p>
+                    <p style="color: #64748b; font-style: italic;" data-i18n="completeFirstContribution">Complete your first contribution to earn badges!</p>
                 `;
             }
         }
@@ -470,21 +470,21 @@
 
             statsGrid.innerHTML = `
                 <div class="stat-card">
-                    <div class="value">🆕 New User</div>
-                    <div class="label">Welcome to Blyan!</div>
+                    <div class="value">🆕 <span data-i18n="newUser">New User</span></div>
+                    <div class="label" data-i18n="welcomeToBlyan">Welcome to Blyan!</div>
                 </div>
                 <div class="stat-card">
                     <div class="value">5</div>
-                    <div class="label">Free Requests</div>
+                    <div class="label" data-i18n="freeRequests">Free Requests</div>
                 </div>
                 <div class="stat-card">
                     <div class="value">0</div>
-                    <div class="label">Contribution Score</div>
+                    <div class="label" data-i18n="contributionScore">Contribution Score</div>
                 </div>
             `;
 
             badgesContainer.innerHTML = `
-                <p style="color: #4f46e5; font-weight: 500;">
+                <p style="color: #4f46e5; font-weight: 500;" data-i18n="getStartedMessage">
                     🚀 Get started by using the chat interface or contributing data to earn your first badges!
                 </p>
             `;
@@ -518,7 +518,7 @@
                                 <td><span class="node-id">${node.node_id.substring(0, 12)}...</span></td>
                                 <td>
                                     <span class="status-indicator ${node.is_active ? 'status-active' : 'status-inactive'}"></span>
-                                    ${node.is_active ? 'Active' : 'Inactive'}
+                                    ${node.is_active ? t('active') : t('inactive')}
                                 </td>
                                 <td>${node.reputation_score.toFixed(1)}</td>
                                 <td>${(node.success_rate * 100).toFixed(1)}%</td>
@@ -529,12 +529,12 @@
                         `;
                     }).join('');
                 } else {
-                    tableBody.innerHTML = '<tr><td colspan="8" class="loading">No nodes available</td></tr>';
+                    tableBody.innerHTML = `<tr><td colspan="8" class="loading" data-i18n="noNodesAvailable">No nodes available</td></tr>`;
                 }
             } catch (error) {
                 console.error('Failed to load nodes leaderboard:', error);
                 document.getElementById('nodesTableBody').innerHTML = 
-                    '<tr><td colspan="8" class="error">Failed to load node rankings</td></tr>';
+                    '<tr><td colspan="8" class="error" data-i18n="failedToLoadNodeRankings">Failed to load node rankings</td></tr>';
             }
         }
 
@@ -565,12 +565,12 @@
                         `;
                     }).join('');
                 } else {
-                    tableBody.innerHTML = '<tr><td colspan="7" class="loading">No expert data available</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="7" class="loading" data-i18n="noExpertDataAvailable">No expert data available</td></tr>';
                 }
             } catch (error) {
                 console.error('Failed to load experts leaderboard:', error);
                 document.getElementById('expertsTableBody').innerHTML = 
-                    '<tr><td colspan="7" class="error">Failed to load expert rankings</td></tr>';
+                    '<tr><td colspan="7" class="error" data-i18n="failedToLoadExpertRankings">Failed to load expert rankings</td></tr>';
             }
         }
 
@@ -592,7 +592,7 @@
                             <tr>
                                 <td><span class="rank ${rankClass}">#${user.rank}</span></td>
                                 <td><span class="node-id">${user.address.substring(0, 10)}...${user.address.substring(user.address.length - 8)}</span></td>
-                                <td>Level ${user.trust_level}</td>
+                                <td>${t('level')} ${user.trust_level}</td>
                                 <td>${Math.round(user.contribution_score)}</td>
                                 <td>${user.total_rewards} BLY</td>
                                 <td>${user.successful_validations}</td>
@@ -601,12 +601,12 @@
                         `;
                     }).join('');
                 } else {
-                    tableBody.innerHTML = '<tr><td colspan="7" class="loading">No contributor data available</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="7" class="loading" data-i18n="noContributorDataAvailable">No contributor data available</td></tr>';
                 }
             } catch (error) {
                 console.error('Failed to load users leaderboard:', error);
                 document.getElementById('usersTableBody').innerHTML = 
-                    '<tr><td colspan="7" class="error">Failed to load contributor rankings</td></tr>';
+                    '<tr><td colspan="7" class="error" data-i18n="failedToLoadContributorRankings">Failed to load contributor rankings</td></tr>';
             }
         }
 
@@ -628,7 +628,7 @@
         async function refreshLeaderboard() {
             const refreshBtn = document.querySelector('.refresh-btn');
             refreshBtn.disabled = true;
-            refreshBtn.innerHTML = '⏳ Refreshing...';
+            refreshBtn.innerHTML = '⏳ ' + t('refreshing');
 
             try {
                 // Refresh cache on server
@@ -639,16 +639,16 @@
                 await loadPersonalDashboard();
                 await loadLeaderboard();
                 
-                refreshBtn.innerHTML = '✅ Refreshed!';
+                refreshBtn.innerHTML = '✅ ' + t('refreshed');
                 setTimeout(() => {
-                    refreshBtn.innerHTML = '🔄 Refresh';
+                    refreshBtn.innerHTML = '🔄 ' + t('refresh');
                     refreshBtn.disabled = false;
                 }, 2000);
             } catch (error) {
                 console.error('Failed to refresh:', error);
-                refreshBtn.innerHTML = '❌ Failed';
+                refreshBtn.innerHTML = '❌ ' + t('failedGeneric');
                 setTimeout(() => {
-                    refreshBtn.innerHTML = '🔄 Refresh';
+                    refreshBtn.innerHTML = '🔄 ' + t('refresh');
                     refreshBtn.disabled = false;
                 }, 2000);
             }

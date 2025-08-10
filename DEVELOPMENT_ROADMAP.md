@@ -1113,7 +1113,7 @@ score = α × latency + β × load + γ × replica_freshness
 
 **K. Developer SDK & Tooling**
 - **Multi-language SDKs**: TypeScript, Python, Rust client libraries
-- **CLI Tools**: `ai-block chat`, `ai-block upload` developer commands
+- **CLI Tools**: `Blyan chat`, `Blyan upload` developer commands
 - **Target**: 10x developer onboarding speed
 
 **L. Privacy-Preserving Features**

@@ -32,12 +32,14 @@ class DeltaSubmission:
     delta: DeltaBase
     timestamp: float
     sequence_number: int
+    base_block_hash: Optional[str] = None  # Base version for CAS
     signature: Optional[str] = None
 
 @dataclass
 class AggregationBatch:
     """Batch of deltas for aggregation"""
     tile_id: str
+    base_block_hash: Optional[str] = None  # Base version all deltas in batch share
     deltas: List[DeltaSubmission] = field(default_factory=list)
     batch_start_time: float = 0.0
     target_primary: Optional[str] = None
@@ -152,17 +154,26 @@ class EdgeAggregator:
             # Update node tracking
             self.node_last_seen[submission.node_id] = submission.timestamp
             
-            # Get or create batch for tile
-            if submission.tile_id not in self.pending_batches:
+            # Create unique batch key based on tile_id + base_block_hash
+            batch_key = f"{submission.tile_id}:{submission.base_block_hash or 'genesis'}"
+            
+            # Get or create batch for tile+base combination
+            if batch_key not in self.pending_batches:
                 primary_node = self.ownership_registry.get_primary_node(submission.tile_id)
                 
-                self.pending_batches[submission.tile_id] = AggregationBatch(
+                self.pending_batches[batch_key] = AggregationBatch(
                     tile_id=submission.tile_id,
+                    base_block_hash=submission.base_block_hash,
                     batch_start_time=time.time(),
                     target_primary=primary_node
                 )
             
-            batch = self.pending_batches[submission.tile_id]
+            batch = self.pending_batches[batch_key]
+            
+            # Verify same base version
+            if batch.base_block_hash != submission.base_block_hash:
+                logger.warning(f"Base version mismatch in batch: expected {batch.base_block_hash}, got {submission.base_block_hash}")
+                return False
             
             # Add delta to batch
             batch.deltas.append(submission)
@@ -203,23 +214,23 @@ class EdgeAggregator:
         ready_tiles = []
         
         # Find ready batches
-        for tile_id, batch in self.pending_batches.items():
+        for batch_key, batch in self.pending_batches.items():
             if batch.is_ready(
                 min_deltas=self.batch_config['min_deltas'],
                 max_wait_time=self.batch_config['max_wait_time']
             ):
-                ready_tiles.append(tile_id)
+                ready_tiles.append(batch_key)
         
         # Process ready batches
-        for tile_id in ready_tiles:
-            self._aggregate_and_forward(tile_id)
+        for batch_key in ready_tiles:
+            self._aggregate_and_forward(batch_key)
     
-    def _aggregate_and_forward(self, tile_id: str):
+    def _aggregate_and_forward(self, batch_key: str):
         """Aggregate deltas for a tile and forward to primary"""
-        if tile_id not in self.pending_batches:
+        if batch_key not in self.pending_batches:
             return
         
-        batch = self.pending_batches[tile_id]
+        batch = self.pending_batches[batch_key]
         if not batch.deltas:
             return
         
@@ -230,7 +241,7 @@ class EdgeAggregator:
             aggregated_delta = self._aggregate_deltas(batch.deltas)
             
             # Forward to primary node
-            success = self._forward_to_primary(batch.target_primary, tile_id, aggregated_delta)
+            success = self._forward_to_primary(batch.target_primary, batch.tile_id, aggregated_delta)
             
             if success:
                 # Update statistics
@@ -246,17 +257,17 @@ class EdgeAggregator:
                 self.stats.avg_aggregation_time_ms = (alpha * aggregation_time + 
                                                     (1 - alpha) * self.stats.avg_aggregation_time_ms)
                 
-                logger.info(f"✅ Aggregated {len(batch.deltas)} deltas for {tile_id} "
+                logger.info(f"✅ Aggregated {len(batch.deltas)} deltas for {batch.tile_id} (base {batch.base_block_hash}) "
                            f"({aggregation_time:.1f}ms)")
             else:
-                logger.warning(f"⚠️ Failed to forward aggregated delta for {tile_id}")
+                logger.warning(f"⚠️ Failed to forward aggregated delta for {batch.tile_id}")
             
         except Exception as e:
             logger.error(f"❌ Aggregation failed for {tile_id}: {e}")
         
         finally:
             # Remove processed batch
-            del self.pending_batches[tile_id]
+            del self.pending_batches[batch_key]
     
     def _aggregate_deltas(self, submissions: List[DeltaSubmission]) -> DeltaBase:
         """
@@ -456,10 +467,11 @@ class EdgeAggregator:
             logger.error(f"❌ Failed to forward to {primary_node}: {e}")
             return False
     
-    def _trigger_immediate_aggregation(self, tile_id: str):
+    def _trigger_immediate_aggregation(self, tile_id: str, base_block_hash: Optional[str] = None):
         """Trigger immediate aggregation for a tile"""
-        if tile_id in self.pending_batches:
-            self._aggregate_and_forward(tile_id)
+        key = f"{tile_id}:{base_block_hash or 'genesis'}"
+        if key in self.pending_batches:
+            self._aggregate_and_forward(key)
     
     def _update_statistics(self):
         """Update regional statistics"""

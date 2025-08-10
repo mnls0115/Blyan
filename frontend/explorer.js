@@ -41,17 +41,17 @@ class AIBlockExplorer {
             const response = await fetch(`${this.apiBase}/pol/status`);
             if (response.ok) {
                 const status = await response.json();
-                this.updateStatusIndicator('api-status', true, 'API: Online');
+                this.updateStatusIndicator('api-status', true, `${t('apiStatus')}: ${t('online')}`);
                 this.updateStatusIndicator('pol-status', status.pol_enabled, 
-                    `PoL: ${status.pol_enabled ? 'Enabled' : 'Disabled'}`);
+                    `${t('polStatus')}: ${status.pol_enabled ? t('enabled') : t('disabled')}`);
                 this.data.polStatus = status;
             } else {
                 throw new Error('API not responding');
             }
         } catch (error) {
             console.error('API connection failed:', error);
-            this.updateStatusIndicator('api-status', false, 'API: Offline');
-            this.updateStatusIndicator('pol-status', false, 'PoL: Unknown');
+            this.updateStatusIndicator('api-status', false, `${t('apiStatus')}: ${t('offline')}`);
+            this.updateStatusIndicator('pol-status', false, `${t('polStatus')}: ${t('unknown')}`);
         }
     }
 
@@ -144,7 +144,7 @@ class AIBlockExplorer {
         const metaInfo = document.getElementById('meta-info');
         
         if (this.data.metaBlocks.length === 0) {
-            metaInfo.innerHTML = '<p>No meta blocks found.</p>';
+            metaInfo.innerHTML = '<p data-i18n="noMetaBlocksFound">No meta blocks found.</p>';
             return;
         }
 
@@ -176,48 +176,48 @@ class AIBlockExplorer {
         metaInfo.innerHTML = `
             <div class="metric-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
                 <div class="metric-item">
-                    <div class="metric-value">${metaSpec.model_name || 'Unknown'}</div>
-                    <div class="metric-label">Model Name</div>
+                    <div class="metric-value">${metaSpec.model_name || t('unknownLabel')}</div>
+                    <div class="metric-label" data-i18n="modelName">Model Name</div>
                 </div>
                 <div class="metric-item">
-                    <div class="metric-value">${metaSpec.architecture || 'Standard'}</div>
-                    <div class="metric-label">Architecture</div>
+                    <div class="metric-value">${metaSpec.architecture || t('standardLabel')}</div>
+                    <div class="metric-label" data-i18n="architectureLabel">Architecture</div>
                 </div>
                 <div class="metric-item">
                     <div class="metric-value">${metaSpec.num_layers || 'N/A'}</div>
-                    <div class="metric-label">Layers</div>
+                    <div class="metric-label" data-i18n="layers">Layers</div>
                 </div>
                 <div class="metric-item">
                     <div class="metric-value">${metaSpec.num_experts || 'N/A'}</div>
-                    <div class="metric-label">Experts per Layer</div>
+                    <div class="metric-label" data-i18n="expertsPerLayer">Experts per Layer</div>
                 </div>
                 <div class="metric-item">
                     <div class="metric-value">${metaSpec.routing_strategy || 'N/A'}</div>
-                    <div class="metric-label">Routing Strategy</div>
+                    <div class="metric-label" data-i18n="routingStrategy">Routing Strategy</div>
                 </div>
                 <div class="metric-item">
                     <div class="metric-value">${metaSpec.hidden_size || 'N/A'}</div>
-                    <div class="metric-label">Hidden Size</div>
+                    <div class="metric-label" data-i18n="hiddenSize">Hidden Size</div>
                 </div>
             </div>
             
             <div style="margin-top: 20px;">
-                <h4>Meta Block Details</h4>
+                <h4 data-i18n="metaBlockDetails">Meta Block Details</h4>
                 <table class="data-table">
                     <tr>
-                        <th>Block Hash</th>
+                        <th data-i18n="blockHash">Block Hash</th>
                         <td class="hash-display">${latestMeta.hash}</td>
                     </tr>
                     <tr>
-                        <th>Index</th>
+                        <th data-i18n="index">Index</th>
                         <td>${latestMeta.index}</td>
                     </tr>
                     <tr>
-                        <th>Timestamp</th>
+                        <th data-i18n="timestamp">Timestamp</th>
                         <td>${new Date(latestMeta.timestamp * 1000).toLocaleString()}</td>
                     </tr>
                     <tr>
-                        <th>Payload Size</th>
+                        <th data-i18n="payloadSize">Payload Size</th>
                         <td>${latestMeta.payload_size} bytes</td>
                     </tr>
                 </table>
@@ -247,7 +247,7 @@ class AIBlockExplorer {
         // Populate layer filter
         const layers = [...new Set(expertBlocks.map(b => b.layer_id).filter(Boolean))];
         const layerSelect = document.getElementById('layer-filter');
-        layerSelect.innerHTML = '<option value="">All Layers</option>' + 
+        layerSelect.innerHTML = `<option value="" data-i18n="allLayers">${t('allLayers')}</option>` + 
             layers.map(layer => `<option value="${layer}">${layer}</option>`).join('');
 
         // Create table rows
@@ -284,13 +284,13 @@ class AIBlockExplorer {
                     <td>
                         <div class="expert-status">
                             <span class="status-dot status-${status}"></span>
-                            ${status}
+                            ${status === 'active' ? t('active') : t('inactive')}
                         </div>
                     </td>
                     <td>
                         <button class="btn btn-primary" style="font-size: 12px; padding: 4px 8px;" 
                             onclick="viewBlockDetails('${block.hash}')">
-                            View
+                            ${t('view')}
                         </button>
                     </td>
                 </tr>
@@ -330,13 +330,13 @@ class AIBlockExplorer {
             data: {
                 labels: timelineData.labels,
                 datasets: [{
-                    label: 'Expert Blocks',
+                    label: t('expertBlocksLabel'),
                     data: timelineData.expertBlocks,
                     borderColor: '#10b981',
                     backgroundColor: 'rgba(16, 185, 129, 0.1)',
                     tension: 0.4
                 }, {
-                    label: 'Router Blocks',
+                    label: t('routerBlocksLabel'),
                     data: timelineData.routerBlocks,
                     borderColor: '#f59e0b',
                     backgroundColor: 'rgba(245, 158, 11, 0.1)',
@@ -349,7 +349,7 @@ class AIBlockExplorer {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Block Creation Timeline'
+                        text: t('blockCreationTimeline')
                     }
                 },
                 scales: {
@@ -377,7 +377,7 @@ class AIBlockExplorer {
             data: {
                 labels: trendData.labels,
                 datasets: [{
-                    label: 'Average Δ Score',
+                    label: t('averageDeltaScore'),
                     data: trendData.scores,
                     backgroundColor: trendData.scores.map(score => 
                         score >= 0.02 ? '#10b981' : 
@@ -393,7 +393,7 @@ class AIBlockExplorer {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Improvement Score Trends'
+                        text: t('improvementScoreTrends')
                     }
                 },
                 scales: {
@@ -401,7 +401,7 @@ class AIBlockExplorer {
                         beginAtZero: true,
                         title: {
                             display: true,
-                            text: 'Delta Score'
+                            text: t('deltaScore')
                         }
                     }
                 }
@@ -437,7 +437,7 @@ class AIBlockExplorer {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Expert Usage Distribution'
+                        text: t('expertUsageDistribution')
                     },
                     legend: {
                         position: 'bottom'
@@ -461,7 +461,7 @@ class AIBlockExplorer {
         this.charts.pol = new Chart(ctx, {
             type: 'radar',
             data: {
-                labels: ['Pass Rate', 'Avg Delta', 'Quality Score', 'Speed', 'Reliability'],
+                labels: [t('passRate'), t('avgDeltaScore'), t('qualityScore'), t('speed'), t('reliability')],
                 datasets: [{
                     label: 'PoL Performance',
                     data: polData,
@@ -476,7 +476,7 @@ class AIBlockExplorer {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'PoL System Performance'
+                        text: t('polSystemPerformance')
                     }
                 },
                 scales: {
@@ -557,14 +557,14 @@ class AIBlockExplorer {
         const diffMs = now - date;
         const diffMinutes = Math.floor(diffMs / 60000);
         
-        if (diffMinutes < 1) return 'Just now';
-        if (diffMinutes < 60) return `${diffMinutes}m ago`;
+        if (diffMinutes < 1) return t('justNow');
+        if (diffMinutes < 60) return `${diffMinutes}${t('minutesAgoUnit')}`;
         
         const diffHours = Math.floor(diffMinutes / 60);
-        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffHours < 24) return `${diffHours}${t('hoursAgoUnit')}`;
         
         const diffDays = Math.floor(diffHours / 24);
-        return `${diffDays}d ago`;
+        return `${diffDays}${t('daysAgoUnit')}`;
     }
 
     hexToBytes(hex) {

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blyan Explorer - MoE Blockchain Dashboard</title>
+    <title data-i18n="explorerTitle">Blyan Explorer - MoE Blockchain Dashboard</title>
     <link rel="stylesheet" href="components.css">
     <script src="language.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -131,23 +131,23 @@
                 <div class="card">
                     <div class="card-header">
                         <div>
-                            <div class="card-title">System Overview</div>
-                            <div class="card-subtitle">Current blockchain status</div>
+                            <div class="card-title" data-i18n="systemOverview">System Overview</div>
+                            <div class="card-subtitle" data-i18n="currentBlockchainStatus">Current blockchain status</div>
                         </div>
                         <span id="overview-loading" class="loading-spinner"></span>
                     </div>
                     <div class="metric-grid">
                         <div class="metric-item">
                             <div id="total-blocks" class="metric-value">-</div>
-                            <div class="metric-label">Total Blocks</div>
+                            <div class="metric-label" data-i18n="totalBlocks">Total Blocks</div>
                         </div>
                         <div class="metric-item">
                             <div id="expert-count" class="metric-value">-</div>
-                            <div class="metric-label">Expert Blocks</div>
+                            <div class="metric-label" data-i18n="expertBlocks">Expert Blocks</div>
                         </div>
                         <div class="metric-item">
                             <div id="last-update" class="metric-value">-</div>
-                            <div class="metric-label">Last Update</div>
+                            <div class="metric-label" data-i18n="lastUpdate">Last Update</div>
                         </div>
                     </div>
                 </div>
@@ -156,7 +156,7 @@
                 <div class="card">
                     <div class="card-header">
                         <div>
-                            <div class="card-title">PoL Statistics</div>
+                            <div class="card-title" data-i18n="polStatistics">PoL Statistics</div>
                             <div class="card-subtitle">Proof-of-Learning metrics</div>
                         </div>
                         <span id="pol-loading" class="loading-spinner"></span>
@@ -164,15 +164,15 @@
                     <div class="metric-grid">
                         <div class="metric-item">
                             <div id="pol-pass-rate" class="metric-value">-</div>
-                            <div class="metric-label">Pass Rate</div>
+                            <div class="metric-label" data-i18n="passRate">Pass Rate</div>
                         </div>
                         <div class="metric-item">
                             <div id="avg-delta" class="metric-value">-</div>
-                            <div class="metric-label">Avg Δ Score</div>
+                            <div class="metric-label" data-i18n="avgDeltaScore">Avg Δ Score</div>
                         </div>
                         <div class="metric-item">
                             <div id="pol-threshold" class="metric-value">-</div>
-                            <div class="metric-label">Threshold</div>
+                            <div class="metric-label" data-i18n="threshold">Threshold</div>
                         </div>
                     </div>
                 </div>
@@ -183,40 +183,40 @@
         <div id="meta-chain" class="tab-content">
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">Model Architecture</div>
+                    <div class="card-title" data-i18n="modelArchitecture">Model Architecture</div>
                     <span id="meta-loading" class="loading-spinner"></span>
                 </div>
                 <div id="meta-info">
                     <div class="dashboard-grid">
                         <div class="metric-item">
-                            <div id="model-name" class="metric-value">Unknown</div>
-                            <div class="metric-label">Model Name</div>
+                            <div id="model-name" class="metric-value" data-i18n="unknownLabel">Unknown</div>
+                            <div class="metric-label" data-i18n="modelName">Model Name</div>
                         </div>
                         <div class="metric-item">
-                            <div id="architecture" class="metric-value">Standard</div>
-                            <div class="metric-label">Architecture</div>
+                            <div id="architecture" class="metric-value" data-i18n="standardLabel">Standard</div>
+                            <div class="metric-label" data-i18n="architectureLabel">Architecture</div>
                         </div>
                         <div class="metric-item">
                             <div id="num-layers" class="metric-value">N/A</div>
-                            <div class="metric-label">Layers</div>
+                            <div class="metric-label" data-i18n="layers">Layers</div>
                         </div>
                         <div class="metric-item">
                             <div id="experts-per-layer" class="metric-value">N/A</div>
-                            <div class="metric-label">Experts per Layer</div>
+                            <div class="metric-label" data-i18n="expertsPerLayer">Experts per Layer</div>
                         </div>
                         <div class="metric-item">
                             <div id="routing-strategy" class="metric-value">N/A</div>
-                            <div class="metric-label">Routing Strategy</div>
+                            <div class="metric-label" data-i18n="routingStrategy">Routing Strategy</div>
                         </div>
                         <div class="metric-item">  
                             <div id="hidden-size" class="metric-value">N/A</div>
-                            <div class="metric-label">Hidden Size</div>
+                            <div class="metric-label" data-i18n="hiddenSize">Hidden Size</div>
                         </div>
                     </div>
 
-                    <h3>Meta Block Details</h3>
-                    <p><strong>Block Hash:</strong> <span id="meta-block-hash">-</span></p>
-                    <p><strong>Index:</strong> <span id="meta-block-index">-</span></p>
+                    <h3 data-i18n="metaBlockDetails">Meta Block Details</h3>
+                    <p><strong data-i18n="blockHash">Block Hash</strong>: <span id="meta-block-hash">-</span></p>
+                    <p><strong data-i18n="index">Index</strong>: <span id="meta-block-index">-</span></p>
                 </div>
             </div>
         </div>
@@ -225,62 +225,62 @@
         <div id="parameter-chain" class="tab-content">
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">Expert Blocks</div>
+                    <div class="card-title" data-i18n="expertBlocks">Expert Blocks</div>
                     <span id="param-loading" class="loading-spinner"></span>
                 </div>
                 
                 <!-- Search and Filter Controls -->
                 <div class="filter-bar" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap;">
                     <div class="filter-group">
-                        <label>Search Expert</label>
-                        <input type="text" id="expert-search" placeholder="Expert name..." style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
+                        <label data-i18n="searchExpert">Search Expert</label>
+                        <input type="text" id="expert-search" data-i18n-placeholder="expertName" placeholder="Expert name..." style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
                     </div>
                     <div class="filter-group">
-                        <label>Layer</label>
+                        <label data-i18n="layer">Layer</label>
                         <select id="layer-filter" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
-                            <option value="">All Layers</option>
+                            <option value="" data-i18n="allLayers">All Layers</option>
                         </select>
                     </div>
                     <div class="filter-group">
-                        <label>Block Type</label>
+                        <label data-i18n="blockType">Block Type</label>
                         <select id="type-filter" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
-                            <option value="">All Types</option>
-                            <option value="expert">Expert</option>
-                            <option value="router">Router</option>
+                            <option value="" data-i18n="allTypes">All Types</option>
+                            <option value="expert" data-i18n="expert">Expert</option>
+                            <option value="router" data-i18n="router">Router</option>
                         </select>
                     </div>
                     <div class="filter-group">
-                        <label>Status</label>
+                        <label data-i18n="statusHeader">Status</label>
                         <select id="status-filter" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px;">
-                            <option value="">All Status</option>
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive</option>
+                            <option value="" data-i18n="allStatus">All Status</option>
+                            <option value="active" data-i18n="active">Active</option>
+                            <option value="inactive" data-i18n="inactive">Inactive</option>
                         </select>
                     </div>
-                    <button id="filter-btn" style="padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">🔍 Filter</button>
-                    <button id="clear-btn" style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer;">Clear</button>
+                    <button id="filter-btn" style="padding: 8px 16px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">🔍 <span data-i18n="filter">Filter</span></button>
+                    <button id="clear-btn" style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="clearFilters()" data-i18n="clear">Clear</button>
                 </div>
 
                 <table class="expert-table" id="expert-table">
                     <thead>
                         <tr>
-                            <th>Expert Name</th>
-                            <th>Layer</th>
-                            <th>Type</th>
-                            <th>Size (KB)</th>
-                            <th>Block Hash</th>
-                            <th>Index</th>
-                            <th>Usage Count</th>
-                            <th>Δ Score</th>
-                            <th>Status</th>
-                            <th>Actions</th>
+                            <th data-i18n="expertName">Expert Name</th>
+                            <th data-i18n="layer">Layer</th>
+                            <th data-i18n="type">Type</th>
+                            <th data-i18n="size">Size (KB)</th>
+                            <th data-i18n="blockHash">Block Hash</th>
+                            <th data-i18n="index">Index</th>
+                            <th data-i18n="usageCount">Usage Count</th>
+                            <th data-i18n="deltaScore">Δ Score</th>
+                            <th data-i18n="statusHeader">Status</th>
+                            <th data-i18n="actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="expert-table-body">
                         <tr>
                             <td colspan="10" style="text-align: center; padding: 40px;">
                                 <div class="loading-spinner" style="margin: 0 auto;"></div>
-                                Loading expert blocks...
+                                <span data-i18n="loadingExpertBlocks">Loading expert blocks...</span>
                             </td>
                         </tr>
                     </tbody>
@@ -292,7 +292,7 @@
         <div id="expert-analytics" class="tab-content">
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">Expert Performance Analytics</div>
+                    <div class="card-title" data-i18n="expertPerformanceAnalytics">Expert Performance Analytics</div>
                     <span id="analytics-loading" class="loading-spinner"></span>
                 </div>
                 
@@ -343,11 +343,11 @@
             
             // 탭 생성
             const tabs = [
-                { id: 'overview', icon: '📊', name: 'Overview' },
-                { id: 'meta-chain', icon: '🏗️', name: 'MetaChain' },
-                { id: 'parameter-chain', icon: '🧠', name: 'Parameter Chain' },
-                { id: 'expert-analytics', icon: '📈', name: 'Expert Analytics' },
-                { id: 'dag-view', icon: '🌐', name: 'DAG View' }
+                { id: 'overview', icon: '📊', nameKey: 'overview' },
+                { id: 'meta-chain', icon: '🏗️', nameKey: 'metaChain' },
+                { id: 'parameter-chain', icon: '🧠', nameKey: 'parameterChain' },
+                { id: 'expert-analytics', icon: '📈', nameKey: 'expertAnalytics' },
+                { id: 'dag-view', icon: '🌐', nameKey: 'dagView' }
             ];
             document.getElementById('tabs-container').innerHTML = createPageTabs(tabs, 'overview');
             

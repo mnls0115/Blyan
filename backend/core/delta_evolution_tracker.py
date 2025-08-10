@@ -41,6 +41,10 @@ class DeltaRecord:
     submitter_node_id: str
     submission_timestamp: float
     
+    # Version control (CAS)
+    base_block_hash: Optional[str] = None  # Base version this delta was computed from
+    target_block_hash: Optional[str] = None  # Target version after applying delta
+    
     # Delta content
     delta_size_bytes: int
     compression_method: str
