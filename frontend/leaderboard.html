@@ -280,6 +280,7 @@
     </style>
 </head>
 <body>
+    <div id="header-container"></div>
     <div class="container">
         <div class="header">
             <h1>🏆 Blyan Network Leaderboard</h1>
@@ -384,6 +385,18 @@
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', async () => {
+            // Header
+            try {
+                const hdr = document.createElement('script');
+                hdr.src = 'common-header.js';
+                hdr.onload = () => {
+                    if (typeof createAIBlockHeader === 'function') {
+                        document.getElementById('header-container').innerHTML = createAIBlockHeader('leaderboard');
+                    }
+                };
+                document.head.appendChild(hdr);
+            } catch {}
+
             await loadUserAddress();
             await loadPersonalDashboard();
             await loadLeaderboard();
@@ -404,7 +417,8 @@
             if (!userAddress) return;
 
             try {
-                const response = await fetch(`/leaderboard/me/summary?address=${userAddress}`);
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const response = await fetch(`${API_BASE}/leaderboard/me/summary?address=${userAddress}`);
                 
                 if (response.ok) {
                     userData = await response.json();
@@ -487,7 +501,8 @@
 
         async function loadNodesLeaderboard() {
             try {
-                const response = await fetch('/leaderboard/nodes?limit=50');
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const response = await fetch(`${API_BASE}/leaderboard/nodes?limit=50`);
                 const data = await response.json();
 
                 const tableBody = document.getElementById('nodesTableBody');
@@ -526,7 +541,8 @@
 
         async function loadExpertsLeaderboard() {
             try {
-                const response = await fetch('/leaderboard/experts?limit=50');
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const response = await fetch(`${API_BASE}/leaderboard/experts?limit=50`);
                 const data = await response.json();
 
                 const tableBody = document.getElementById('expertsTableBody');
@@ -561,7 +577,8 @@
 
         async function loadUsersLeaderboard() {
             try {
-                const response = await fetch('/leaderboard/users?limit=50');
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const response = await fetch(`${API_BASE}/leaderboard/users?limit=50`);
                 const data = await response.json();
 
                 const tableBody = document.getElementById('usersTableBody');
@@ -616,7 +633,8 @@
 
             try {
                 // Refresh cache on server
-                await fetch('/leaderboard/refresh', { method: 'POST' });
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                await fetch(`${API_BASE}/leaderboard/refresh`, { method: 'POST' });
                 
                 // Reload data
                 await loadPersonalDashboard();

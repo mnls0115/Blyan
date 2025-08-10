@@ -15,7 +15,7 @@ class BlyanAuth {
     constructor() {
         this.apiUrl = window.location.hostname === 'localhost' 
             ? 'http://localhost:8000' 
-            : 'https://api.blyan.network';
+            : `${window.location.protocol}//${window.location.hostname}/api`;
         
         this.account = null;
         this.token = null;

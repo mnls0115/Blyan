@@ -8,6 +8,7 @@ function createAIBlockHeader(currentPage = '') {
         'chat': { icon: '💬', nameKey: 'chat', url: 'chat.html' },
         'contribute': { icon: '⚡', nameKey: 'joinNetwork', url: 'contribute.html' },
         'community': { icon: '🗣️', nameKey: 'community', url: 'community.html' },
+        'leaderboard': { icon: '🏅', nameKey: 'leaderboard', url: 'leaderboard.html' },
         'explorer': { icon: '🔧', nameKey: 'technical', url: 'explorer.html' }
     };
 
@@ -54,6 +55,7 @@ function refreshHeader() {
         else if (href.includes('chat.html')) currentPage = 'chat';
         else if (href.includes('community.html')) currentPage = 'community';
         else if (href.includes('contribute.html')) currentPage = 'contribute';
+        else if (href.includes('leaderboard.html')) currentPage = 'leaderboard';
         else if (href.includes('explorer.html')) currentPage = 'explorer';
     }
     
