@@ -247,7 +247,13 @@ class ProductionSecurityMiddleware:
         # Public endpoints that don't require authentication
         self.public_endpoints = {
             "/health", "/status", "/", "/docs", "/openapi.json", "/redoc",
-            "/chain/A/blocks", "/chain/B/blocks",  # Read-only blockchain data
+            "/pol/status",  # PoL status check is public
+            "/chain/A/blocks", "/chain/B/blocks",  # Read-only blockchain data  
+            "/chain/*/blocks",  # All chain blocks are public
+            "/experts/top",  # Top experts list is public
+            "/leaderboard/*",  # All leaderboard endpoints are public
+            "/metrics/*",  # Metrics are public
+            "/auth/register_api_key",  # API key registration must be accessible
             # "/genesis/hash"  # Genesis verification should require auth in production
         }
         

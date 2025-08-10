@@ -370,7 +370,9 @@ rate_limit_middleware = RateLimitMiddleware(
 app.middleware("http")(rate_limit_middleware)
 
 # Add CORS middleware (restrict in production)
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+# Default to specific domains for production security
+default_origins = "https://blyan.com,https://www.blyan.com,https://blyan.net,https://www.blyan.net,http://localhost:*"
+allowed_origins = os.getenv("ALLOWED_ORIGINS", default_origins).split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,  # Configurable via environment

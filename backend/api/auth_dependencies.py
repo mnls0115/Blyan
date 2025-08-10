@@ -76,6 +76,7 @@ async def verify_any_authorized_node(
     }
 
 # Optional: Environment-based enforcement toggle
+# Default to true for production, can be overridden via environment
 ENFORCE_AUTH = os.environ.get("BLYAN_ENFORCE_AUTH", "true").lower() == "true"
 
 async def maybe_verify_main_node(
