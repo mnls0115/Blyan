@@ -7,8 +7,9 @@ function createAIBlockHeader(currentPage = '') {
         'home': { icon: '🏠', nameKey: 'home', url: 'home.html' },
         'chat': { icon: '💬', nameKey: 'chat', url: 'chat.html' },
         'contribute': { icon: '⚡', nameKey: 'joinNetwork', url: 'contribute.html' },
-        'leaderboard': { icon: '🏅', nameKey: 'leaderboard', url: 'leaderboard.html' },
-        'explorer': { icon: '🔧', nameKey: 'technical', url: 'explorer.html' }
+        // Temporarily hidden - will be re-enabled later
+        // 'leaderboard': { icon: '🏅', nameKey: 'leaderboard', url: 'leaderboard.html' },
+        // 'explorer': { icon: '🔧', nameKey: 'technical', url: 'explorer.html' }
     };
 
     return `
@@ -26,12 +27,18 @@ function createAIBlockHeader(currentPage = '') {
                 </nav>
                 <div class="status-indicators">
                     ${typeof createLanguageSelector !== 'undefined' ? createLanguageSelector() : ''}
+                    <div id="header-usage-indicator" class="header-usage-badge" style="display: none;">
+                        <span id="header-usage-text">--</span>
+                    </div>
+                    <!-- Wallet functionality hidden for MVP - can be restored later -->
+                    <!--
                     <div id="wallet-info" style="display: none;">
                         <span id="wallet-balance" class="wallet-balance">0 BLY</span>
                         <span id="wallet-address" class="wallet-address"></span>
                         <span id="contributor-badge" class="contributor-badge"></span>
                     </div>
                     <button id="wallet-connect-btn" class="wallet-button" data-i18n="connectWallet">${typeof t !== 'undefined' ? t('connectWallet') : 'Connect Wallet'}</button>
+                    -->
                     <div id="api-status" class="status-badge status-offline">
                         <span data-i18n="apiStatus">${typeof t !== 'undefined' ? t('apiStatus') : 'API'}</span>: <span data-i18n="offline">${typeof t !== 'undefined' ? t('offline') : 'Offline'}</span>
                     </div>

@@ -39,12 +39,51 @@ class NodeMetrics:
     is_healthy: bool = True
     last_health_check: float = 0.0
     
+    # Time-windowed metrics for recent performance
+    window_start_time: float = field(default_factory=time.time)
+    window_requests: int = 0
+    window_successes: int = 0
+    window_duration_seconds: float = 600.0  # 10 minute window
+    
+    # Node registration time for grace period
+    registered_at: float = field(default_factory=time.time)
+    grace_period_seconds: float = 300.0  # 5 minute grace period for new nodes
+    
     @property
     def success_rate(self) -> float:
-        """Calculate success rate."""
-        if self.total_requests == 0:
-            return 1.0
-        return self.successful_requests / self.total_requests
+        """Calculate success rate with time window and grace period."""
+        current_time = time.time()
+        
+        # Grace period for new nodes - assume high success rate
+        if current_time - self.registered_at < self.grace_period_seconds:
+            if self.total_requests == 0:
+                return 0.9  # 90% assumed success for new nodes
+            # Blend actual and assumed for smooth transition
+            actual_rate = self.successful_requests / self.total_requests if self.total_requests > 0 else 0
+            grace_weight = 1 - ((current_time - self.registered_at) / self.grace_period_seconds)
+            return actual_rate * (1 - grace_weight) + 0.9 * grace_weight
+        
+        # Check if window needs reset
+        if current_time - self.window_start_time > self.window_duration_seconds:
+            # Window expired, use overall metrics
+            if self.total_requests == 0:
+                return 1.0
+            return self.successful_requests / self.total_requests
+        
+        # Use windowed metrics for recent performance
+        if self.window_requests == 0:
+            # No recent requests, fall back to overall
+            if self.total_requests == 0:
+                return 1.0
+            return self.successful_requests / self.total_requests
+        
+        # Weight recent performance more heavily (70% recent, 30% historical)
+        recent_rate = self.window_successes / self.window_requests
+        if self.total_requests > self.window_requests:
+            historical_rate = ((self.successful_requests - self.window_successes) / 
+                             (self.total_requests - self.window_requests))
+            return 0.7 * recent_rate + 0.3 * historical_rate
+        return recent_rate
     
     @property
     def avg_response_time(self) -> float:
@@ -64,28 +103,56 @@ class NodeMetrics:
     
     def record_success(self, response_time: float):
         """Record a successful request."""
+        current_time = time.time()
+        
+        # Check if window needs reset
+        if current_time - self.window_start_time > self.window_duration_seconds:
+            self.window_start_time = current_time
+            self.window_requests = 0
+            self.window_successes = 0
+        
         self.total_requests += 1
         self.successful_requests += 1
+        self.window_requests += 1
+        self.window_successes += 1
         self.total_response_time += response_time
         self.response_times.append(response_time)
         self.consecutive_failures = 0
         
         # Update reputation (slowly increase on success)
-        self.reputation_score = min(100, self.reputation_score + 0.5)
+        # Faster recovery during grace period
+        if current_time - self.registered_at < self.grace_period_seconds:
+            self.reputation_score = min(100, self.reputation_score + 1.0)  # Faster recovery for new nodes
+        else:
+            self.reputation_score = min(100, self.reputation_score + 0.5)
         
     def record_failure(self):
         """Record a failed request."""
+        current_time = time.time()
+        
+        # Check if window needs reset
+        if current_time - self.window_start_time > self.window_duration_seconds:
+            self.window_start_time = current_time
+            self.window_requests = 0
+            self.window_successes = 0
+        
         self.total_requests += 1
         self.failed_requests += 1
+        self.window_requests += 1
         self.consecutive_failures += 1
-        self.last_failure = time.time()
+        self.last_failure = current_time
         
         # Update reputation (decrease on failure)
-        penalty = min(10, self.consecutive_failures * 2)
+        # Less penalty during grace period
+        if current_time - self.registered_at < self.grace_period_seconds:
+            penalty = min(5, self.consecutive_failures)  # Gentler penalty for new nodes
+        else:
+            penalty = min(10, self.consecutive_failures * 2)
         self.reputation_score = max(0, self.reputation_score - penalty)
         
-        # Mark unhealthy after too many failures
-        if self.consecutive_failures >= 3:
+        # Mark unhealthy after too many failures (more lenient for new nodes)
+        failure_threshold = 5 if current_time - self.registered_at < self.grace_period_seconds else 3
+        if self.consecutive_failures >= failure_threshold:
             self.is_healthy = False
 
 
@@ -230,6 +297,7 @@ class NodeReputationManager:
         if self._health_check_task is None:
             self._health_check_task = asyncio.create_task(self._health_check_loop())
             logger.info("Started background health monitoring")
+        return self._health_check_task
     
     async def stop_health_monitoring(self):
         """Stop background health check task."""

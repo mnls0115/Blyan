@@ -48,6 +48,13 @@ def execute(plan, candidates) -> stream
 - **Dynamic Rebalancing**: Automatic hot expert replication, cold expert eviction
 - **High Availability**: Redis Stream with Gossip protocol fallback
 
+### Pipeline RPC & Training Ops (NEW)
+- HTTP RPC upgraded with env-tunable retries/backoff and circuit breaker
+- Added gzip compression and chunked transfer with server-side backpressure
+- TLS/mTLS hooks with cert automation helper in `scripts/ssl_manager.py`
+- gRPC client/server prototype maintained; transport switch via `BLYAN_PIPELINE_TRANSPORT`
+- Plan CLI for snapshot/validate/promote and metrics export for fallback/throughput alerts
+
 ### Data Quality Pipeline (NEW - Production Ready)
 - **L0 Pre-Filter**: Local node validation for format/PII/toxicity (100ms, 0 cost)
 - **L1 AI Quality Gate**: **Blyan Teacher validation with anti-loop protection**
@@ -992,6 +999,79 @@ score = α × latency + β × load + γ × replica_freshness
 **Key Insight**: By establishing these module boundaries and metrics now, we can **validate the core concept quickly** while building toward **enterprise-scale capabilities** without architectural rewrites.
 
 ---
+
+## 📈 Evolution Learning Roadmap (Parameter/Block Expansion)
+
+### Phase 0 — Teacher Snapshot (T_k)
+- Freeze current meta/model as snapshot `S_k (snapshot=true)` and validate load parity.
+
+### Phase 1 — Draft Next Spec `S_{k+1}`
+- Define depth/width/expert count/compatibility_range. Add meta draft/verification endpoints.
+
+### Phase 2 — Parameter Expansion (Net2Wider/Deeper + MoE add)
+- Implement widening/deepening transforms and expert addition with router stats seeding.
+- Deliver forward-equivalence checks (tolerance-based).
+
+### Phase 3 — Block-wise Knowledge Distillation
+- KD from `T_k` (temperature/alpha schedule) + targeted fine-tuning.
+
+### Phase 4 — Router Annealing Rollout
+- Progressive traffic shift 0→30→70→100% with rollback support.
+
+### Phase 5 — PoL Extensions for Dimension Changes
+- Tightened thresholds/timeouts for evolved blocks; dashboard metrics.
+
+### Phase 6 — Block Commit & Indexing
+- Create expert/router/meta blocks; update index; sign/reward; rollback scripts.
+
+### Phase 7 — Gating/Canary
+- Feature flags `ENABLE_S_{k+1}` and percentage gates; canary cohorts.
+
+### Phase 8 — State Sync/Migration
+- Include `S_{k+1}` in checkpoints; fast sync; compatibility boundaries.
+
+### Phase 9 — Monitoring/Alerts
+- Add `kd_loss, anneal_step, pol_eval_time, rollback_count, compat_violation_count`.
+
+### Phase 10 — Learning Round Anchors & CAS (Implemented)
+- Require `base_block_hash/round_id` on delta submissions; batch by `(tile_id, base, round)`; reject/ rebase mismatches.
+
+Benefits: fixes base mismatch mixing, prevents destructive averaging, enables safe parameter growth with staged rollout.
+
+### Phase 2 Prep — Net2Ops & KD Entry, Pipeline Planning (NEW)
+
+- Net2Wider/Deeper 유틸 스켈레톤 추가
+  - 파일: `backend/core/architecture_migration.py`
+  - 산출물: `Net2Ops.net2wider_linear`, `Net2Ops.net2deeper_block` 기본 구현 (동치 보존 근사)
+
+- KD 파이프 진입점 설계
+  - 파일: `backend/core/architecture_migration.py`
+  - 산출물: `KnowledgeDistillationEntry` (teacher/student, temperature/alpha, `kd_loss`)
+
+- Device profiler/registry 확장
+  - 작업: 노드 성능(TFLOPS), VRAM, 네트워크 지연/대역폭 수집 및 등록/하트비트에 포함
+  - 파일: `backend/p2p/distributed_inference.py`, `backend/p2p/node_reputation.py`
+  - 완료 기준: 각 노드 성능 메트릭 조회 API 노출
+
+- Layer cost 모델러
+  - 작업: 레이어별 파라미터 수/activation 메모리/연산량 추정기
+  - 파일: `backend/learning/pipeline_cost_model.py` (신규)
+  - 완료 기준: 입력 시퀀스 길이/배치 기준 코스트 리포트 생성
+
+- 파티셔닝 솔버
+  - 작업: VRAM 제약 충족 + 연산 균형화(stage 경계 산출)
+  - 파일: `backend/learning/pipeline_partitioning.py` (신규)
+  - 완료 기준: 노드 프로파일+코스트 입력→스테이지 경계 출력
+
+- PipelineParallelTrainer 스켈레톤
+  - 작업: 1F1B 스케줄, activations/grad RPC, 오류/타임아웃 폴백
+  - 파일: `backend/learning/pipeline_parallel.py` (신규)
+  - 완료 기준: 마이크로배치 파이프라인 데모(목 모델) 통과
+
+- 통합
+  - 작업: 라운드 스케줄러와 연결(라운드별 파티션 고정), ZeRO-1/체크포인팅 토글
+  - 파일: `backend/core/epoch_scheduler.py`, `backend/learning/*`
+  - 완료 기준: 라운드별 고정 파티션으로 파이프라인 학습 라운드 수행
 
 ## 📈 Business & Technical Milestones
 

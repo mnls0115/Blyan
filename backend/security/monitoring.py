@@ -119,7 +119,11 @@ class AlertManager:
             "expert_tampering_detected": AlertThreshold(1, 60, "critical", "quarantine"),  # 1 in 1 min
             "node_quarantine_events": AlertThreshold(3, 3600, "high", "alert"),  # 3 in 1 hour
             "pol_validation_failure": AlertThreshold(20, 1800, "medium", "log"),  # 20 in 30 min
-            "rate_limit_exceeded": AlertThreshold(100, 300, "medium", "log")  # 100 in 5 min
+            "rate_limit_exceeded": AlertThreshold(100, 300, "medium", "log"),  # 100 in 5 min
+            // Pipeline-related alerts
+            "pipeline_rpc_errors": AlertThreshold(int(os.getenv('ALERT_PIPELINE_RPC_ERRORS', '20')), 300, "medium", "alert"),
+            "device_profile_staleness": AlertThreshold(int(os.getenv('ALERT_DEVICE_PROFILE_STALENESS', '10')), 600, "medium", "alert"),
+            "partition_drift_high": AlertThreshold(int(os.getenv('ALERT_PARTITION_DRIFT', '5')), 600, "high", "alert")
         }
         
         self.alert_history: List[Dict] = []

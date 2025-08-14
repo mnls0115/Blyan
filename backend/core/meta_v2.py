@@ -148,6 +148,10 @@ class MetaSpecV2:
     # Performance thresholds
     pol_threshold: float = 0.01  # Minimum improvement required
     validator: str = "ChainValidatorV2"
+
+    # Workflow flags
+    is_snapshot: bool = False
+    is_draft: bool = False
     
     def __post_init__(self):
         """Validate and initialize fields"""
@@ -242,7 +246,9 @@ class MetaSpecV2:
             "parent_version": self.parent_version,
             "evolution_history": self.evolution_history,
             "pol_threshold": self.pol_threshold,
-            "validator": self.validator
+            "validator": self.validator,
+            "is_snapshot": self.is_snapshot,
+            "is_draft": self.is_draft
         }
     
     @classmethod
@@ -274,7 +280,9 @@ class MetaSpecV2:
             parent_version=data.get("parent_version"),
             evolution_history=data.get("evolution_history", []),
             pol_threshold=data.get("pol_threshold", 0.01),
-            validator=data.get("validator", "ChainValidatorV2")
+            validator=data.get("validator", "ChainValidatorV2"),
+            is_snapshot=data.get("is_snapshot", False),
+            is_draft=data.get("is_draft", False)
         )
     
     def to_json(self) -> str:
@@ -301,20 +309,55 @@ class MetaChainV2Manager:
     
     def create_spec_block(self, spec: MetaSpecV2) -> str:
         """Create a new spec block and return its hash"""
-        # TODO: Implement spec block creation
-        pass
+        payload_obj = {
+            "type": "meta_spec_v2",
+            "spec": spec.to_dict()
+        }
+        payload = json.dumps(payload_obj).encode()
+        blk = self.chain.add_block(
+            payload=payload,
+            block_type='meta'
+        )
+        return blk.compute_hash()
     
     def get_latest_spec(self) -> Optional[MetaSpecV2]:
         """Get the latest meta specification"""
-        # TODO: Implement latest spec retrieval
-        pass
+        # Iterate blocks in reverse to find latest meta_spec_v2
+        blocks = list(self.chain.storage.iter_blocks())
+        for block in reversed(blocks):
+            if getattr(block.header, 'block_type', None) == 'meta':
+                try:
+                    obj = json.loads(block.payload.decode())
+                    if obj.get('type') == 'meta_spec_v2' and 'spec' in obj:
+                        return MetaSpecV2.from_dict(obj['spec'])
+                except Exception:
+                    continue
+        return None
     
     def get_spec_by_version(self, version: str) -> Optional[MetaSpecV2]:
         """Get meta specification by version"""
-        # TODO: Implement version-specific spec retrieval
-        pass
+        for block in reversed(list(self.chain.storage.iter_blocks())):
+            if getattr(block.header, 'block_type', None) == 'meta':
+                try:
+                    obj = json.loads(block.payload.decode())
+                    if obj.get('type') == 'meta_spec_v2' and 'spec' in obj:
+                        if obj['spec'].get('version') == version:
+                            return MetaSpecV2.from_dict(obj['spec'])
+                except Exception:
+                    continue
+        return None
     
     def get_compatible_specs(self, target_version: str) -> List[MetaSpecV2]:
         """Get all specs compatible with target version"""
-        # TODO: Implement compatibility filtering
-        pass
+        specs: List[MetaSpecV2] = []
+        for block in self.chain.storage.iter_blocks():
+            if getattr(block.header, 'block_type', None) == 'meta':
+                try:
+                    obj = json.loads(block.payload.decode())
+                    if obj.get('type') == 'meta_spec_v2' and 'spec' in obj:
+                        spec = MetaSpecV2.from_dict(obj['spec'])
+                        if spec.is_compatible_with(target_version):
+                            specs.append(spec)
+                except Exception:
+                    continue
+        return specs

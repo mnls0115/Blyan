@@ -122,8 +122,18 @@ class BlyanClient:
         return result.get("nodes", [])
     
     async def send_heartbeat(self, node_id: str, load_factor: float = 0.0) -> Dict[str, Any]:
-        """Send heartbeat for a node."""
-        return await self._request("POST", f"/p2p/heartbeat/{node_id}?load_factor={load_factor}")
+        """Send heartbeat for a node with optional device metrics."""
+        try:
+            import torch
+            vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else None
+        except Exception:
+            vram_gb = None
+        payload_params = {"load_factor": load_factor}
+        query = f"/p2p/heartbeat/{node_id}?load_factor={load_factor}"
+        # Optionally attach metrics via query for simplicity; could be JSON body too
+        if vram_gb is not None:
+            query += f"&vram_gb={vram_gb:.2f}"
+        return await self._request("POST", query)
     
     # === Inference ===
     

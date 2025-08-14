@@ -113,6 +113,12 @@ server {
 }
 ```
 
+#### Pipeline RPC TLS/mTLS
+
+- Set `BLYAN_TLS_CERT` to a CA bundle path to enable TLS verification for pipeline HTTP clients.
+- For mTLS, also set `BLYAN_TLS_CLIENT_CERT` and `BLYAN_TLS_CLIENT_KEY` on the client side.
+- You can automate certificate obtain/renew with `scripts/ssl_manager.py` which installs certbot and configures nginx.
+
 ## Testing Authentication
 
 ### Test Protected Endpoint (Should Fail)

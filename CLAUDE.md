@@ -37,7 +37,7 @@ print("✅ Meta chain initialized with MoE architecture.")
 PY
 ```
 
-**⚠️ Important**: The `model_name` must match a directory in `./models/` (e.g., `./models/tiny_mistral_moe/`)
+**⚠️ Important**: The `model_name` must match a directory in `./models/` (e.g., `./models/gpt-oss-20b/`)
 
 **Note**: DAG validation is temporarily optimized for performance with large expert uploads. Cross-chain dependencies between meta-chain (A) and parameter-chain (B) have been resolved.
 
@@ -91,6 +91,9 @@ PY
 - **Expert Evolution**: Independent expert improvement through DAG versioning
 - **Performance Optimization**: DAG validation optimized for large tensor uploads
 - **P2P Node Registry**: Complete distributed inference coordination with node registration/discovery
+- **Donor Mode System**: Nodes contribute compute without rewards to support free-tier users (EMA-based utilization tracking)
+- **Distributed Streaming**: Real-time token streaming with progressive handoff and speculative decoding
+- **Consensus Learning**: Byzantine fault-tolerant distributed learning with synchronized epochs
 
 ## Critical Implementation Requirements
 
@@ -111,6 +114,103 @@ Current implementation correctly loads Expert blocks (`✓ Loaded expert layer0.
 3. **Reconstruct Model**: Build MoE model from Expert block weights only
 4. **Generate**: Perform inference using blockchain-reconstructed model
 5. **Track Usage**: Record Expert usage for reward calculation
+
+## Donor Mode System (NEW!)
+
+### Overview
+Donor mode allows nodes to contribute computing power without expecting rewards, specifically to support free-tier users. The system uses sophisticated tracking to prevent abuse while maintaining fairness.
+
+### Key Features
+- **EMA-Based Utilization**: Exponential Moving Average (α=0.1) for stable utilization measurement
+- **Queue Management**: 30-second timeout prevents infinite waiting for free-tier requests
+- **Reputation Windows**: 10-minute sliding windows with 5-minute grace period for new nodes
+- **Byzantine Tolerance**: Filters out unhealthy nodes automatically
+
+### Configuration
+```bash
+# Environment variables
+export DONOR_MODE_ENABLED=true
+export DONOR_MODE_FREE_TIER_LIMIT=100  # requests/day
+export DONOR_MODE_QUEUE_TIMEOUT=30     # seconds
+```
+
+### API Endpoints
+```bash
+# Get donor statistics (cached 10s)
+curl -X GET "http://127.0.0.1:8000/p2p/donor_stats"
+
+# Check operational metrics
+curl -X GET "http://127.0.0.1:8000/metrics/donor"
+```
+
+## Distributed Streaming System (NEW!)
+
+### Overview
+Real distributed streaming replaces mock token generation with actual distributed routing and progressive handoff capabilities.
+
+### Streaming Modes
+1. **Single-Node Streaming**: Optimal node streams all tokens
+2. **Progressive Handoff**: Seamless transition between nodes mid-stream
+3. **Speculative Decoding**: Fast draft (40 tok/s) + verification (10 tok/s)
+
+### Configuration
+```bash
+# Enable streaming features
+export ENABLE_STREAMING=true
+export ENABLE_SPECULATIVE=true
+export STREAMING_TIMEOUT=60  # seconds
+```
+
+### Testing
+```bash
+# Test basic streaming
+python scripts/test_streaming.py
+
+# Test speculative decoding
+curl -X POST "http://127.0.0.1:8000/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "test", "use_moe": true, "stream": true, "enable_speculative": true}'
+```
+
+## Consensus Learning System (NEW!)
+
+### Overview
+Solves the fundamental distributed learning problem where nodes diverge due to training from different base states.
+
+### Key Components
+- **Synchronized Epochs**: All nodes agree on base version before training
+- **Byzantine Aggregation**: Krum and trimmed mean for fault tolerance
+- **Delta Compression**: 20-50x compression with INT8+Sparse+LoRA
+- **Blockchain Integration**: Consensus blocks with cryptographic commitments
+
+### Demo
+```bash
+# Run consensus learning demo
+python scripts/demo_consensus_learning.py
+
+# Shows:
+# - Synchronized base version agreement
+# - Local training on agreed base
+# - Delta aggregation with Byzantine tolerance
+# - Blockchain commit of consensus delta
+```
+
+### Implementation
+```python
+from backend.learning.consensus_learning import ConsensusLearningCoordinator
+
+# Initialize coordinator
+coordinator = ConsensusLearningCoordinator(
+    node_id="node_1",
+    blockchain_manager=blockchain
+)
+
+# Run learning round
+await coordinator.run_learning_round(
+    tile_id="layer0.expert0.weight",
+    dataset_batch=training_data
+)
+```
 
 ## Key Commands for Development
 
@@ -180,6 +280,28 @@ curl -X GET "http://127.0.0.1:8000/p2p/nodes"
 
 # Unregister node
 curl -X DELETE "http://127.0.0.1:8000/p2p/nodes/node1"
+
+# Get donor node statistics (cached for 10 seconds)
+curl -X GET "http://127.0.0.1:8000/p2p/donor_stats"
+
+# Get donor operational metrics for monitoring
+curl -X GET "http://127.0.0.1:8000/metrics/donor"
+
+# Register donor node (contributes computing without rewards)
+curl -X POST "http://127.0.0.1:8000/p2p/register" -H "Content-Type: application/json" \
+  -d '{"node_id": "donor1", "host": "localhost", "port": 8003, "available_experts": ["layer0.expert0"], "donor_mode": true}'
+
+# Environment variables for donor configuration
+export DONOR_USAGE_CAP=0.3           # Max 30% of capacity for donor nodes
+export STRICT_FREE_TIER=true         # Wait in queue vs fallback to non-donor
+export FREE_TIER_QUEUE_TIMEOUT=3.0   # Timeout in seconds before fallback
+
+# Streaming configuration
+export ENABLE_STREAMING=true         # Enable distributed streaming
+export ENABLE_SPECULATIVE=false      # Enable speculative decoding (experimental)
+export DRAFT_TOKENS=4                # Number of draft tokens for speculative
+export SPEC_RATIO=2.0                # Ratio of draft to verify performance
+export HANDOFF_INTERVAL=64           # Tokens between progressive handoffs
 
 # Get expert group insights (NEW!)
 curl -X GET "http://127.0.0.1:8000/p2p/expert_groups"
@@ -317,6 +439,8 @@ curl -X GET "http://127.0.0.1:8000/content/quarantined"
 - **📈 Continuous Learning**: Real-time performance monitoring and adaptive routing
 - **🧬 Organic Growth**: DAG structure enables parallel expert development
 - **💰 Economic Incentives**: Usage-based automatic reward distribution
+- **🔄 Consensus Learning**: Synchronized epochs ensure all nodes train from same base state
+- **🛡️ Byzantine Fault Tolerance**: Robust aggregation prevents malicious delta injection
 - **🧠 Collective Intelligence**: Expert groups self-organize based on usage patterns
 - **⚡ Adaptive Optimization**: System automatically optimizes network topology for performance
 - **🔄 Self-Healing Networks**: Automatic replication and load balancing of critical expert combinations

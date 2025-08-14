@@ -334,7 +334,23 @@ class ConcurrentInferenceManager:
                 # Fallback model - TODO: replace with actual model loading
                 hidden_size = payload.get("hidden_size", 512)
                 model = nn.Linear(hidden_size, hidden_size)
+            # Optional DDP wrapping
+            if payload.get("use_ddp", False):
+                try:
+                    from backend.learning.ddp_utils import init_distributed_if_needed, wrap_model_ddp
+                    init_distributed_if_needed()
+                    model = wrap_model_ddp(model)
+                except Exception as e:
+                    logger.warning(f"DDP enable failed, proceeding without: {e}")
             optimizer = optim.Adam(model.parameters(), lr=payload.get("learning_rate", 1e-4))
+            # Optional ZeRO-1 wrapping via torch.distributed ZeroRedundancyOptimizer
+            if payload.get("use_zero1", False):
+                try:
+                    from backend.learning.zero1 import init_distributed_from_env, wrap_optimizer_with_zero1
+                    init_distributed_from_env()
+                    optimizer = wrap_optimizer_with_zero1(optimizer, model.parameters())
+                except Exception as e:
+                    logger.warning(f"ZeRO-1 enable failed, proceeding without: {e}")
             
             config = MicroStepConfig(
                 min_step_duration_ms=payload.get("min_step_ms", 50),
@@ -343,7 +359,9 @@ class ConcurrentInferenceManager:
                 gradient_accumulation_steps=payload.get("gradient_accumulation", 4)
             )
             
-            self.micro_step_trainer = MicroStepTrainer(model, optimizer, config)
+            # Enable activation checkpointing based on payload flag (to be driven by partition plan metadata)
+            use_ckpt = bool(payload.get("use_activation_checkpointing", False))
+            self.micro_step_trainer = MicroStepTrainer(model, optimizer, config, use_activation_checkpointing=use_ckpt)
             
         trainer = self.micro_step_trainer
         num_steps = payload.get("num_steps", 10)

@@ -202,6 +202,80 @@ class MetricsCollector:
             metrics.append(f'# TYPE blyan_rate_limit_violations counter')
             # This would need actual tracking in rate_limiter
             metrics.append(f'blyan_rate_limit_violations 0')
+
+            # Pipeline metrics
+            try:
+                from backend.learning.pipeline_metrics import get_pipeline_metrics
+                pm = get_pipeline_metrics()
+                snap = await pm.export_snapshot()
+
+                # Stage occupancy
+                metrics.append('# HELP blyan_pipeline_stage_occupancy Stage occupancy (0..1)')
+                metrics.append('# TYPE blyan_pipeline_stage_occupancy gauge')
+                for stage_idx, occ in snap["stage_occupancy"].items():
+                    metrics.append(f'blyan_pipeline_stage_occupancy{{stage="{stage_idx}"}} {occ}')
+
+                # RPC error rate (counter)
+                metrics.append('# HELP blyan_pipeline_rpc_errors Total RPC errors')
+                metrics.append('# TYPE blyan_pipeline_rpc_errors counter')
+                metrics.append(f'blyan_pipeline_rpc_errors {snap["rpc_errors"]}')
+
+                # Round failures/pipeline resets/fallbacks
+                metrics.append('# HELP blyan_pipeline_round_failures Total round failures')
+                metrics.append('# TYPE blyan_pipeline_round_failures counter')
+                metrics.append(f'blyan_pipeline_round_failures {snap["round_failures"]}')
+
+                metrics.append('# HELP blyan_pipeline_resets Total pipeline resets')
+                metrics.append('# TYPE blyan_pipeline_resets counter')
+                metrics.append(f'blyan_pipeline_resets {snap["pipeline_resets"]}')
+
+                metrics.append('# HELP blyan_pipeline_fallback_activations Total fallback activations')
+                metrics.append('# TYPE blyan_pipeline_fallback_activations counter')
+                metrics.append(f'blyan_pipeline_fallback_activations {snap["fallback_activations"]}')
+
+                # Fallback mode gauge / stage count
+                metrics.append('# HELP blyan_pipeline_fallback_mode_active Fallback mode active (0/1)')
+                metrics.append('# TYPE blyan_pipeline_fallback_mode_active gauge')
+                metrics.append(f'blyan_pipeline_fallback_mode_active {snap.get("fallback_mode_active", 0)}')
+
+                metrics.append('# HELP blyan_pipeline_current_stage_count Current number of stages in plan')
+                metrics.append('# TYPE blyan_pipeline_current_stage_count gauge')
+                metrics.append(f'blyan_pipeline_current_stage_count {snap.get("current_stage_count", 0)}')
+
+                # Microbatch wait histogram (export as buckets)
+                hist = snap["microbatch_wait_hist"]
+                metrics.append('# HELP blyan_pipeline_microbatch_wait_seconds Microbatch wait time')
+                metrics.append('# TYPE blyan_pipeline_microbatch_wait_seconds histogram')
+                for b, c in hist["buckets"].items():
+                    # translate label: le_X_Y -> X.Y
+                    label = b.replace('le_', '').replace('_', '.')
+                    metrics.append(f'blyan_pipeline_microbatch_wait_seconds_bucket{{le="{label}"}} {c}')
+                metrics.append(f'blyan_pipeline_microbatch_wait_seconds_count {hist["count"]}')
+                metrics.append(f'blyan_pipeline_microbatch_wait_seconds_sum {hist["sum"]}')
+
+                # Partition drift and plan id
+                plan_id = snap.get("partition_plan_id") or ""
+                metrics.append('# HELP blyan_partition_drift Partition drift (0..1)')
+                metrics.append('# TYPE blyan_partition_drift gauge')
+                metrics.append(f'blyan_partition_drift{{plan_id="{plan_id}"}} {snap.get("partition_drift", 0.0)}')
+
+                # Device profile staleness
+                metrics.append('# HELP blyan_device_profile_staleness_seconds Seconds since last profile update')
+                metrics.append('# TYPE blyan_device_profile_staleness_seconds gauge')
+                for nid, st in snap["device_profile_staleness"].items():
+                    metrics.append(f'blyan_device_profile_staleness_seconds{{node="{nid}"}} {st}')
+            except Exception as e:
+                logger.warning(f"Pipeline metrics unavailable: {e}")
+
+            # Security alerts thresholds for pipeline-specific metrics (export counts)
+            try:
+                from backend.security.monitoring import security_monitor
+                alerts = security_monitor.alert_manager.alert_history[-50:]
+                metrics.append('# HELP blyan_security_alerts_total Number of security alerts recorded')
+                metrics.append('# TYPE blyan_security_alerts_total counter')
+                metrics.append(f'blyan_security_alerts_total {len(alerts)}')
+            except Exception as e:
+                logger.debug(f"Security alerts unavailable: {e}")
             
         except Exception as e:
             logger.error(f"Failed to collect application metrics: {e}")

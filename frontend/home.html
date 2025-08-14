@@ -190,7 +190,7 @@
         <p data-i18n="heroDescription">Experience AI powered by collective intelligence. Chat with AI or contribute your computing power to earn rewards.</p>
         <div style="margin-top:24px;">
             <a href="chat.html" class="action-button" data-i18n="startChatting">Start Chatting</a>
-            <a href="contribute.html" class="action-button secondary-button" style="margin-left:10px;" data-i18n="joinNow">Join Now</a>
+            <a href="#" id="join-now-btn" class="action-button secondary-button" style="margin-left:10px;" data-i18n="joinNow">Join Now</a>
         </div>
     </div>
 
@@ -228,7 +228,8 @@
             <a href="chat.html" class="action-button" data-i18n="startChatting">Start Chatting</a>
         </div>
 
-        <!-- Upload Dataset -->
+        <!-- Upload Dataset (Hidden for MVP) -->
+        <!--
         <div class="action-card">
             <div class="action-icon">📊</div>
             <div class="action-title" data-i18n="uploadDataset">Upload Dataset</div>
@@ -237,18 +238,20 @@
             </div>
             <a href="dataset_upload.html" class="action-button secondary-button" data-i18n="uploadNow">Upload Now</a>
         </div>
+        -->
 
         <!-- Join Network -->
         <div class="action-card">
             <div class="action-icon">⚡</div>
             <div class="action-title" data-i18n="joinTheNetwork">Join the Network</div>
             <div class="action-description" data-i18n="joinDescription">
-                Share your computing power and earn rewards. One-click setup to become part of the AI network.
+                Share your GPU and earn rewards. One‑click issues a node key and shows the exact command to run.
             </div>
             <a href="contribute.html" class="action-button secondary-button" data-i18n="joinNow">Join Now</a>
         </div>
 
-        <!-- Dataset Explorer -->
+        <!-- Dataset Explorer (Hidden for MVP) -->
+        <!--
         <div class="action-card">  
             <div class="action-icon">🔍</div>
             <div class="action-title" data-i18n="datasetExplorer">Dataset Explorer</div>
@@ -257,6 +260,7 @@
             </div>
             <a href="dataset_explorer.html" class="action-button secondary-button" data-i18n="exploreDatasets">Explore Datasets</a>
         </div>
+        -->
     </div>
 
     <!-- Network Status -->
@@ -282,7 +286,8 @@
         </div>
     </div>
 
-    <!-- Advanced Features Link -->
+    <!-- Advanced Features Link (Hidden for MVP) -->
+    <!--
     <div style="text-align: center; margin: 60px 0; padding: 20px;">
         <p style="color: var(--text-muted); margin-bottom: 15px;" data-i18n="advancedFeatures">
             Looking for advanced features?
@@ -291,9 +296,29 @@
             View Technical Dashboard & Analytics →
         </a>
     </div>
+    -->
 
     <script src="config.js"></script>
     <script src="common-header.js"></script>
+    
+    <!-- Join modal -->
+    <div id="joinModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); align-items:center; justify-content:center; z-index:1000;">
+      <div style="background:#fff; width:min(720px,90%); border-radius:12px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,.2);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="margin:0;">Join the Network</h3>
+          <button id="joinClose" style="border:none; background:transparent; font-size:20px; cursor:pointer;">✖</button>
+        </div>
+        <div id="joinBody">
+          <p>We will create a node operator API key and show a one‑line command to start a GPU node. CPU mode is not supported for LLMs.</p>
+          <button id="provisionKeyBtn" class="action-button">Generate Node Key</button>
+          <div id="provisionResult" style="display:none; margin-top:16px;">
+            <div style="background:#0f172a; color:#e5e7eb; padding:12px; border-radius:8px; font-family:monospace; font-size:12px; overflow:auto;" id="commandBox"></div>
+            <p style="margin-top:12px;">1) Copy and run the command on a GPU machine (Docker required).<br/>2) Or set the key as env and run the Python node.</p>
+            <pre id="altInstructions" style="background:#f3f4f6; padding:10px; border-radius:8px; white-space:pre-wrap;"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             // Create header
@@ -301,6 +326,13 @@
             
             // Load network status
             await loadNetworkStatus();
+
+            // Wire Join buttons
+            const openJoin = () => document.getElementById('joinModal').style.display = 'flex';
+            document.getElementById('join-now-btn').addEventListener('click', openJoin);
+            document.getElementById('join-network-btn').addEventListener('click', openJoin);
+            document.getElementById('joinClose').addEventListener('click', () => (document.getElementById('joinModal').style.display = 'none'));
+            document.getElementById('provisionKeyBtn').addEventListener('click', provisionNodeKeyAndShow);
         });
 
         async function loadNetworkStatus() {
@@ -329,6 +361,44 @@
                 document.getElementById('network-nodes').textContent = '3';
                 document.getElementById('total-requests').textContent = '1,247';
                 document.getElementById('network-health').textContent = '99.8%';
+            }
+        }
+
+        async function provisionNodeKeyAndShow() {
+            const bodyEl = document.getElementById('joinBody');
+            const btn = document.getElementById('provisionKeyBtn');
+            const box = document.getElementById('commandBox');
+            const result = document.getElementById('provisionResult');
+            const alt = document.getElementById('altInstructions');
+            btn.disabled = true; btn.textContent = 'Provisioning…';
+            try {
+                // Request node_operator API key
+                const resp = await fetch(`${API_CONFIG.baseURL}/auth/register_api_key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: `web-node-${Date.now()}`, key_type: 'node_operator' })
+                });
+                if (!resp.ok) {
+                    const err = await resp.text();
+                    throw new Error(err);
+                }
+                const data = await resp.json();
+                const apiKey = data.api_key;
+                // Persist for site APIs (quote/chat)
+                try { localStorage.setItem('apiKey', apiKey); } catch {}
+
+                const dockerCmd = `docker run --gpus all --rm -it \\\n+  -e BLYAN_API_KEY=${apiKey} \\\n+  -e MAIN_SERVER_URL=${location.origin}/api \\\n+  ghcr.io/blyan-network/expert-node:latest`;
+                box.textContent = dockerCmd;
+
+                const altText = `# Or Python (requires clone of repo)\nexport BLYAN_API_KEY=${apiKey}\nexport MAIN_SERVER_URL=${location.origin}/api\npython runpod_node.py`;
+                alt.textContent = altText;
+
+                result.style.display = 'block';
+                btn.style.display = 'none';
+            } catch (e) {
+                bodyEl.insertAdjacentHTML('beforeend', `<div style="color:#b91c1c; margin-top:10px;">Failed to provision key: ${e.message}</div>`);
+            } finally {
+                btn.disabled = false; btn.textContent = 'Generate Node Key';
             }
         }
     </script>

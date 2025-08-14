@@ -16,6 +16,76 @@
             display: flex;
             flex-direction: column;
         }
+        /* Layout with sidebar */
+        .chat-layout {
+            display: flex;
+            gap: 16px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 16px;
+            min-height: calc(100vh - 100px);
+        }
+        .chat-sidebar {
+            width: 280px;
+            background: #0f172a;
+            color: #e2e8f0;
+            border-radius: 12px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .new-chat-btn {
+            background: #22c55e;
+            color: #0b1220;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 10px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .session-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .session-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            background: #111827;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .session-item.active {
+            background: #1f2937;
+            border-color: #334155;
+        }
+        .session-title {
+            color: #e5e7eb;
+            font-size: 14px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1;
+        }
+        .session-actions button {
+            background: transparent;
+            color: #9ca3af;
+            border: none;
+            cursor: pointer;
+        }
         .chat-header {
             background: white;
             padding: 20px;
@@ -37,87 +107,6 @@
             box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
         }
         
-        /* Cost estimation modal */
-        .cost-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        
-        .cost-modal-content {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            max-width: 500px;
-            width: 90%;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
-        }
-        
-        .cost-breakdown {
-            background: #f8fafc;
-            padding: 20px;
-            border-radius: 10px;
-            margin: 15px 0;
-        }
-        
-        .cost-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-        
-        .cost-total {
-            border-top: 2px solid #e2e8f0;
-            padding-top: 10px;
-            font-weight: bold;
-            color: var(--primary-color);
-        }
-        
-        .limits-info {
-            background: #e0f2fe;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-        }
-        
-        .challenge-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1001;
-        }
-        
-        .challenge-content {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            max-width: 400px;
-            width: 90%;
-            text-align: center;
-        }
-        
-        .challenge-input {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #e2e8f0;
-            border-radius: 8px;
-            margin: 15px 0;
-            text-align: center;
-            font-size: 18px;
-        }
         .message {
             margin-bottom: 20px;
             padding: 15px;
@@ -179,81 +168,184 @@
             font-style: italic;
             padding: 10px 0;
         }
+        
+        /* Streaming UI styles */
+        .streaming-metrics {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: none;
+        }
+        .streaming-metrics.active {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .metric {
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        .metric-label {
+            font-size: 0.75rem;
+            color: #6b7280;
+            text-transform: uppercase;
+        }
+        .cancel-stream-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            display: none;
+            margin-left: 10px;
+        }
+        .cancel-stream-btn:hover {
+            background: #dc2626;
+        }
+        .usage-indicator {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+        .usage-indicator.free-tier {
+            border-color: #10b981;
+            background: #ecfdf5;
+        }
+        .usage-indicator.paid-tier {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        .usage-indicator.low-balance {
+            border-color: #f59e0b;
+            background: #fffbeb;
+        }
+        .usage-bar {
+            background: #e5e7eb;
+            height: 4px;
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 8px 0 4px 0;
+        }
+        .usage-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #059669);
+            transition: width 0.3s ease;
+        }
+        .usage-fill.low {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+        .usage-fill.critical {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+        }
     </style>
 </head>
 <body>
     <div id="header-container"></div>
-    
-    <div class="chat-container">
-        <div class="chat-header">
-            <h1>🤖 <span data-i18n="aiChat">AI Chat</span></h1>
-            <p data-i18n="chatWithDistributed">Chat with our decentralized AI network</p>
-        </div>
-        
-        <div class="chat-window" id="chat-window">
-            <div class="message ai">
-                <div class="message-sender" data-i18n="aiAssistant">AI Assistant</div>
-                <div data-i18n="aiWelcomeMessage">Hello! I'm powered by the Blyan decentralized network. Ask me anything!</div>
+
+    <div class="chat-layout">
+        <aside class="chat-sidebar">
+            <div class="sidebar-header">
+                <div style="font-weight:700;">💬 <span data-i18n="chats">Chats</span></div>
+                <button class="new-chat-btn" id="new-chat-btn" data-i18n="newChat">New</button>
             </div>
-        </div>
-        
-        <div class="typing-indicator" id="typing-indicator">
-            <span data-i18n="aiThinking">AI is thinking...</span>
-        </div>
-        
-        <div class="chat-input-area">
-            <form class="chat-form" id="chat-form">
-                <input 
-                    type="text" 
-                    id="chat-input" 
-                    class="chat-input" 
-                    placeholder="Type your message..."
-                    data-i18n-placeholder="typeYourMessage"
-                    autocomplete="off"
-                    required
-                >
-                <button type="submit" class="send-button" id="send-button" data-i18n="send">Send</button>
-            </form>
+            <ul class="session-list" id="session-list"></ul>
+        </aside>
+
+        <div class="chat-container" style="flex:1;">
+            <div class="chat-header">
+                <h1>🤖 <span data-i18n="aiChat">AI Chat</span></h1>
+                <p data-i18n="chatWithDistributed">Chat with our decentralized AI network</p>
+            </div>
+            
+            <div class="chat-window" id="chat-window">
+                <div class="message ai">
+                    <div class="message-sender" data-i18n="aiAssistant">AI Assistant</div>
+                    <div data-i18n="aiWelcomeMessage">Hello! I'm powered by the Blyan decentralized network. Ask me anything!</div>
+                </div>
+            </div>
+            
+            <div class="typing-indicator" id="typing-indicator">
+                <span data-i18n="aiThinking">AI is thinking...</span>
+                <button id="cancelStreamBtn" class="cancel-stream-btn" onclick="cancelStream()">Cancel</button>
+            </div>
+            
+            <!-- Usage Indicator -->
+            <div id="usageIndicator" class="usage-indicator" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span id="usageText">Checking usage...</span>
+                    <span id="usageCount" style="font-weight: 600;"></span>
+                </div>
+                <div class="usage-bar">
+                    <div id="usageFill" class="usage-fill" style="width: 100%;"></div>
+                </div>
+                <div id="usageDetail" style="font-size: 0.8em; color: #6b7280; margin-top: 4px;"></div>
+            </div>
+            
+            <div class="streaming-metrics" id="streamingMetrics">
+                <div class="metric">
+                    <div class="metric-value" id="tokenCount">0</div>
+                    <div class="metric-label">Tokens</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="tokenSpeed">0</div>
+                    <div class="metric-label">Tokens/sec</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" id="currentCost">0.000</div>
+                    <div class="metric-label">BLY Cost</div>
+                </div>
+                <div class="metric">
+                    <input type="range" id="maxTokens" min="50" max="500" value="200" 
+                           style="width: 60px; margin: 0;" onchange="updateTokenDisplay()">
+                    <div class="metric-label">Max Tokens</div>
+                    <div id="tokenDisplay" style="font-size: 0.8em; color: #6b7280;">200</div>
+                </div>
+            </div>
+            
+            <div class="chat-input-area">
+                <form class="chat-form" id="chat-form">
+                    <input 
+                        type="text" 
+                        id="chat-input" 
+                        class="chat-input" 
+                        placeholder="Type your message..."
+                        data-i18n-placeholder="typeYourMessage"
+                        autocomplete="off"
+                        required
+                    >
+                    <button type="submit" class="send-button" id="send-button" data-i18n="send">Send</button>
+                </form>
+            </div>
         </div>
     </div>
 
-    <!-- Cost Confirmation Modal -->
-    <div class="cost-modal" id="costModal">
-        <div class="cost-modal-content">
-            <h3>💰 Request Cost Estimate</h3>
-            <div class="cost-breakdown" id="costBreakdown">
-                <!-- Cost details will be populated here -->
-            </div>
-            <div class="limits-info" id="limitsInfo">
-                <!-- User limits info will be populated here -->
-            </div>
-            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
-                <button class="btn btn-secondary" onclick="closeCostModal()">Cancel</button>
-                <button class="btn btn-primary" id="proceedButton" onclick="proceedWithRequest()">Proceed</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Challenge Modal -->
-    <div class="challenge-modal" id="challengeModal">
-        <div class="challenge-content">
-            <h3 id="challengeTitle">🔒 Security Challenge</h3>
-            <p id="challengeDescription">Please complete this challenge to continue.</p>
-            <div id="challengeInput">
-                <!-- Challenge-specific input will be populated here -->
-            </div>
-            <div style="display: flex; gap: 15px; justify-content: center; margin-top: 20px;">
-                <button class="btn btn-secondary" onclick="closeChallengeModal()">Cancel</button>
-                <button class="btn btn-primary" id="submitChallenge" onclick="submitChallenge()">Submit</button>
-            </div>
-        </div>
-    </div>
 
     <script src="config.js"></script>
     <script src="common-header.js"></script>
+    <script src="wallet.js"></script>
     <script>
-        // Global chat persistence
+        // Global session persistence
+        const SESSIONS_KEY = 'blyan-chat-sessions-v1';
+        const SESSION_PREFIX = 'blyan-chat-session-';
+        let currentSessionId = null;
         let chatHistory = [];
+        
+        // Streaming variables
+        let eventSource = null;
+        let currentStreamId = null;
+        let currentMessageElement = null;
+        let accumulatedTokens = '';
+        let streamErrorCount = 0;
         
         document.addEventListener('DOMContentLoaded', () => {
             // Create header
@@ -265,19 +357,31 @@
             const sendButton = document.getElementById('send-button');
             const typingIndicator = document.getElementById('typing-indicator');
             
-            // Load saved chat history
-            loadChatHistory();
+            // Session UI
+            const sessionListEl = document.getElementById('session-list');
+            const newChatBtn = document.getElementById('new-chat-btn');
+            newChatBtn.addEventListener('click', () => createNewSession());
+            
+            // Load user usage information
+            loadUserUsage();
+            
+            // Update header usage indicator
+            updateHeaderUsage();
+
+            // Load or create initial session
+            ensureDefaultSession();
+            renderSessionList();
+            loadSession(currentSessionId);
 
             chatForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const message = chatInput.value.trim();
                 if (!message) return;
 
-                // Store the message for later use
-                window.pendingMessage = message;
-                
-                // Show cost estimation first
-                await showCostEstimation(message);
+                // Add user message and start streaming immediately
+                addMessage('user', message);
+                chatInput.value = '';
+                await startStreaming(message);
             });
 
             function addMessage(sender, content, saveToHistory = true) {
@@ -301,47 +405,137 @@
                 if (saveToHistory) {
                     const message = { sender, content, timestamp: Date.now() };
                     chatHistory.push(message);
-                    saveChatHistory();
+                    saveSession(currentSessionId, chatHistory);
+                    // If first user message, set session title
+                    const sessions = getSessions();
+                    const idx = sessions.findIndex(s => s.id === currentSessionId);
+                    if (idx >= 0 && !sessions[idx].title) {
+                        sessions[idx].title = content.slice(0, 40);
+                        sessions[idx].updatedAt = Date.now();
+                        saveSessions(sessions);
+                        renderSessionList();
+                    }
                 }
             }
+
+            // Expose for global helpers defined outside this closure
+            window.addChatMessage = addMessage;
+            window.showTypingIndicator = showTyping;
             
-            function loadChatHistory() {
-                try {
-                    const saved = localStorage.getItem('blyan-chat-history');
-                    if (saved) {
-                        chatHistory = JSON.parse(saved);
-                        
-                        // Clear existing messages (except welcome)
-                        const existingMessages = chatWindow.querySelectorAll('.message');
-                        existingMessages.forEach((msg, index) => {
-                            if (index > 0) msg.remove(); // Keep first welcome message
-                        });
-                        
-                        // Restore chat history
-                        chatHistory.forEach(msg => {
-                            addMessage(msg.sender, msg.content, false);
-                        });
-                    }
-                } catch (error) {
-                    console.error('Failed to load chat history:', error);
+            function ensureDefaultSession() {
+                const sessions = getSessions();
+                if (!sessions.length) {
+                    const id = genId();
+                    const newSession = { id, title: '', createdAt: Date.now(), updatedAt: Date.now() };
+                    saveSessions([newSession]);
+                    saveSession(id, []);
+                    currentSessionId = id;
+                } else {
+                    currentSessionId = sessions[0].id;
                 }
             }
-            
-            function saveChatHistory() {
+
+            function genId() {
+                return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            }
+
+            function getSessions() {
+                try { return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]'); } catch { return []; }
+            }
+            function saveSessions(sessions) {
+                localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+            }
+            function loadSession(id) {
                 try {
-                    // Keep only last 50 messages
-                    if (chatHistory.length > 50) {
-                        chatHistory = chatHistory.slice(-50);
-                    }
-                    localStorage.setItem('blyan-chat-history', JSON.stringify(chatHistory));
-                } catch (error) {
-                    console.error('Failed to save chat history:', error);
+                    const saved = localStorage.getItem(SESSION_PREFIX + id);
+                    chatHistory = saved ? JSON.parse(saved) : [];
+                    // Clear window except welcome
+                    const existing = chatWindow.querySelectorAll('.message');
+                    existing.forEach((msg, index) => { if (index > 0) msg.remove(); });
+                    chatHistory.forEach(m => addMessage(m.sender, m.content, false));
+                    currentSessionId = id;
+                    highlightActiveSession();
+                } catch (e) { console.error('loadSession failed', e); }
+            }
+            function saveSession(id, messages) {
+                try {
+                    const trimmed = messages.length > 200 ? messages.slice(-200) : messages;
+                    localStorage.setItem(SESSION_PREFIX + id, JSON.stringify(trimmed));
+                    const sessions = getSessions();
+                    const idx = sessions.findIndex(s => s.id === id);
+                    if (idx >= 0) { sessions[idx].updatedAt = Date.now(); saveSessions(sessions); }
+                } catch (e) { console.error('saveSession failed', e); }
+            }
+            function renderSessionList() {
+                const sessions = getSessions().sort((a,b) => (b.updatedAt||0)-(a.updatedAt||0));
+                sessionListEl.innerHTML = '';
+                sessions.forEach(s => {
+                    const li = document.createElement('li');
+                    li.className = 'session-item' + (s.id === currentSessionId ? ' active' : '');
+                    li.innerHTML = `
+                        <div class="session-title" title="${(s.title||'New chat')}">${(s.title||'New chat')}</div>
+                        <div class="session-actions">
+                            <button title="Rename" data-act="rename">✏️</button>
+                            <button title="Delete" data-act="delete">🗑️</button>
+                        </div>`;
+                    li.addEventListener('click', (e) => {
+                        const act = (e.target && e.target.dataset && e.target.dataset.act) || '';
+                        if (act === 'delete') { e.stopPropagation(); return deleteSession(s.id); }
+                        if (act === 'rename') { e.stopPropagation(); return renameSession(s.id); }
+                        loadSession(s.id);
+                    });
+                    sessionListEl.appendChild(li);
+                });
+            }
+            function highlightActiveSession() {
+                const nodes = sessionListEl.querySelectorAll('.session-item');
+                nodes.forEach(n => n.classList.remove('active'));
+                const sessions = getSessions();
+                const idx = sessions.findIndex(s => s.id === currentSessionId);
+                if (idx >= 0 && sessionListEl.children[idx]) sessionListEl.children[idx].classList.add('active');
+            }
+            function createNewSession() {
+                const id = genId();
+                const sessions = [{ id, title: '', createdAt: Date.now(), updatedAt: Date.now() }, ...getSessions()];
+                saveSessions(sessions);
+                saveSession(id, []);
+                currentSessionId = id;
+                renderSessionList();
+                loadSession(id);
+            }
+            function deleteSession(id) {
+                if (!confirm('Delete this chat?')) return;
+                const sessions = getSessions().filter(s => s.id !== id);
+                saveSessions(sessions);
+                localStorage.removeItem(SESSION_PREFIX + id);
+                if (currentSessionId === id) {
+                    if (sessions.length) { currentSessionId = sessions[0].id; } else { ensureDefaultSession(); }
+                    loadSession(currentSessionId);
+                }
+                renderSessionList();
+            }
+            function renameSession(id) {
+                const sessions = getSessions();
+                const s = sessions.find(x => x.id === id);
+                const title = prompt('Rename chat', s && s.title ? s.title : '');
+                if (title !== null) {
+                    s.title = title.trim();
+                    s.updatedAt = Date.now();
+                    saveSessions(sessions);
+                    renderSessionList();
                 }
             }
 
             function showTyping(show) {
                 typingIndicator.style.display = show ? 'block' : 'none';
                 sendButton.disabled = show;
+                
+                // Show/hide cancel button during streaming
+                const cancelBtn = document.getElementById('cancelStreamBtn');
+                if (cancelBtn) {
+                    cancelBtn.style.display = show ? 'inline-block' : 'none';
+                }
+                
                 if (show) {
                     chatWindow.scrollTop = chatWindow.scrollHeight;
                 }
@@ -351,173 +545,78 @@
             chatInput.focus();
         });
 
-        // Cost estimation and abuse prevention functions
-        let currentQuote = null;
-        let pendingChallenge = null;
-
-        async function showCostEstimation(message) {
-            const modal = document.getElementById('costModal');
-            const breakdownDiv = document.getElementById('costBreakdown');
-            const limitsDiv = document.getElementById('limitsInfo');
-            
-            try {
-                // Estimate tokens (simple word-based estimation)
-                const inputTokens = Math.ceil(message.split(' ').length * 1.3);
-                const outputTokensEst = 150; // Conservative estimate
-                
-                // Get cost quote
-                const quoteResponse = await fetch(`${API_CONFIG.baseURL}/economy/quote_chat?input_tokens=${inputTokens}&output_tokens_est=${outputTokensEst}&expert_quality=standard`, {
-                    headers: getUserHeaders()
-                });
-                
-                if (quoteResponse.ok) {
-                    currentQuote = await quoteResponse.json();
-                    
-                    // Get user limits
-                    const userAddress = getUserAddress();
-                    let userLimits = null;
-                    
-                    if (userAddress) {
-                        try {
-                            const limitsResponse = await fetch(`${API_CONFIG.baseURL}/leaderboard/me/summary?address=${userAddress}`);
-                            if (limitsResponse.ok) {
-                                userLimits = await limitsResponse.json();
-                            }
-                        } catch (e) {
-                            // User limits not available - new user
-                        }
-                    }
-                    
-                    // Populate cost breakdown
-                    breakdownDiv.innerHTML = `
-                        <h4>💎 Cost Breakdown</h4>
-                        <div class="cost-item">
-                            <span>Input tokens (${currentQuote.breakdown.input_tokens})</span>
-                            <span>${currentQuote.breakdown.input_cost} BLY</span>
-                        </div>
-                        <div class="cost-item">
-                            <span>Output tokens (~${currentQuote.breakdown.output_tokens_est})</span>
-                            <span>${currentQuote.breakdown.output_cost} BLY</span>
-                        </div>
-                        ${currentQuote.breakdown.user_discount ? `
-                        <div class="cost-item">
-                            <span>🎁 Trust discount</span>
-                            <span>-${((1 - parseFloat(currentQuote.breakdown.user_discount)) * 100).toFixed(1)}%</span>
-                        </div>` : ''}
-                        <div class="cost-item cost-total">
-                            <span>Total Cost</span>
-                            <span>${currentQuote.total_cost} BLY</span>
-                        </div>
-                    `;
-                    
-                    // Populate limits info
-                    if (userLimits && (userLimits.free_requests_remaining > 0 || userLimits.bonus_requests_available > 0)) {
-                        limitsDiv.innerHTML = `
-                            <h4>🎫 Your Free Tier Status</h4>
-                            <p><strong>Free requests remaining:</strong> ${userLimits.free_requests_remaining}</p>
-                            <p><strong>Bonus requests:</strong> ${userLimits.bonus_requests_available}</p>
-                            <p><strong>Trust level:</strong> ${userLimits.trust_level}</p>
-                            <p style="color: #10b981; font-weight: bold;">✅ This request will use your free tier!</p>
-                        `;
-                    } else if (userLimits) {
-                        limitsDiv.innerHTML = `
-                            <h4>💳 Payment Required</h4>
-                            <p><strong>Your balance:</strong> ${userLimits.balance} BLY</p>
-                            <p><strong>Free requests:</strong> ${userLimits.free_requests_remaining} remaining</p>
-                            <p style="color: #f59e0b;">⚠️ This request will be charged to your balance.</p>
-                        `;
-                    } else {
-                        limitsDiv.innerHTML = `
-                            <h4>🆕 New User</h4>
-                            <p>You have <strong>5 free requests</strong> as a new user!</p>
-                            <p style="color: #10b981;">✅ This request is free!</p>
-                        `;
-                    }
-                    
-                    modal.style.display = 'flex';
-                } else {
-                    // Handle quote error
-                    const errorData = await quoteResponse.json();
-                    if (quoteResponse.status === 429) {
-                        // Rate limited - might need challenge
-                        if (errorData.challenge_type) {
-                            await handleChallenge(errorData);
-                        } else {
-                            showError(`Rate limit exceeded: ${errorData.reason}`);
-                        }
-                    } else {
-                        showError('Failed to get cost estimate. Please try again.');
-                    }
-                }
-            } catch (error) {
-                console.error('Cost estimation error:', error);
-                showError('Failed to get cost estimate. Please try again.');
-            }
-        }
-
-        async function proceedWithRequest() {
-            const modal = document.getElementById('costModal');
-            modal.style.display = 'none';
-            
-            const message = window.pendingMessage;
-            const chatInput = document.getElementById('chat-input');
-            
-            // Add user message
-            addMessage('user', message);
-            chatInput.value = '';
-            
-            // Show typing indicator
+        // Streaming chat functions
+        async function startStreaming(message) {
             showTyping(true);
             
+            // Show streaming metrics panel
+            const metricsPanel = document.getElementById('streamingMetrics');
+            metricsPanel.classList.add('active');
+            
+            // Create AI message element for streaming
+            currentMessageElement = addStreamingMessage('', 'ai');
+            accumulatedTokens = '';
+            
             try {
-                const requestBody = {
+                const maxTokens = document.getElementById('maxTokens')?.value || 200;
+                const params = new URLSearchParams({
                     prompt: message,
-                    use_moe: true,
-                    top_k_experts: 2
+                    max_new_tokens: maxTokens
+                });
+                
+                // Add user headers for authentication
+                const headers = getUserHeaders();
+                const headerParams = new URLSearchParams();
+                Object.entries(headers).forEach(([key, value]) => {
+                    headerParams.append(key, value);
+                });
+                
+                eventSource = new EventSource(`${API_CONFIG.baseURL}/chat/stream?${params}&${headerParams}`);
+                
+                eventSource.addEventListener('stream_start', (event) => {
+                    const data = JSON.parse(event.data);
+                    currentStreamId = data.stream_id;
+                });
+                
+                eventSource.addEventListener('token', (event) => {
+                    const data = JSON.parse(event.data);
+                    handleStreamToken(data);
+                });
+                
+                eventSource.addEventListener('stream_end', (event) => {
+                    const data = JSON.parse(event.data);
+                    handleStreamEnd(data);
+                });
+                
+                eventSource.addEventListener('error', (event) => {
+                    handleStreamError(event);
+                });
+                
+                // Handle EventSource connection errors (CORS, network, etc)
+                eventSource.onerror = (event) => {
+                    console.error('EventSource connection error:', event);
+                    streamErrorCount++;
+                    
+                    if (streamErrorCount <= 2) {
+                        // Retry streaming up to 2 times
+                        setTimeout(() => {
+                            cleanupStream();
+                            startStreaming(message);
+                        }, 1000);
+                    } else {
+                        // After 2 failures, show error and reset
+                        handleStreamError({ error: 'Connection failed after retries' });
+                        streamErrorCount = 0;
+                    }
                 };
                 
-                // Include quote ID if available
-                if (currentQuote) {
-                    requestBody.quote_id = currentQuote.quote_id;
-                }
-                
-                const response = await fetch(`${API_CONFIG.baseURL}/chat`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getUserHeaders()
-                    },
-                    body: JSON.stringify(requestBody)
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    addMessage('ai', data.response);
-                } else {
-                    const errorData = await response.json();
-                    
-                    if (response.status === 429 && errorData.challenge_type) {
-                        // Need to complete challenge
-                        await handleChallenge(errorData);
-                    } else if (response.status === 402) {
-                        // Insufficient balance
-                        showError('Insufficient balance. Please add funds to your account.');
-                    } else {
-                        addMessage('ai', `Sorry, I encountered an error: ${errorData.detail || 'Please try again.'}`);
-                    }
-                }
             } catch (error) {
-                console.error('Chat error:', error);
-                addMessage('ai', 'Sorry, I\'m having trouble connecting to the network. Please try again later.');
-            } finally {
-                showTyping(false);
-                currentQuote = null;
+                console.error('Streaming error:', error);
+                if (currentMessageElement) {
+                    currentMessageElement.textContent = 'Error: Failed to start streaming';
+                }
+                cleanupStream();
             }
-        }
-
-        function closeCostModal() {
-            document.getElementById('costModal').style.display = 'none';
-            currentQuote = null;
         }
 
         function getUserAddress() {
@@ -526,156 +625,299 @@
 
         function getUserHeaders() {
             const userAddress = getUserAddress();
-            return {
-                'X-User-Address': userAddress
-            };
+            const headers = { 'X-User-Address': userAddress };
+            // Optional API key for protected endpoints (stored once in localStorage)
+            const apiKey = localStorage.getItem('apiKey');
+            if (apiKey) headers['X-API-Key'] = apiKey;
+            return headers;
         }
 
         function showError(message) {
+            // Add error message directly to chat
             addMessage('ai', `❌ ${message}`);
         }
 
-        // Challenge handling functions
-        async function handleChallenge(challengeData) {
-            const challengeModal = document.getElementById('challengeModal');
-            const titleEl = document.getElementById('challengeTitle');
-            const descEl = document.getElementById('challengeDescription');
-            const inputEl = document.getElementById('challengeInput');
+        function addStreamingMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender} streaming`;
             
-            pendingChallenge = challengeData;
+            const senderDiv = document.createElement('div');
+            senderDiv.className = 'message-sender';
+            senderDiv.textContent = sender === 'user' ? 'You' : 'AI Assistant';
             
-            if (challengeData.challenge_type === 'captcha') {
-                titleEl.textContent = '🔒 CAPTCHA Challenge';
-                descEl.textContent = challengeData.question || 'Please solve this CAPTCHA to continue.';
-                inputEl.innerHTML = '<input type="text" class="challenge-input" placeholder="Enter your answer" id="challengeAnswer">';
-            } else if (challengeData.challenge_type === 'proof_of_work') {
-                titleEl.textContent = '⚡ Proof of Work Challenge';
-                descEl.textContent = challengeData.description || 'Computing proof of work...';
-                inputEl.innerHTML = '<div style="text-align: center;"><div style="margin: 15px 0;">Computing solution...</div><div id="powProgress" style="width: 100%; background: #e2e8f0; height: 6px; border-radius: 3px;"><div style="width: 0%; height: 100%; background: #4f46e5; border-radius: 3px; transition: width 0.3s;"></div></div></div>';
+            const contentDiv = document.createElement('div');
+            contentDiv.textContent = text;
+            
+            messageDiv.appendChild(senderDiv);
+            messageDiv.appendChild(contentDiv);
+            
+            const chatWindow = document.getElementById('chat-window');
+            chatWindow.appendChild(messageDiv);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+            
+            return contentDiv;
+        }
+        
+        function handleStreamToken(data) {
+            if (data.token && currentMessageElement) {
+                accumulatedTokens += data.token;
+                currentMessageElement.textContent = accumulatedTokens;
                 
-                // Start computing proof of work
-                setTimeout(() => computeProofOfWork(challengeData), 100);
-                return; // Don't show modal yet for PoW
-            } else if (challengeData.challenge_type === 'rate_delay') {
-                titleEl.textContent = '⏰ Rate Limit';
-                descEl.textContent = `Please wait ${challengeData.retry_after} seconds before trying again.`;
-                inputEl.innerHTML = '<div style="text-align: center; color: #f59e0b;">Request rate limit exceeded</div>';
+                // Update metrics
+                updateStreamingMetrics(
+                    data.token_number || 0,
+                    data.tokens_per_second || 0,
+                    data.cumulative_cost || 0
+                );
+            }
+        }
+        
+        function handleStreamEnd(data) {
+            if (currentMessageElement) {
+                currentMessageElement.parentElement.classList.remove('streaming');
                 
-                // Auto-close after delay
-                setTimeout(() => {
-                    closeChallengeModal();
-                }, challengeData.retry_after * 1000);
+                // Save to history
+                const message = { sender: 'ai', content: accumulatedTokens, timestamp: Date.now() };
+                chatHistory.push(message);
+                saveSession(currentSessionId, chatHistory);
             }
             
-            challengeModal.style.display = 'flex';
+            // Update usage after chat completion
+            updateUsageAfterChat(data.cumulative_cost || 0);
+            
+            cleanupStream();
+        }
+        
+        function handleStreamError(error) {
+            console.error('Stream error:', error);
+            if (currentMessageElement) {
+                currentMessageElement.textContent = 'Error: Failed to generate response';
+                currentMessageElement.parentElement.classList.remove('streaming');
+            }
+            cleanupStream();
+        }
+        
+        function cleanupStream() {
+            showTyping(false);
+            currentStreamId = null;
+            currentMessageElement = null;
+            accumulatedTokens = '';
+            
+            // Hide streaming metrics panel after delay
+            setTimeout(() => {
+                const metricsPanel = document.getElementById('streamingMetrics');
+                metricsPanel.classList.remove('active');
+                // Reset metrics
+                updateStreamingMetrics(0, 0, 0);
+            }, 2000);
+            
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+        }
+        
+        function updateStreamingMetrics(tokens, speed, cost) {
+            document.getElementById('tokenCount').textContent = tokens || 0;
+            document.getElementById('tokenSpeed').textContent = speed ? speed.toFixed(1) : '0';
+            document.getElementById('currentCost').textContent = cost ? parseFloat(cost).toFixed(4) : '0.0000';
+        }
+        
+        function updateTokenDisplay() {
+            const slider = document.getElementById('maxTokens');
+            const display = document.getElementById('tokenDisplay');
+            if (slider && display) {
+                display.textContent = slider.value;
+            }
+        }
+        
+        async function cancelStream() {
+            if (currentStreamId && eventSource) {
+                try {
+                    await fetch(`${API_CONFIG.baseURL}/chat/stream/cancel`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...getUserHeaders()
+                        },
+                        body: JSON.stringify({ stream_id: currentStreamId })
+                    });
+                } catch (e) {
+                    console.warn('Stream cancel failed:', e);
+                }
+                cleanupStream();
+            }
         }
 
-        async function submitChallenge() {
-            if (!pendingChallenge) return;
+        // Usage tracking functions
+        async function loadUserUsage() {
+            const indicator = document.getElementById('usageIndicator');
+            const usageText = document.getElementById('usageText');
+            const usageCount = document.getElementById('usageCount');
+            const usageFill = document.getElementById('usageFill');
+            const usageDetail = document.getElementById('usageDetail');
             
-            const answerInput = document.getElementById('challengeAnswer');
-            if (!answerInput) return;
-            
-            const answer = answerInput.value.trim();
-            if (!answer) return;
+            if (!indicator) return;
             
             try {
-                const response = await fetch('/abuse_prevention/verify_challenge', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getUserHeaders()
-                    },
-                    body: JSON.stringify({
-                        challenge_id: pendingChallenge.challenge_id,
-                        challenge_type: pendingChallenge.challenge_type,
-                        response: answer
-                    })
-                });
+                const userAddress = getUserAddress();
+                const response = await fetch(`${API_CONFIG.baseURL}/leaderboard/me/summary?address=${userAddress}`);
                 
                 if (response.ok) {
-                    closeChallengeModal();
-                    // Retry original request
-                    await proceedWithRequest();
+                    const data = await response.json();
+                    updateUsageDisplay(data);
+                    indicator.style.display = 'block';
+                } else if (response.status === 404) {
+                    // New user - show free tier
+                    updateUsageDisplay({
+                        free_requests_remaining: 5,
+                        free_requests_total: 5,
+                        balance: 0,
+                        is_new_user: true
+                    });
+                    indicator.style.display = 'block';
                 } else {
-                    const errorData = await response.json();
-                    showError(errorData.detail || 'Challenge verification failed');
-                    closeChallengeModal();
+                    console.warn('Failed to load user usage:', response.status);
                 }
             } catch (error) {
-                console.error('Challenge submission error:', error);
-                showError('Failed to verify challenge');
-                closeChallengeModal();
+                console.error('Error loading user usage:', error);
+                // Don't show indicator if we can't load data
             }
         }
-
-        function closeChallengeModal() {
-            document.getElementById('challengeModal').style.display = 'none';
-            pendingChallenge = null;
-        }
-
-        async function computeProofOfWork(challengeData) {
-            // Simple proof of work computation (for demo)
-            const data = challengeData.data;
-            const difficulty = challengeData.difficulty;
-            const target = '0'.repeat(difficulty);
+        
+        function updateUsageDisplay(data) {
+            const indicator = document.getElementById('usageIndicator');
+            const usageText = document.getElementById('usageText');
+            const usageCount = document.getElementById('usageCount');
+            const usageFill = document.getElementById('usageFill');
+            const usageDetail = document.getElementById('usageDetail');
             
-            let nonce = 0;
-            let found = false;
+            if (!indicator) return;
             
-            while (!found && nonce < 1000000) { // Limit iterations
-                const hash = await crypto.subtle.digest('SHA-256', 
-                    new TextEncoder().encode(data + nonce.toString())
-                );
-                const hashHex = Array.from(new Uint8Array(hash))
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('');
+            const freeRemaining = data.free_requests_remaining || 0;
+            const freeTotal = data.free_requests_total || 5;
+            const balance = parseFloat(data.balance || 0);
+            const isNewUser = data.is_new_user || false;
+            
+            // Reset classes
+            indicator.className = 'usage-indicator';
+            usageFill.className = 'usage-fill';
+            
+            if (freeRemaining > 0) {
+                // Free tier user with remaining requests
+                indicator.classList.add('free-tier');
+                usageText.textContent = isNewUser ? '🎁 Welcome! Free requests' : '🆓 Free tier';
+                usageCount.textContent = `${freeRemaining}/${freeTotal}`;
                 
-                if (hashHex.startsWith(target)) {
-                    found = true;
-                    
-                    // Auto-submit PoW solution
-                    try {
-                        const response = await fetch('/abuse_prevention/verify_challenge', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                ...getUserHeaders()
-                            },
-                            body: JSON.stringify({
-                                challenge_id: challengeData.challenge_id,
-                                challenge_type: 'proof_of_work',
-                                response: nonce.toString()
-                            })
-                        });
-                        
-                        if (response.ok) {
-                            await proceedWithRequest(); // Retry original request
-                        } else {
-                            showError('Proof of work verification failed');
-                        }
-                    } catch (error) {
-                        console.error('PoW submission error:', error);
-                        showError('Failed to submit proof of work');
+                const percentage = (freeRemaining / freeTotal) * 100;
+                usageFill.style.width = `${percentage}%`;
+                
+                if (percentage <= 20) {
+                    usageFill.classList.add('critical');
+                    usageDetail.textContent = '⚠️ Almost out of free requests. Consider adding BLY tokens.';
+                } else if (percentage <= 50) {
+                    usageFill.classList.add('low');
+                    usageDetail.textContent = `${freeRemaining} free chats remaining this cycle.`;
+                } else {
+                    usageDetail.textContent = `${freeRemaining} free chats remaining this cycle.`;
+                }
+                
+            } else if (balance > 0) {
+                // Paid user with BLY balance
+                indicator.classList.add('paid-tier');
+                usageText.textContent = '💰 BLY Balance';
+                usageCount.textContent = `${balance.toFixed(4)} BLY`;
+                
+                // Estimate chat capacity based on average cost (~0.0010 BLY per chat)
+                const avgChatCost = 0.0010;
+                const estimatedChats = Math.floor(balance / avgChatCost);
+                
+                if (balance < 0.010) {
+                    indicator.classList.remove('paid-tier');
+                    indicator.classList.add('low-balance');
+                    usageFill.classList.add('critical');
+                    usageFill.style.width = '15%';
+                    usageDetail.textContent = '⚠️ Low balance! Add more BLY tokens to continue chatting.';
+                } else if (balance < 0.050) {
+                    usageFill.classList.add('low');
+                    usageFill.style.width = '40%';
+                    usageDetail.textContent = `~${estimatedChats} chats remaining (avg cost: ${avgChatCost.toFixed(4)} BLY).`;
+                } else {
+                    usageFill.style.width = '100%';
+                    usageDetail.textContent = `~${estimatedChats} chats available (avg cost: ${avgChatCost.toFixed(4)} BLY).`;
+                }
+                
+            } else {
+                // No free requests and no balance
+                indicator.classList.add('low-balance');
+                usageText.textContent = '❌ No credits';
+                usageCount.textContent = '0 remaining';
+                usageFill.classList.add('critical');
+                usageFill.style.width = '0%';
+                usageDetail.textContent = '💡 Add BLY tokens or contribute computing power to earn free requests.';
+            }
+        }
+        
+        function updateUsageAfterChat(cost) {
+            // Update usage display after a chat is sent
+            setTimeout(() => {
+                loadUserUsage();
+                updateHeaderUsage();
+            }, 1000); // Reload after 1 second
+        }
+        
+        // Global function to update header usage indicator
+        async function updateHeaderUsage() {
+            const headerIndicator = document.getElementById('header-usage-indicator');
+            const headerText = document.getElementById('header-usage-text');
+            
+            if (!headerIndicator || !headerText) return;
+            
+            try {
+                const userAddress = getUserAddress();
+                const response = await fetch(`${API_CONFIG.baseURL}/leaderboard/me/summary?address=${userAddress}`);
+                
+                let data;
+                if (response.ok) {
+                    data = await response.json();
+                } else if (response.status === 404) {
+                    // New user
+                    data = { free_requests_remaining: 5, balance: 0, is_new_user: true };
+                } else {
+                    return; // Don't show on error
+                }
+                
+                const freeRemaining = data.free_requests_remaining || 0;
+                const balance = parseFloat(data.balance || 0);
+                
+                // Reset classes
+                headerIndicator.className = 'header-usage-badge';
+                
+                if (freeRemaining > 0) {
+                    headerIndicator.classList.add('free-tier');
+                    headerText.textContent = `🆓 ${freeRemaining} free`;
+                } else if (balance > 0) {
+                    if (balance < 0.010) {
+                        headerIndicator.classList.add('low-balance');
+                        headerText.textContent = `⚠️ ${balance.toFixed(4)} BLY`;
+                    } else {
+                        headerIndicator.classList.add('paid-tier');
+                        headerText.textContent = `💰 ${balance.toFixed(4)} BLY`;
                     }
                 } else {
-                    nonce++;
-                    
-                    // Update progress (every 1000 iterations)
-                    if (nonce % 1000 === 0) {
-                        const progress = Math.min(100, (nonce / 10000) * 100);
-                        const progressBar = document.querySelector('#powProgress > div');
-                        if (progressBar) {
-                            progressBar.style.width = `${progress}%`;
-                        }
-                    }
+                    headerIndicator.classList.add('low-balance');
+                    headerText.textContent = '❌ No credits';
                 }
-            }
-            
-            if (!found) {
-                showError('Proof of work computation timed out');
+                
+                headerIndicator.style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error updating header usage:', error);
             }
         }
+        
+        // Make function globally available
+        window.updateHeaderUsage = updateHeaderUsage;
 
         // Auto-generate user address for demo
         if (!localStorage.getItem('userAddress')) {

@@ -55,6 +55,7 @@ class NodeCapability:
     load_factor: float = 0.0
     last_heartbeat: float = 0.0
     region: str = "default"
+    donor_mode: bool = False
     
     @property
     def endpoint(self) -> str:

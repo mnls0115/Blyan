@@ -100,7 +100,8 @@ class MicroStepTrainer:
         self,
         model: nn.Module,
         optimizer: torch.optim.Optimizer,
-        config: MicroStepConfig = None
+        config: MicroStepConfig = None,
+        use_activation_checkpointing: bool = False
     ):
         self.model = model
         self.optimizer = optimizer
@@ -127,6 +128,12 @@ class MicroStepTrainer:
         # Gradient accumulation
         self.accumulated_gradients = []
         self.accumulation_step = 0
+        self.use_activation_checkpointing = use_activation_checkpointing
+        if self.use_activation_checkpointing:
+            try:
+                from torch.utils.checkpoint import checkpoint_sequential  # noqa: F401
+            except Exception:
+                logger.warning("Activation checkpointing requested but torch.utils.checkpoint unavailable")
         
     def request_yield(self, priority: float = 0.5):
         """Request training to yield for inference."""
@@ -154,7 +161,18 @@ class MicroStepTrainer:
             # Micro-yield point 1: Before forward
             await self._micro_yield()
             
-            outputs = self.model(**batch)
+            # Optional activation checkpointing for sequential submodules
+            if self.use_activation_checkpointing and hasattr(self.model, 'children'):
+                from torch.utils.checkpoint import checkpoint_sequential
+                modules = [m for m in self.model.children()]
+                if modules:
+                    # Split into 2 segments by default; adjust if needed
+                    segments = max(2, len(modules) // 2)
+                    outputs = checkpoint_sequential(nn.Sequential(*modules), segments, **batch)
+                else:
+                    outputs = self.model(**batch)
+            else:
+                outputs = self.model(**batch)
             loss = outputs.loss / self.config.gradient_accumulation_steps
             
             # Micro-yield point 2: After forward

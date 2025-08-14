@@ -40,7 +40,7 @@ from backend.core.architecture_migration import ArchitectureMigrationManager, Mi
 from backend.core.epoch_scheduler import EpochEventScheduler
 from backend.model.infer import ModelManager
 from backend.model.moe_infer import MoEModelManager, ExpertUsageTracker, reward_expert
-from backend.p2p.distributed_inference import DistributedInferenceCoordinator, ExpertNode
+from backend.p2p.distributed_inference import DistributedInferenceCoordinator, ExpertNode, DeviceProfile
 from backend.p2p.expert_group_optimizer import NodeCapability, ExpertGroup
 from backend.core.pol import evaluate_candidate
 from backend.core.pol_validator import create_pol_validator, ChainValidator
@@ -77,6 +77,7 @@ from backend.security.content_safety import (
     scan_content_safety, is_content_safe, get_content_safety_status, quarantine_content, unquarantine_content
 )
 from backend.core.scheduler_integration import wire_system_components
+from backend.core.meta_v2 import MetaSpecV2, MetaChainV2Manager, validate_meta_spec_v2
 
 # Economy and wallet routers will be imported after app initialization
 
@@ -362,6 +363,7 @@ app.middleware("http")(security_middleware)
 
 # Add rate limiting middleware
 from backend.security.rate_limiting import RateLimitMiddleware
+from backend.security.input_validation import validate_heartbeat_params
 rate_limit_middleware = RateLimitMiddleware(
     default_limit=60,  # 60 requests per minute for basic tier
     premium_limit=300,  # 300 requests per minute for premium
@@ -381,6 +383,19 @@ app.add_middleware(
     allow_headers=["*"],
     max_age=3600  # Cache preflight requests for 1 hour
 )
+
+
+class TrainingJobStatus(BaseModel):
+    running: bool
+    paused: bool
+    started_at: float
+    last_update: float
+    epochs_done: int
+    steps_done: int
+    total_tokens: int
+    average_loss: float
+    last_error: Optional[str] = None
+    progress: float
 
 
 class ChatRequest(BaseModel):
@@ -583,6 +598,79 @@ class BlockDetailResponse(BaseModel):
     header: dict
     payload_b64: Union[str, None] = None
 
+"""
+Meta Spec V2 lightweight endpoints for snapshot/draft management
+"""
+
+class MetaSpecRequest(BaseModel):
+    spec: Optional[Dict[str, Any]] = None
+
+
+def _get_meta_manager():
+    return MetaChainV2Manager(meta_chain)
+
+
+@app.get("/meta/spec/latest")
+async def get_latest_meta_spec() -> Dict[str, Any]:
+    manager = _get_meta_manager()
+    spec = manager.get_latest_spec()
+    if not spec:
+        raise HTTPException(status_code=404, detail="No meta spec found")
+    return {"spec": spec.to_dict()}
+
+
+@app.get("/meta/spec/version/{version}")
+async def get_meta_spec_by_version(version: str) -> Dict[str, Any]:
+    manager = _get_meta_manager()
+    spec = manager.get_spec_by_version(version)
+    if not spec:
+        raise HTTPException(status_code=404, detail="Meta spec not found for version")
+    return {"spec": spec.to_dict()}
+
+
+@app.post("/meta/spec/snapshot")
+async def create_meta_snapshot(req: MetaSpecRequest) -> Dict[str, Any]:
+    manager = _get_meta_manager()
+    latest = manager.get_latest_spec()
+
+    if req.spec:
+        if not validate_meta_spec_v2(req.spec):
+            raise HTTPException(status_code=400, detail="Invalid spec payload")
+        spec = MetaSpecV2.from_dict(req.spec)
+    else:
+        if latest:
+            spec = MetaSpecV2.from_dict(latest.to_dict())
+        else:
+            spec = MetaSpecV2(model_id="blyan", version="1.0.0")
+    spec.is_snapshot = True
+    spec.is_draft = False
+    block_hash = manager.create_spec_block(spec)
+    return {"status": "ok", "block_hash": block_hash, "spec": spec.to_dict()}
+
+
+@app.post("/meta/spec/draft")
+async def create_meta_draft(req: MetaSpecRequest) -> Dict[str, Any]:
+    manager = _get_meta_manager()
+    latest = manager.get_latest_spec()
+
+    if req.spec:
+        if not validate_meta_spec_v2(req.spec):
+            raise HTTPException(status_code=400, detail="Invalid spec payload")
+        spec = MetaSpecV2.from_dict(req.spec)
+    else:
+        if latest:
+            bumped = latest.semver.bump_minor()
+            base = latest.to_dict()
+            base["version"] = str(bumped)
+            spec = MetaSpecV2.from_dict(base)
+            spec.parent_version = latest.version
+        else:
+            spec = MetaSpecV2(model_id="blyan", version="1.1.0")
+    spec.is_draft = True
+    spec.is_snapshot = False
+    block_hash = manager.create_spec_block(spec)
+    return {"status": "ok", "block_hash": block_hash, "spec": spec.to_dict()}
+
 
 @app.get("/chain/{chain_id}/block/{index}", response_model=BlockDetailResponse)
 async def get_block(chain_id: str, index: int, include_payload: bool = False):
@@ -607,6 +695,135 @@ def _startup():
     # Wire scheduler to distributed coordinator
     scheduler_integration = SchedulerIntegration()
     scheduler_integration.connect_inference_coordinator(distributed_coordinator)
+    # Provide real device profiles and model structure to partition planner
+    def _device_profile_provider(node_ids: List[str]):
+        devices = []
+        try:
+            # Pull real profiles from registry
+            for nid in node_ids:
+                node = distributed_coordinator.registry.nodes.get(nid)
+                if not node or not node.device_profile:
+                    continue
+                dp = node.device_profile
+                devices.append(DeviceConstraint(
+                    device_id=nid,
+                    vram_gb=float(dp.vram_gb or 0.0),
+                    tflops_est=float(dp.tflops_est or 0.0),
+                ))
+        except Exception as e:
+            print(f"⚠️ Device profile provider error: {e}")
+        return devices
+
+    def _model_structure_provider():
+        try:
+            # Use meta_v2 spec if available to infer number of layers
+            from backend.core.meta_v2 import MetaSpecV2
+            manager = _get_meta_manager()
+            latest = manager.get_latest_spec()
+            num_layers = latest.base_num_layers if latest else 12
+        except Exception:
+            num_layers = 12
+        return [{"name": f"block_{i}", "kind": "transformer_block", "extra": {}} for i in range(num_layers)]
+
+    epoch_scheduler.set_device_profile_provider(_device_profile_provider)
+    epoch_scheduler.set_model_structure_provider(_model_structure_provider)
+
+    # Start pipeline round service (training rounds using frozen plans)
+    try:
+        from backend.learning.pipeline_round_service import PipelineRoundService
+        from backend.learning.training_job_service import get_training_job_service
+        pipeline_service = PipelineRoundService(
+            registry=distributed_coordinator.registry,
+            epoch_scheduler=epoch_scheduler,
+            transport=os.getenv('BLYAN_PIPELINE_TRANSPORT', 'http')
+        )
+        pipeline_service.start()
+        app.state.pipeline_round_service = pipeline_service
+        # Start long-running training job service if enabled
+        if os.getenv('TRAINING_JOB_ENABLE', '0').lower() in ('1', 'true', 'yes'):
+            tj = get_training_job_service()
+            tj.set_scheduler(epoch_scheduler)
+            tj.start()
+            app.state.training_job_service = tj
+        print("✅ Pipeline Round Service started")
+    except Exception as e:
+        print(f"⚠️  Failed to start Pipeline Round Service: {e}")
+
+# --- Training Job HTTP API ---
+@app.get("/training/status", response_model=TrainingJobStatus)
+async def training_status():
+    try:
+        tj = getattr(app.state, 'training_job_service', None)
+        if not tj:
+            raise HTTPException(status_code=404, detail="Training job service not running")
+        return TrainingJobStatus(**tj.status())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/training/start")
+async def training_start(config: Dict[str, Any] = None):
+    try:
+        from backend.learning.training_job_service import get_training_job_service
+        tj = getattr(app.state, 'training_job_service', None)
+        if not tj:
+            tj = get_training_job_service()
+            tj.set_scheduler(epoch_scheduler)
+            app.state.training_job_service = tj
+        if tj.is_running():
+            return {"status": "already_running"}
+        tj.start(config)
+        return {"status": "started"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/training/stop")
+async def training_stop():
+    try:
+        tj = getattr(app.state, 'training_job_service', None)
+        if not tj:
+            return {"status": "not_running"}
+        await tj.stop()
+        return {"status": "stopped"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/training/pause")
+async def training_pause():
+    try:
+        tj = getattr(app.state, 'training_job_service', None)
+        if not tj or not tj.is_running():
+            return {"status": "not_running"}
+        tj.pause()
+        return {"status": "paused"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/training/resume")
+async def training_resume():
+    try:
+        tj = getattr(app.state, 'training_job_service', None)
+        if not tj:
+            return {"status": "not_running"}
+        tj.resume()
+        return {"status": "resumed"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/training/reset")
+async def training_reset():
+    try:
+        tj = getattr(app.state, 'training_job_service', None)
+        if not tj:
+            return {"status": "not_running"}
+        await tj.reset()
+        return {"status": "reset"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
     # Store integration for API access
     app.state.scheduler_integration = scheduler_integration
@@ -879,10 +1096,31 @@ async def chat(req: ChatRequest, http_request: Request = None):
             if available_experts:
                 selected_experts = available_experts[:req.top_k_experts]
                 
+                # Prefer donor nodes for free-tier requests
+                limits_info = {}
+                try:
+                    from backend.core.free_tier import get_free_tier_manager
+                    if http_request:
+                        user_addr = http_request.headers.get("X-User-Address")
+                        if user_addr:
+                            ftm = get_free_tier_manager()
+                            can_req, _, li = ftm.can_make_request(
+                                address=user_addr,
+                                input_tokens=len(req.prompt.split()) * 13 // 10,
+                                output_tokens_est=req.max_new_tokens,
+                            )
+                            if can_req:
+                                limits_info = li
+                except Exception:
+                    pass
+                prefer_donor = (limits_info.get("free_requests_remaining", 0) > 0 or
+                                limits_info.get("bonus_requests_available", 0) > 0)
+                
                 response_text, routing_info = await distributed_coordinator.distribute_inference(
                     prompt=req.prompt,
                     required_experts=selected_experts,
-                    max_new_tokens=req.max_new_tokens
+                    max_new_tokens=req.max_new_tokens,
+                    prefer_donor=prefer_donor
                 )
                 
                 inference_time = time.time() - start_time
@@ -1571,6 +1809,12 @@ class RegisterNodeRequest(BaseModel):
     resource_limit: str = "cpu-50"  # cpu-25, cpu-50, cpu-75, gpu-25, gpu-50, gpu-75
     node_type: str = "user_contributed"
     hardware_info: Dict = {}
+    donor_mode: bool = False
+    # Optional device profile
+    vram_gb: Optional[float] = None
+    tflops_est: Optional[float] = None
+    net_mbps: Optional[float] = None
+    cuda_capability: Optional[str] = None
 
 
 class RegisterOptimizedNodeRequest(BaseModel):
@@ -1584,6 +1828,7 @@ class RegisterOptimizedNodeRequest(BaseModel):
     resource_limit: str = "cpu-50"
     node_type: str = "user_contributed"
     hardware_info: Dict = {}
+    donor_mode: bool = False
 
 
 class OptimizedChatRequest(BaseModel):
@@ -1622,6 +1867,7 @@ class NodeRegistrationResponse(BaseModel):
     status: str
     message: str
     registered_experts: int
+    donor_mode: Optional[bool] = None
 
 
 @app.post("/p2p/register", response_model=NodeRegistrationResponse)
@@ -1634,7 +1880,14 @@ async def register_expert_node(req: RegisterNodeRequest):
         node_id=req.node_id,
         host=req.host,
         port=req.port,
-        available_experts=req.available_experts
+        available_experts=req.available_experts,
+        donor_mode=req.donor_mode,
+        device_profile=DeviceProfile(
+            vram_gb=req.vram_gb or float(req.hardware_info.get("vram_gb", 0) or 0),
+            tflops_est=req.tflops_est or float(req.hardware_info.get("tflops", 0) or 0),
+            net_mbps=req.net_mbps or float(req.hardware_info.get("net_mbps", 0) or 0),
+            cuda_capability=req.cuda_capability or req.hardware_info.get("cuda", None)
+        )
     )
     
     distributed_coordinator.registry.register_node(node)
@@ -1642,7 +1895,8 @@ async def register_expert_node(req: RegisterNodeRequest):
     return NodeRegistrationResponse(
         status="success",
         message=f"Node {req.node_id} registered successfully",
-        registered_experts=len(req.available_experts)
+        registered_experts=len(req.available_experts),
+        donor_mode=req.donor_mode
     )
 
 
@@ -1664,29 +1918,203 @@ async def list_expert_nodes():
         raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
     
     nodes = []
+    donor_count = 0
     for node_id, node in distributed_coordinator.registry.nodes.items():
+        is_donor = getattr(node, "donor_mode", False)
+        if is_donor:
+            donor_count += 1
         nodes.append({
             "node_id": node.node_id,
             "endpoint": node.endpoint,
             "available_experts": node.available_experts,
             "load_factor": node.load_factor,
-            "last_heartbeat": node.last_heartbeat
+            "last_heartbeat": node.last_heartbeat,
+            "donor_mode": is_donor
         })
     
-    # Use fast JSON for node list (non-consensus data)
-    return fast_json_response({"nodes": nodes})
+    # Use fast JSON for node list (non-consensus data) with donor statistics
+    return fast_json_response({
+        "nodes": nodes,
+        "total_nodes": len(nodes),
+        "donor_nodes": donor_count,
+        "donor_percentage": round(donor_count / len(nodes) * 100, 1) if nodes else 0
+    })
+
+
+# Cache for donor stats
+donor_stats_cache = {
+    "data": None,
+    "timestamp": 0,
+    "ttl_seconds": 10  # 10 second cache
+}
+
+@app.get("/p2p/donor_stats")
+async def get_donor_statistics():
+    """Get detailed statistics about donor nodes and their contributions (cached)."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    # Check cache
+    current_time = time.time()
+    if (donor_stats_cache["data"] is not None and 
+        current_time - donor_stats_cache["timestamp"] < donor_stats_cache["ttl_seconds"]):
+        return fast_json_response(donor_stats_cache["data"])
+    
+    donor_nodes = []
+    regular_nodes = []
+    total_donor_experts = 0
+    total_regular_experts = 0
+    
+    for node_id, node in distributed_coordinator.registry.nodes.items():
+        is_donor = getattr(node, "donor_mode", False)
+        # Use reputation manager to check node health status
+        is_healthy = True
+        if hasattr(distributed_coordinator, 'reputation_manager'):
+            node_rep = distributed_coordinator.reputation_manager.get_node_reputation(node_id)
+            is_healthy = node_rep and node_rep.get('success_rate', 0) > 0.5
+        else:
+            # Fallback to heartbeat check
+            import time
+            is_healthy = (time.time() - node.last_heartbeat) < 30
+        
+        node_info = {
+            "node_id": node.node_id,
+            "expert_count": len(node.available_experts),
+            "status": "active" if is_healthy else "unhealthy",
+            "load_factor": node.load_factor
+        }
+        
+        if is_donor:
+            donor_nodes.append(node_info)
+            total_donor_experts += len(node.available_experts)
+        else:
+            regular_nodes.append(node_info)
+            total_regular_experts += len(node.available_experts)
+    
+    # Calculate contribution metrics
+    total_nodes = len(donor_nodes) + len(regular_nodes)
+    total_experts = total_donor_experts + total_regular_experts
+    
+    # Prepare response data
+    response_data = {
+        "summary": {
+            "total_donor_nodes": len(donor_nodes),
+            "total_regular_nodes": len(regular_nodes),
+            "donor_percentage": round(len(donor_nodes) / total_nodes * 100, 1) if total_nodes else 0,
+            "donor_expert_contribution": round(total_donor_experts / total_experts * 100, 1) if total_experts else 0
+        },
+        "donor_nodes": donor_nodes,
+        "impact": {
+            "total_experts_donated": total_donor_experts,
+            "estimated_free_tier_capacity": f"{total_donor_experts * 100} requests/hour"  # Rough estimate
+        },
+        "cached_at": current_time
+    }
+    
+    # Update cache
+    donor_stats_cache["data"] = response_data
+    donor_stats_cache["timestamp"] = current_time
+    
+    return fast_json_response(response_data)
+
+
+@app.get("/metrics/donor")
+async def get_donor_operational_metrics():
+    """Get operational metrics for donor node system monitoring."""
+    if not distributed_coordinator:
+        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    # Get metrics from coordinator
+    metrics = distributed_coordinator.metrics.copy()
+    
+    # Add additional computed metrics
+    metrics.update({
+        "ema_window_seconds": distributed_coordinator.ema_window_seconds,
+        "donor_utilization_ema": distributed_coordinator.donor_utilization_ema,
+        "max_donor_utilization_ratio": distributed_coordinator.max_donor_utilization_ratio,
+        "free_tier_queue_timeout_seconds": distributed_coordinator.free_tier_queue_timeout,
+        "current_inflight_total": distributed_coordinator.inflight_total,
+        "current_inflight_free_tier": distributed_coordinator.inflight_free_tier,
+        "current_inflight_donor": distributed_coordinator.inflight_donor,
+        "timestamp": time.time()
+    })
+    
+    # Add node counts
+    donor_count = sum(1 for n in distributed_coordinator.registry.nodes.values() 
+                     if getattr(n, "donor_mode", False))
+    total_count = len(distributed_coordinator.registry.nodes)
+    
+    metrics.update({
+        "donor_node_count": donor_count,
+        "total_node_count": total_count,
+        "non_donor_node_count": total_count - donor_count
+    })
+    
+    # Add reputation manager metrics if available
+    if hasattr(distributed_coordinator, 'reputation_manager'):
+        rep_summary = distributed_coordinator.reputation_manager.get_metrics_summary()
+        metrics["reputation_summary"] = rep_summary
+    
+    return fast_json_response(metrics)
 
 
 @app.post("/p2p/heartbeat/{node_id}")
-async def node_heartbeat(node_id: str, load_factor: float = 0.0):
+async def node_heartbeat(
+    node_id: str,
+    load_factor: float = 0.0,
+    net_mbps: Optional[float] = None,
+    latency_ms: Optional[float] = None,
+    vram_gb: Optional[float] = None,
+    tflops_est: Optional[float] = None,
+    cuda_capability: Optional[str] = None,
+):
     """Update heartbeat and load for a node."""
     if not distributed_coordinator:
         raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
     
+    # Basic input validation and rate limiting hardening
+    if load_factor < 0.0 or load_factor > 1.0:
+        raise HTTPException(status_code=400, detail="Invalid load_factor")
+    # Stronger parameter validation
+    try:
+        validate_heartbeat_params(
+            load_factor=load_factor,
+            net_mbps=net_mbps if net_mbps is not None else None,
+            latency_ms=latency_ms if latency_ms is not None else None,
+            vram_gb=vram_gb if vram_gb is not None else None,
+            tflops_est=tflops_est if tflops_est is not None else None,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid heartbeat: {e}")
+
+    # Update heartbeat and load
     distributed_coordinator.registry.heartbeat(node_id)
     distributed_coordinator.registry.update_node_load(node_id, load_factor)
+    # Optional device profile refresh
+    if any(val is not None for val in (net_mbps, latency_ms, vram_gb, tflops_est, cuda_capability)):
+        profile = DeviceProfile(
+            vram_gb=vram_gb or 0.0,
+            tflops_est=tflops_est or 0.0,
+            net_mbps=net_mbps or 0.0,
+            latency_ms=latency_ms,
+            cuda_capability=cuda_capability,
+        )
+        distributed_coordinator.registry.update_device_profile(node_id, profile)
+        try:
+            from backend.learning.pipeline_metrics import get_pipeline_metrics
+            metrics = get_pipeline_metrics()
+            # Mark device profile refresh to track staleness
+            import asyncio
+            asyncio.create_task(metrics.mark_device_profile_update(node_id))
+        except Exception:
+            pass
     
-    return {"status": "heartbeat_received", "node_id": node_id, "load_factor": load_factor}
+    return {
+        "status": "heartbeat_received",
+        "node_id": node_id,
+        "load_factor": load_factor,
+        "updated_profile": any(val is not None for val in (net_mbps, latency_ms, vram_gb, tflops_est, cuda_capability)),
+    }
 
 
 @app.post("/p2p/register_optimized", response_model=NodeRegistrationResponse)
@@ -1712,7 +2140,8 @@ async def register_optimized_expert_node(req: RegisterOptimizedNodeRequest):
         port=req.port,
         expert_groups=expert_groups,
         individual_experts=set(req.available_experts),
-        region=req.region
+        region=req.region,
+        donor_mode=req.donor_mode
     )
     
     # Register with optimized coordinator
@@ -1721,7 +2150,8 @@ async def register_optimized_expert_node(req: RegisterOptimizedNodeRequest):
     return NodeRegistrationResponse(
         status="success",
         message=f"Optimized node {req.node_id} registered with {len(expert_groups)} expert groups",
-        registered_experts=len(req.available_experts)
+        registered_experts=len(req.available_experts),
+        donor_mode=req.donor_mode
     )
 
 

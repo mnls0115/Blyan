@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 import hashlib
+import random
+import logging
 import numpy as np
 from collections import OrderedDict
-from typing import Dict, List, Optional, Any, Tuple, Set
+from typing import Dict, List, Optional, Any, Tuple, Set, AsyncIterator
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from datetime import datetime
 import aiohttp
 from aiohttp import web
+import base64
+
+logger = logging.getLogger(__name__)
 
 from backend.model.moe_infer import ExpertUsageTracker
 from backend.core.param_index import ParameterIndex
@@ -35,6 +41,17 @@ from backend.model.moe_infer import MoEModelManager, ExpertUsageTracker
 from backend.core.chain import Chain
 from backend.core.scheduler import PreemptiveScheduler, Metrics, SchedulerState
 from .connection_pool import ConnectionPool
+from backend.learning.pipeline_metrics import get_pipeline_metrics
+
+
+@dataclass
+class DeviceProfile:
+    """Hardware and network profile for scheduling/partitioning."""
+    vram_gb: float = 0.0
+    tflops_est: float = 0.0
+    net_mbps: float = 0.0
+    latency_ms: Optional[float] = None
+    cuda_capability: Optional[str] = None
 
 
 class WarmPool:
@@ -122,6 +139,8 @@ class ExpertNode:
     available_experts: List[str]
     load_factor: float = 0.0  # Current load (0.0 = idle, 1.0 = fully loaded)
     last_heartbeat: float = 0.0
+    donor_mode: bool = False
+    device_profile: Optional[DeviceProfile] = None
     
     @property
     def endpoint(self) -> str:
@@ -174,7 +193,8 @@ class ExpertNodeRegistry:
                 node.node_id, node.endpoint
             )
         
-        print(f"✓ Registered node {node.node_id} with {len(node.available_experts)} experts")
+        donor_suffix = " [donor]" if getattr(node, "donor_mode", False) else ""
+        print(f"✓ Registered node {node.node_id}{donor_suffix} with {len(node.available_experts)} experts")
     
     def unregister_node(self, node_id: str):
         """Remove a node from the registry."""
@@ -200,26 +220,65 @@ class ExpertNodeRegistry:
         node_ids = self.expert_to_nodes.get(expert_name, [])
         return [self.nodes[nid] for nid in node_ids if nid in self.nodes]
     
-    def select_best_node(self, expert_name: str) -> Optional[ExpertNode]:
-        """Select the best node for an expert based on load balancing."""
+    def select_best_node(self, expert_name: str, prefer_donor: bool = False) -> Optional[ExpertNode]:
+        """Select the best node for an expert based on load balancing and reputation.
+        If prefer_donor is True, prioritize donor nodes when available.
+        """
         nodes = self.get_nodes_for_expert(expert_name)
         if not nodes:
             return None
         
-        # Filter out stale nodes (no heartbeat in last 60 seconds)
+        # Filter out stale nodes and check reputation
         current_time = time.time()
-        active_nodes = [n for n in nodes if current_time - n.last_heartbeat < 60.0]
+        
+        # Import reputation manager for filtering
+        from backend.p2p.node_reputation import get_reputation_manager
+        reputation_mgr = get_reputation_manager()
+        
+        active_nodes = []
+        for n in nodes:
+            # Check heartbeat (60 seconds timeout)
+            if current_time - n.last_heartbeat >= 60.0:
+                continue
+                
+            # Check reputation (higher threshold for donor nodes)
+            node_rep = reputation_mgr.get_node_reputation(n.node_id)
+            if node_rep:
+                success_rate = node_rep.get('success_rate', 0)
+                # Donor nodes need higher reputation (70%) to ensure quality
+                min_success_rate = 0.7 if getattr(n, "donor_mode", False) else 0.5
+                if success_rate < min_success_rate:
+                    continue
+            
+            active_nodes.append(n)
         
         if not active_nodes:
             return None
         
-        # Select node with lowest load
-        return min(active_nodes, key=lambda n: n.load_factor)
+        # Optionally prioritize donor nodes first
+        candidate_pool = active_nodes
+        if prefer_donor:
+            donor_candidates = [n for n in active_nodes if getattr(n, "donor_mode", False)]
+            if donor_candidates:
+                candidate_pool = donor_candidates
+        else:
+            # For paid or non-free-tier requests, avoid donor nodes if possible
+            non_donor_candidates = [n for n in active_nodes if not getattr(n, "donor_mode", False)]
+            if non_donor_candidates:
+                candidate_pool = non_donor_candidates
+        
+        # Select node with lowest load from candidate pool
+        return min(candidate_pool, key=lambda n: n.load_factor)
     
     def update_node_load(self, node_id: str, load_factor: float):
         """Update the load factor for a node."""
         if node_id in self.nodes:
             self.nodes[node_id].load_factor = load_factor
+    
+    def update_device_profile(self, node_id: str, profile: DeviceProfile):
+        """Update device profile for a node."""
+        if node_id in self.nodes:
+            self.nodes[node_id].device_profile = profile
     
     def heartbeat(self, node_id: str):
         """Update heartbeat for a node."""
@@ -244,6 +303,37 @@ class DistributedInferenceCoordinator:
     def __init__(self, usage_tracker: ExpertUsageTracker, param_index: Optional[ParameterIndex] = None):
         # Legacy registry for backward compatibility
         self.registry = ExpertNodeRegistry()
+        
+        # Donor utilization cap configuration
+        self.max_donor_utilization_ratio = float(os.getenv("DONOR_USAGE_CAP", "0.3"))
+        self.strict_free_tier = os.getenv("STRICT_FREE_TIER", "false").lower() in ("1", "true", "yes")
+        self.free_tier_queue_timeout = float(os.getenv("FREE_TIER_QUEUE_TIMEOUT", "3.0"))  # seconds
+        
+        # Concurrent request tracking with EMA
+        self.inflight_total = 0
+        self.inflight_free_tier = 0
+        self.inflight_donor = 0
+        self._inflight_lock = asyncio.Lock()
+        
+        # EMA (Exponential Moving Average) for stable measurement
+        self.ema_window_seconds = 30.0  # 30 second window
+        self.ema_alpha = 2.0 / (self.ema_window_seconds + 1)  # EMA coefficient
+        self.donor_utilization_ema = 0.0
+        self.last_ema_update = time.time()
+        
+        # Metrics tracking
+        self.metrics = {
+            "donor_utilization_ratio": 0.0,
+            "free_tier_queue_len": 0,
+            "fallback_rate": 0.0,
+            "fallback_count": 0,
+            "free_tier_total": 0,
+            "strict_free_tier_active": self.strict_free_tier
+        }
+        
+        # Free tier queue management
+        self.free_tier_semaphore = None  # Will be initialized based on donor nodes
+        self.free_tier_queue_size = 0
         self.usage_tracker = usage_tracker
         self.active_requests: Dict[str, InferenceRequest] = {}
         
@@ -286,6 +376,7 @@ class DistributedInferenceCoordinator:
             total_timeout=30,
             auth_headers=auth_headers
         )
+        self.pipeline_metrics = get_pipeline_metrics()
         
         # Node reputation and failover management
         from backend.p2p.node_reputation import get_reputation_manager, get_failover_coordinator
@@ -330,7 +421,8 @@ class DistributedInferenceCoordinator:
             port=node_capability.port,
             available_experts=list(node_capability.individual_experts),
             load_factor=node_capability.load_factor,
-            last_heartbeat=node_capability.last_heartbeat
+            last_heartbeat=node_capability.last_heartbeat,
+            donor_mode=getattr(node_capability, "donor_mode", False)
         )
         self.registry.register_node(legacy_node)
         
@@ -772,9 +864,71 @@ class DistributedInferenceCoordinator:
         self, 
         prompt: str, 
         required_experts: List[str],
-        max_new_tokens: int = 64
+        max_new_tokens: int = 64,
+        prefer_donor: bool = False
     ) -> Tuple[str, Dict[str, Any]]:
-        """Distribute inference across multiple expert nodes with SLO-based scheduling."""
+        """Distribute inference across multiple expert nodes with SLO-based scheduling and donor utilization cap."""
+        
+        # Track concurrent requests
+        is_free_tier = prefer_donor  # prefer_donor flag indicates free tier request
+        donor_nodes_used = 0
+        
+        async with self._inflight_lock:
+            self.inflight_total += 1
+            if is_free_tier:
+                self.inflight_free_tier += 1
+                self.metrics["free_tier_total"] += 1
+                
+                # Update EMA for donor utilization
+                current_time = time.time()
+                time_delta = current_time - self.last_ema_update
+                if time_delta > 0.1:  # Update EMA every 100ms minimum
+                    instant_ratio = self.inflight_donor / max(1, self.inflight_total)
+                    self.donor_utilization_ema = (self.ema_alpha * instant_ratio + 
+                                                  (1 - self.ema_alpha) * self.donor_utilization_ema)
+                    self.last_ema_update = current_time
+                    self.metrics["donor_utilization_ratio"] = self.donor_utilization_ema
+                
+                # Check donor utilization cap using EMA
+                donor_nodes_count = sum(1 for n in self.registry.nodes.values() if getattr(n, "donor_mode", False))
+                if donor_nodes_count > 0:
+                    # Use EMA for stable measurement
+                    if self.donor_utilization_ema > self.max_donor_utilization_ratio:
+                        if self.strict_free_tier:
+                            # Initialize semaphore if needed
+                            if self.free_tier_semaphore is None:
+                                max_concurrent = int(donor_nodes_count * 2)  # Allow 2x donor nodes concurrent
+                                self.free_tier_semaphore = asyncio.Semaphore(max_concurrent)
+                            
+                            # Try to acquire with timeout
+                            self.free_tier_queue_size += 1
+                            self.metrics["free_tier_queue_len"] = self.free_tier_queue_size
+                            
+                        else:
+                            # Fallback to non-donor nodes
+                            prefer_donor = False
+                            self.metrics["fallback_count"] += 1
+                            self.metrics["fallback_rate"] = self.metrics["fallback_count"] / self.metrics["free_tier_total"]
+        
+        # Handle queue timeout outside lock
+        if is_free_tier and self.strict_free_tier and self.free_tier_semaphore:
+            try:
+                # Wait with timeout for free tier slot
+                await asyncio.wait_for(
+                    self.free_tier_semaphore.acquire(),
+                    timeout=self.free_tier_queue_timeout
+                )
+                async with self._inflight_lock:
+                    self.free_tier_queue_size = max(0, self.free_tier_queue_size - 1)
+                    self.metrics["free_tier_queue_len"] = self.free_tier_queue_size
+            except asyncio.TimeoutError:
+                # Timeout - fallback to non-donor
+                prefer_donor = False
+                async with self._inflight_lock:
+                    self.free_tier_queue_size = max(0, self.free_tier_queue_size - 1)
+                    self.metrics["free_tier_queue_len"] = self.free_tier_queue_size
+                    self.metrics["fallback_count"] += 1
+                    self.metrics["fallback_rate"] = self.metrics["fallback_count"] / self.metrics["free_tier_total"]
         
         # Update scheduler metrics
         self.inference_metrics["request_count"] += 1
@@ -817,14 +971,22 @@ class DistributedInferenceCoordinator:
         inference_start_time = time.time()
         
         try:
-            # Assign experts to nodes
+            # Assign experts to nodes with donor tracking
             expert_assignments = {}
+            
             for expert_name in required_experts:
-                node = self.registry.select_best_node(expert_name)
+                node = self.registry.select_best_node(expert_name, prefer_donor=prefer_donor)
                 if node:
                     expert_assignments[expert_name] = node
+                    if getattr(node, "donor_mode", False):
+                        donor_nodes_used += 1
                 else:
                     print(f"Warning: No available node for expert {expert_name}")
+            
+            # Update donor tracking
+            if donor_nodes_used > 0:
+                async with self._inflight_lock:
+                    self.inflight_donor += donor_nodes_used
             
             if not expert_assignments:
                 return "Error: No expert nodes available", {}
@@ -884,9 +1046,314 @@ class DistributedInferenceCoordinator:
             self.inference_metrics["total_latency"] += inference_time
             self.inference_metrics["active_requests"] -= 1
             
+            # Update concurrent tracking
+            async with self._inflight_lock:
+                self.inflight_total -= 1
+                if is_free_tier:
+                    self.inflight_free_tier -= 1
+                    if self.free_tier_semaphore:
+                        self.free_tier_semaphore.release()
+                if donor_nodes_used > 0:
+                    self.inflight_donor -= donor_nodes_used
+            
             # Clean up
             if request_id in self.active_requests:
                 del self.active_requests[request_id]
+    
+    async def distribute_inference_streaming(
+        self,
+        prompt: str,
+        required_experts: List[str],
+        max_new_tokens: int = 256,
+        prefer_donor: bool = False,
+        session_id: Optional[str] = None,
+        sampling_seed: Optional[int] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream inference from a single optimal node with all required experts."""
+        import aiohttp
+        
+        # Apply donor/cap/reputation policies
+        is_free_tier = prefer_donor
+        selected_node = None
+        
+        # Track metrics
+        stream_start = time.time()
+        tokens_generated = 0
+        
+        # Find optimal node with all experts (prefer ExpertGroup)
+        if self.group_index.find_matching_group(required_experts):
+            # Use expert group optimization
+            matching_nodes = []
+            for node_id, node_cap in self.group_index.node_capabilities.items():
+                if all(exp in node_cap.individual_experts for exp in required_experts):
+                    node = self.registry.nodes.get(node_id)
+                    if node:
+                        matching_nodes.append(node)
+            
+            # Apply selection criteria
+            if matching_nodes:
+                selected_node = self._select_best_streaming_node(
+                    matching_nodes, prefer_donor, is_free_tier
+                )
+        
+        # Fallback to single node with most coverage
+        if not selected_node:
+            coverage_scores = {}
+            for node_id, node in self.registry.nodes.items():
+                coverage = sum(1 for exp in required_experts if exp in node.available_experts)
+                if coverage > 0:
+                    coverage_scores[node] = coverage
+            
+            if coverage_scores:
+                # Sort by coverage and select best
+                sorted_nodes = sorted(coverage_scores.items(), key=lambda x: x[1], reverse=True)
+                candidates = [n for n, score in sorted_nodes if score == sorted_nodes[0][1]]
+                selected_node = self._select_best_streaming_node(
+                    candidates, prefer_donor, is_free_tier
+                )
+        
+        if not selected_node:
+            yield {"type": "error", "error": "No suitable nodes available"}
+            return
+        
+        # Track node selection
+        self.metrics["streaming_selected_node"] = selected_node.node_id
+        
+        # Prepare request payload
+        request_data = {
+            "prompt": prompt,
+            "max_new_tokens": max_new_tokens,
+            "required_experts": required_experts,
+            "security_audit": {
+                "session_id": session_id or hashlib.sha256(f"{prompt}{time.time()}".encode()).hexdigest()[:16],
+                "sampling_seed": sampling_seed or random.randint(0, 2**32),
+                "required_experts": required_experts
+            }
+        }
+        
+        # Stream from selected node
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{selected_node.endpoint}/inference/secure"
+                
+                async with session.post(url, json=request_data, timeout=aiohttp.ClientTimeout(total=300)) as response:
+                    if response.status != 200:
+                        # Try failover
+                        yield {"type": "error", "error": f"Node {selected_node.node_id} returned {response.status}"}
+                        return
+                    
+                    # Record TTFT
+                    ttft = None
+                    
+                    # Stream tokens
+                    async for line in response.content:
+                        if not line:
+                            continue
+                        
+                        line_str = line.decode('utf-8').strip()
+                        
+                        # Parse TOKEN: lines
+                        if line_str.startswith("TOKEN: "):
+                            token = line_str[7:]
+                            tokens_generated += 1
+                            
+                            # Record time to first token
+                            if ttft is None:
+                                ttft = (time.time() - stream_start) * 1000
+                                self.metrics["ttft_ms"] = ttft
+                            
+                            yield {
+                                "type": "token",
+                                "token": token,
+                                "token_number": tokens_generated,
+                                "timestamp": time.time(),
+                                "node_id": selected_node.node_id
+                            }
+                        
+                        # Ignore other beacon lines for now
+                        elif line_str.startswith(("header:", "weight_proof:", "rolling_commit:")):
+                            pass  # Log for future verification
+                    
+                    # Update metrics
+                    stream_duration = time.time() - stream_start
+                    if stream_duration > 0:
+                        self.metrics["tokens_per_second"] = tokens_generated / stream_duration
+                    
+                    # Record success
+                    self.reputation_manager.record_request_success(
+                        selected_node.node_id, stream_duration * 1000
+                    )
+                    
+        except asyncio.TimeoutError:
+            self.metrics["stream_timeout_count"] = self.metrics.get("stream_timeout_count", 0) + 1
+            yield {"type": "error", "error": "Stream timeout"}
+        except Exception as e:
+            self.metrics["stream_error_count"] = self.metrics.get("stream_error_count", 0) + 1
+            yield {"type": "error", "error": str(e)}
+    
+    def _select_best_streaming_node(
+        self,
+        candidates: List[ExpertNode],
+        prefer_donor: bool,
+        is_free_tier: bool
+    ) -> Optional[ExpertNode]:
+        """Select best node for streaming based on policies."""
+        if not candidates:
+            return None
+        
+        # Filter by health and reputation
+        active_nodes = []
+        current_time = time.time()
+        
+        for node in candidates:
+            # Check heartbeat
+            if current_time - node.last_heartbeat >= 60.0:
+                continue
+            
+            # Check reputation
+            node_rep = self.reputation_manager.get_node_reputation(node.node_id)
+            if node_rep:
+                success_rate = node_rep.get('success_rate', 0)
+                min_success_rate = 0.7 if getattr(node, "donor_mode", False) else 0.5
+                if success_rate < min_success_rate:
+                    continue
+            
+            active_nodes.append(node)
+        
+        if not active_nodes:
+            return None
+        
+        # Apply donor preferences
+        candidate_pool = active_nodes
+        if prefer_donor:
+            donor_candidates = [n for n in active_nodes if getattr(n, "donor_mode", False)]
+            if donor_candidates:
+                candidate_pool = donor_candidates
+        else:
+            # Avoid donor for paid
+            non_donor = [n for n in active_nodes if not getattr(n, "donor_mode", False)]
+            if non_donor:
+                candidate_pool = non_donor
+        
+        # Select by lowest load
+        return min(candidate_pool, key=lambda n: n.load_factor)
+    
+    async def distribute_inference_speculative_streaming(
+        self,
+        prompt: str,
+        required_experts: List[str],
+        max_new_tokens: int = 256,
+        prefer_donor: bool = False,
+        session_id: Optional[str] = None,
+        sampling_seed: Optional[int] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream inference with speculative decoding (draft + verify)."""
+        import aiohttp
+        
+        # Config
+        draft_tokens = int(os.getenv("DRAFT_TOKENS", "4"))
+        spec_ratio = float(os.getenv("SPEC_RATIO", "2.0"))
+        
+        # Find draft node (prefer donor/fast)
+        draft_node = self._select_best_streaming_node(
+            list(self.registry.nodes.values()),
+            prefer_donor=True,  # Prefer donor for draft
+            is_free_tier=prefer_donor
+        )
+        
+        # Find verify node (prefer high-quality)
+        verify_node = self._select_best_streaming_node(
+            list(self.registry.nodes.values()),
+            prefer_donor=False,  # Prefer non-donor for verify
+            is_free_tier=False
+        )
+        
+        if not draft_node or not verify_node:
+            yield {"type": "error", "error": "No suitable nodes for speculative decoding"}
+            return
+        
+        # Track metrics
+        self.metrics["spec_draft_node"] = draft_node.node_id
+        self.metrics["spec_verify_node"] = verify_node.node_id
+        rollback_count = 0
+        accepted_total = 0
+        
+        generated_text = prompt
+        tokens_generated = 0
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                while tokens_generated < max_new_tokens:
+                    # Get draft tokens
+                    draft_url = f"{draft_node.endpoint}/inference/spec_draft_stream"
+                    draft_data = {
+                        "prompt": generated_text,
+                        "max_new_tokens": min(draft_tokens, max_new_tokens - tokens_generated),
+                        "sampling_seed": sampling_seed,
+                        "draft_tokens": draft_tokens
+                    }
+                    
+                    draft_candidates = []
+                    async with session.post(draft_url, json=draft_data, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                        if response.status != 200:
+                            yield {"type": "error", "error": f"Draft failed: {response.status}"}
+                            return
+                        
+                        async for line in response.content:
+                            line_str = line.decode('utf-8').strip()
+                            if line_str.startswith("TOKEN: "):
+                                token = line_str[7:]
+                                draft_candidates.append(token)
+                            elif line_str == "DONE":
+                                break
+                    
+                    if not draft_candidates:
+                        break
+                    
+                    # Verify draft tokens
+                    verify_url = f"{verify_node.endpoint}/inference/spec_verify"
+                    verify_data = {
+                        "prefix": generated_text,
+                        "candidate_tokens": draft_candidates,
+                        "sampling_seed": sampling_seed
+                    }
+                    
+                    async with session.post(verify_url, json=verify_data, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                        if response.status != 200:
+                            # Fallback: accept first token only
+                            accepted = 1
+                        else:
+                            result = await response.json()
+                            accepted = result.get("accepted", 0)
+                    
+                    # Emit accepted tokens
+                    for i in range(accepted):
+                        yield {
+                            "type": "token",
+                            "token": draft_candidates[i],
+                            "token_number": tokens_generated + i + 1,
+                            "timestamp": time.time(),
+                            "speculative": True,
+                            "draft_node": draft_node.node_id,
+                            "verify_node": verify_node.node_id
+                        }
+                        generated_text += draft_candidates[i]
+                    
+                    tokens_generated += accepted
+                    accepted_total += accepted
+                    
+                    # Handle rejection
+                    if accepted < len(draft_candidates):
+                        rollback_count += 1
+                        # Continue from accepted prefix
+                    
+                    # Update metrics
+                    if tokens_generated > 0:
+                        self.metrics["speculative_accept_ratio"] = accepted_total / (accepted_total + rollback_count)
+                        self.metrics["rollback_count"] = rollback_count
+                
+        except Exception as e:
+            yield {"type": "error", "error": str(e)}
     
     async def _call_expert_node(
         self, 
@@ -1113,6 +1580,31 @@ class ExpertNodeServer:
         self.app.router.add_post('/inference/expert_group', self.handle_expert_group_inference)
         self.app.router.add_post('/inference/multi_expert', self.handle_multi_expert_inference)
         self.app.router.add_post('/inference/secure', self.handle_secure_inference)
+        # Pipeline RPC endpoints
+        self._pipeline_buffers = None
+        try:
+            from backend.learning.pipeline_rpc import PipelineRPCServerBuffer
+            self._pipeline_buffers = PipelineRPCServerBuffer()
+            # Optionally start gRPC server for pipeline if enabled
+            try:
+                import os
+                if os.getenv('BLYAN_PIPELINE_GRPC', '0') in ('1', 'true', 'yes'):
+                    from backend.learning.pipeline_rpc_grpc import serve as grpc_serve
+                    # Run gRPC server in background
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(grpc_serve(self._pipeline_buffers))
+            except Exception as e:
+                logger.warning(f"Pipeline gRPC startup failed: {e}")
+            self.app.router.add_post('/pipeline/send_activations', self.handle_send_activations)
+            self.app.router.add_post('/pipeline/recv_activations', self.handle_recv_activations)
+            self.app.router.add_post('/pipeline/send_grads', self.handle_send_grads)
+            self.app.router.add_post('/pipeline/recv_grads', self.handle_recv_grads)
+            self.app.router.add_post('/pipeline/reset', self.handle_pipeline_reset)
+        except Exception as e:
+            logger.warning(f"Pipeline RPC buffer not available: {e}")
+        self.app.router.add_post('/inference/prepare', self.handle_prepare)
+        self.app.router.add_post('/inference/spec_draft_stream', self.handle_spec_draft_stream)
+        self.app.router.add_post('/inference/spec_verify', self.handle_spec_verify)
         self.app.router.add_get('/health', self.handle_health)
         self.app.router.add_get('/experts', self.handle_list_experts)
         self.app.router.add_get('/expert_groups', self.handle_list_expert_groups)
@@ -1207,8 +1699,97 @@ class ExpertNodeServer:
             })
             
         except Exception as e:
+            try:
+                await self.pipeline_metrics.incr_rpc_error()
+            except Exception:
+                pass
             return web.json_response(
                 {"error": str(e)},
+                status=500
+            )
+    
+    async def handle_prepare(self, request: web.Request) -> web.Response:
+        """Prepare node for handoff by warming up prefix cache."""
+        try:
+            data = await request.json()
+            session_id = data.get('session_id')
+            prompt = data.get('prompt')
+            sampling_seed = data.get('sampling_seed')
+            top_k_experts = data.get('top_k_experts', 2)
+            prepare_only = data.get('prepare_only', True)
+            
+            # Mock prefix caching for now
+            # In production, would warm up KV cache with prompt prefix
+            logger.info(f"Preparing node {self.node_id} for session {session_id}")
+            
+            # Simulate prefix warmup
+            await asyncio.sleep(0.1)
+            
+            return web.json_response({
+                "ready": True,
+                "node_id": self.node_id,
+                "session_id": session_id,
+                "prefix_length": len(prompt.split()) if prompt else 0
+            })
+            
+        except Exception as e:
+            return web.json_response(
+                {"error": str(e), "ready": False},
+                status=500
+            )
+    
+    async def handle_spec_draft_stream(self, request: web.Request) -> web.StreamResponse:
+        """Generate draft tokens quickly for speculative decoding."""
+        try:
+            data = await request.json()
+            prompt = data.get('prompt', '')
+            max_new_tokens = data.get('max_new_tokens', 64)
+            sampling_seed = data.get('sampling_seed')
+            draft_tokens = data.get('draft_tokens', 4)
+            
+            response = web.StreamResponse()
+            response.headers['Content-Type'] = 'text/event-stream'
+            response.headers['Cache-Control'] = 'no-cache'
+            await response.prepare(request)
+            
+            # Generate draft tokens quickly with reduced quality
+            # Mock for now - in production use lightweight model config
+            tokens = ["The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"]
+            
+            for i in range(min(draft_tokens, len(tokens))):
+                await response.write(f"TOKEN: {tokens[i]}\n".encode())
+                await asyncio.sleep(0.01)  # Fast generation
+            
+            await response.write(b"DONE\n")
+            return response
+            
+        except Exception as e:
+            response = web.StreamResponse(status=500)
+            await response.prepare(request)
+            await response.write(f"ERROR: {str(e)}\n".encode())
+            return response
+    
+    async def handle_spec_verify(self, request: web.Request) -> web.Response:
+        """Verify draft tokens against full model."""
+        try:
+            data = await request.json()
+            prefix = data.get('prefix', '')
+            candidate_tokens = data.get('candidate_tokens', [])
+            sampling_seed = data.get('sampling_seed')
+            
+            # Mock verification - in production, check against full model
+            # For now, accept first 2 tokens, reject rest
+            accepted = min(2, len(candidate_tokens))
+            
+            return web.json_response({
+                "accepted": accepted,
+                "rejected_at": accepted if accepted < len(candidate_tokens) else None,
+                "node_id": self.node_id
+            })
+            
+        except Exception as e:
+            return web.json_response(
+                {"error": str(e), "accepted": 0},
                 status=500
             )
     
@@ -1279,6 +1860,132 @@ class ExpertNodeServer:
                 {"error": str(e)},
                 status=500
             )
+
+    async def handle_send_activations(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            stage_id = int(data.get('stage_id'))
+            microbatch_id = str(data.get('microbatch_id'))
+            if self._pipeline_buffers is None:
+                return web.json_response({"error": "pipeline_disabled"}, status=503)
+            # Chunked path
+            chunk_index = data.get('chunk_index')
+            if chunk_index is not None:
+                # Backpressure: reject when buffer watermark exceeded
+                ok = await self._pipeline_buffers.try_backpressure()
+                if not ok:
+                    return web.json_response({"error": "backpressure"}, status=429)
+                chunk_b64 = data.get('chunk_b64')
+                chunks_total = int(data.get('chunks_total', 1))
+                compression = str(data.get('compression', 'none'))
+                chunk = base64.b64decode(chunk_b64.encode('ascii')) if chunk_b64 else b''
+                assembled = await self._pipeline_buffers.append_chunk(stage_id, microbatch_id, int(chunk_index), chunks_total, chunk, compression, bool(data.get('is_grad', False)))
+                if not assembled:
+                    return web.json_response({"error": "buffer_full"}, status=429)
+                return web.json_response({"status": "chunk_ok", "chunk_index": int(chunk_index)})
+            # Single payload path (backward compatible)
+            acts_b64 = data.get('activations_b64')
+            compression = str(data.get('compression', 'none')).lower()
+            blob = base64.b64decode(acts_b64.encode('ascii')) if acts_b64 else b''
+            if compression == 'gzip':
+                import gzip as _gzip
+                blob = _gzip.decompress(blob)
+            await self._pipeline_buffers.put_acts(stage_id, microbatch_id, blob)
+            # Stage occupancy bookkeeping (simple placeholder)
+            try:
+                await self.pipeline_metrics.set_stage_occupancy(stage_id, 1.0)
+            except Exception:
+                pass
+            return web.json_response({"status": "ok"})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_recv_activations(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            stage_id = int(data.get('stage_id'))
+            microbatch_id = str(data.get('microbatch_id'))
+            if self._pipeline_buffers is None:
+                return web.json_response({"error": "pipeline_disabled"}, status=503)
+            blob = await self._pipeline_buffers.get_acts(stage_id, microbatch_id)
+            if blob is None:
+                return web.json_response({"error": "not_found"}, status=404)
+            b64 = base64.b64encode(blob).decode('ascii')
+            return web.json_response({"activations_b64": b64})
+        except Exception as e:
+            try:
+                await self.pipeline_metrics.incr_rpc_error()
+            except Exception:
+                pass
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_send_grads(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            stage_id = int(data.get('stage_id'))
+            microbatch_id = str(data.get('microbatch_id'))
+            if self._pipeline_buffers is None:
+                return web.json_response({"error": "pipeline_disabled"}, status=503)
+            chunk_index = data.get('chunk_index')
+            if chunk_index is not None:
+                ok = await self._pipeline_buffers.try_backpressure()
+                if not ok:
+                    return web.json_response({"error": "backpressure"}, status=429)
+                chunk_b64 = data.get('chunk_b64')
+                chunks_total = int(data.get('chunks_total', 1))
+                compression = str(data.get('compression', 'none'))
+                chunk = base64.b64decode(chunk_b64.encode('ascii')) if chunk_b64 else b''
+                assembled = await self._pipeline_buffers.append_chunk(stage_id, microbatch_id, int(chunk_index), chunks_total, chunk, compression, True)
+                if not assembled:
+                    return web.json_response({"error": "buffer_full"}, status=429)
+                return web.json_response({"status": "chunk_ok", "chunk_index": int(chunk_index)})
+            grads_b64 = data.get('grads_b64')
+            compression = str(data.get('compression', 'none')).lower()
+            blob = base64.b64decode(grads_b64.encode('ascii')) if grads_b64 else b''
+            if compression == 'gzip':
+                import gzip as _gzip
+                blob = _gzip.decompress(blob)
+            await self._pipeline_buffers.put_grads(stage_id, microbatch_id, blob)
+            try:
+                await self.pipeline_metrics.set_stage_occupancy(stage_id, 0.0)
+            except Exception:
+                pass
+            return web.json_response({"status": "ok"})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_recv_grads(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            stage_id = int(data.get('stage_id'))
+            microbatch_id = str(data.get('microbatch_id'))
+            if self._pipeline_buffers is None:
+                return web.json_response({"error": "pipeline_disabled"}, status=503)
+            blob = await self._pipeline_buffers.get_grads(stage_id, microbatch_id)
+            if blob is None:
+                return web.json_response({"error": "not_found"}, status=404)
+            b64 = base64.b64encode(blob).decode('ascii')
+            return web.json_response({"grads_b64": b64})
+        except Exception as e:
+            try:
+                await self.pipeline_metrics.incr_rpc_error()
+            except Exception:
+                pass
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_pipeline_reset(self, request: web.Request) -> web.Response:
+        try:
+            if self._pipeline_buffers is None:
+                return web.json_response({"error": "pipeline_disabled"}, status=503)
+            from backend.learning.pipeline_rpc import PipelineRPCServerBuffer
+            self._pipeline_buffers = PipelineRPCServerBuffer()
+            try:
+                await self.pipeline_metrics.incr_pipeline_reset()
+            except Exception:
+                pass
+            return web.json_response({"status": "reset"})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
     
     async def handle_multi_expert_inference(self, request: web.Request) -> web.Response:
         """Handle multi-expert inference fallback."""
@@ -1499,7 +2206,23 @@ class ExpertNodeServer:
         """Start the expert node server."""
         print(f"Starting expert node {self.node_id} on port {self.port}")
         print(f"Available experts: {', '.join(self.available_experts)}")
-        web.run_app(self.app, host='0.0.0.0', port=self.port)
+        # Optionally enable TLS via environment variables (mTLS ready: set BLYAN_TLS_CLIENT_CA for client cert verification)
+        ssl_context = None
+        try:
+            import os, ssl
+            cert_path = os.getenv('BLYAN_TLS_CERT')
+            key_path = os.getenv('BLYAN_TLS_KEY')
+            client_ca = os.getenv('BLYAN_TLS_CLIENT_CA')
+            if cert_path and key_path:
+                ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                ssl_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+                if client_ca:
+                    ssl_context.load_verify_locations(cafile=client_ca)
+                    ssl_context.verify_mode = ssl.CERT_REQUIRED
+        except Exception as e:
+            logger.warning(f"TLS setup failed: {e}")
+            ssl_context = None
+        web.run_app(self.app, host='0.0.0.0', port=self.port, ssl_context=ssl_context)
 
 
 # Utility functions for testing

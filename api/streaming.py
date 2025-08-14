@@ -133,7 +133,10 @@ class StreamingChatHandler:
                 model_manager,
                 distributed_coordinator,
                 use_moe,
-                cancel_event
+                cancel_event,
+                prefer_donor=False,  # Can be determined from user tier
+                session_id=stream_id,
+                sampling_seed=None  # Will auto-generate
             ):
                 if cancel_event.is_set():
                     metrics.cancelled = True
@@ -210,16 +213,69 @@ class StreamingChatHandler:
         model_manager,
         distributed_coordinator,
         use_moe: bool,
-        cancel_event: asyncio.Event
+        cancel_event: asyncio.Event,
+        prefer_donor: bool = False,
+        session_id: Optional[str] = None,
+        sampling_seed: Optional[int] = None
     ) -> AsyncGenerator[str, None]:
         """
-        Generate tokens asynchronously.
-        This is a mock implementation - replace with actual model generation.
+        Generate tokens asynchronously using distributed streaming.
         """
+        import os
+        import random
         
-        # Mock token generation for demonstration
-        # In production, this would interface with the actual model
+        # Check if distributed streaming is enabled
+        enable_streaming = os.getenv("ENABLE_STREAMING", "true").lower() in ("1", "true", "yes")
+        enable_speculative = os.getenv("ENABLE_SPECULATIVE", "false").lower() in ("1", "true", "yes")
         
+        # Use distributed streaming if available
+        if use_moe and distributed_coordinator and enable_streaming:
+            try:
+                # Get required experts (mock for now - should be determined from prompt)
+                required_experts = ["layer0.expert0", "layer1.expert1"]  # Example
+                
+                # Choose streaming method
+                if enable_speculative:
+                    # Use speculative decoding
+                    stream_gen = distributed_coordinator.distribute_inference_speculative_streaming(
+                        prompt=prompt,
+                        required_experts=required_experts,
+                        max_new_tokens=max_tokens,
+                        prefer_donor=prefer_donor,
+                        session_id=session_id or f"session_{uuid.uuid4().hex[:12]}",
+                        sampling_seed=sampling_seed or random.randint(0, 2**32)
+                    )
+                else:
+                    # Use regular streaming
+                    stream_gen = distributed_coordinator.distribute_inference_streaming(
+                        prompt=prompt,
+                        required_experts=required_experts,
+                        max_new_tokens=max_tokens,
+                        prefer_donor=prefer_donor,
+                        session_id=session_id or f"session_{uuid.uuid4().hex[:12]}",
+                        sampling_seed=sampling_seed or random.randint(0, 2**32)
+                    )
+                
+                # Stream tokens
+                async for result in stream_gen:
+                    if cancel_event.is_set():
+                        break
+                    
+                    if result.get("type") == "token":
+                        yield result.get("token", "")
+                    elif result.get("type") == "error":
+                        logger.error(f"Streaming error: {result.get('error')}")
+                        # Fall back to mock
+                        break
+                else:
+                    # Successfully completed streaming
+                    return
+                    
+            except Exception as e:
+                logger.error(f"Distributed streaming failed: {e}")
+                # Fall back to mock generation
+        
+        # Fallback: Mock token generation
         response_tokens = [
             "The", "answer", "to", "your", "question", "is", "quite", 
             "interesting", ".", "Let", "me", "explain", "in", "detail", ".",

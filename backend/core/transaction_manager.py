@@ -43,6 +43,7 @@ class TransactionContext:
     quote_consumed: bool = False
     balance_reserved: Decimal = Decimal(0)
     inference_completed: bool = False
+    is_free_tier_request: bool = False
     
     # Rollback operations
     rollback_operations: List[Callable] = field(default_factory=list)

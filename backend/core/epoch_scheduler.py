@@ -20,6 +20,16 @@ import threading
 from .architecture_migration import ArchitectureMigrationManager, MigrationCandidate
 from .dataset_chain import DatasetChain, DatasetQualityTier
 from .podl_proof import PoDLGenerator
+from backend.learning.pipeline_cost_model import PipelineCostModel
+from backend.learning.pipeline_partitioning import GreedyPartitioner, DeviceConstraint
+from backend.learning.partition_plan_registry import PartitionPlanRegistry, PartitionPlan, StagePlan
+from backend.learning.pipeline_metrics import get_pipeline_metrics
+from backend.learning.memory_policy import recommend_memory_policy
+from backend.learning.layer_mapping import build_mapper_from_model_structure
+from backend.learning.pipeline_cost_model import PipelineCostModel
+from backend.learning.pipeline_partitioning import GreedyPartitioner, DeviceConstraint
+from backend.learning.partition_plan_registry import PartitionPlanRegistry, PartitionPlan, StagePlan
+from backend.learning.pipeline_metrics import get_pipeline_metrics
 
 
 class EpochPhase(Enum):
@@ -275,6 +285,19 @@ class EpochEventScheduler:
         # Setup logging
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
+        # Partition planning state
+        self._plan_registry = PartitionPlanRegistry()
+        self._cost_model = PipelineCostModel()
+        self._partitioner = GreedyPartitioner()
+        self._pipeline_metrics = get_pipeline_metrics()
+        # External providers initialized to None; server can set these
+        self._device_profile_provider: Optional[Callable[[List[str]], List[DeviceConstraint]]] = None
+        self._model_structure_provider: Optional[Callable[[], List[Dict[str, Any]]]] = None
+        # Partition planning state
+        self._plan_registry = PartitionPlanRegistry()
+        self._cost_model = PipelineCostModel()
+        self._partitioner = GreedyPartitioner()
+        self._pipeline_metrics = get_pipeline_metrics()
     
     def start_scheduler(self):
         """Start the autonomous epoch scheduler."""
@@ -355,6 +378,9 @@ class EpochEventScheduler:
             
             # Phase 2: Reserve GPU resources
             await self._phase_resource_reservation()
+
+            # Phase 2.5: Build partition plan and freeze for rounds
+            await self._phase_partition_planning()
             
             # Phase 3: Execute mega-training
             await self._phase_mega_training()
@@ -483,6 +509,97 @@ class EpochEventScheduler:
         self.logger.info(f"📊 Benchmark results: {results}")
         self.logger.info(f"   Average performance gain: {self.current_epoch.performance_gain:.1%}")
         self.logger.info(f"   Meets threshold: {self.current_epoch.meets_threshold}")
+
+    async def _phase_partition_planning(self):
+        """Collect device profiles, estimate costs, partition, and freeze plan."""
+        # Get device profiles from provider
+        reserved_nodes = self.current_epoch.reserved_gpu_nodes
+        devices: List[DeviceConstraint] = []
+        if self._device_profile_provider:
+            devices = self._device_profile_provider(reserved_nodes)
+        if not devices:
+            raise Exception("No device profiles available for partition planning")
+
+        # Derive model structure via provider; fallback to contiguous transformer blocks
+        if self._model_structure_provider:
+            model_structure = self._model_structure_provider()
+        else:
+            model_structure = [{"name": f"block_{i}", "kind": "transformer_block", "extra": {}} for i in range(12)]
+        mapper = build_mapper_from_model_structure(model_structure)
+
+        # Estimate costs from structure size; TODO: pull dims from meta spec
+        num_layers = len(model_structure)
+        report = self._cost_model.estimate_model(
+            num_layers=num_layers,
+            hidden_size=4096,
+            ffn_hidden=16384,
+            num_heads=32,
+        )
+
+        # Partition
+        batch_size = 4
+        seq_len = 1024
+        assignments = self._partitioner.solve(
+            report=report,
+            devices=devices,
+            batch_size=batch_size,
+            seq_len=seq_len,
+            activation_bytes_per_token=report.activation_bytes_per_token,
+        )
+
+        if not assignments:
+            # Fallback to latest stable plan
+            latest = self._plan_registry.latest_stable()
+            if latest:
+                await self._pipeline_metrics.set_partition_plan(latest.plan_id)
+                self.logger.warning("⚠️ Partitioning yielded no assignments, using latest stable plan %s", latest.plan_id)
+                return
+            else:
+                raise Exception("Partitioning failed and no stable plan available")
+
+        # Validate MoE/stage boundaries
+        for a in assignments:
+            if not mapper.validate_stage_boundaries(a.start_layer, a.end_layer):
+                raise Exception(f"Invalid stage boundaries for device {a.device_id}: {a.start_layer}-{a.end_layer}")
+
+        # Memory policy recommendation
+        zero1, ckpt = recommend_memory_policy(
+            report=report,
+            device_vram_gb=[d.vram_gb for d in devices],
+            batch_size=batch_size,
+            seq_len=seq_len,
+        )
+
+        # Freeze N rounds with same plan for now (can vary batch/seq per round later)
+        num_rounds = 3
+        plans: List[PartitionPlan] = []
+        for r in range(num_rounds):
+            plan_id = f"plan_{int(time.time())}_{r}"
+            stage_plans = [StagePlan(device_id=a.device_id, start_layer=a.start_layer, end_layer=a.end_layer) for a in assignments]
+            plan = PartitionPlan(
+                plan_id=plan_id,
+                epoch_id=self.current_epoch.event_id,
+                round_id=f"round_{r}",
+                created_at=time.time(),
+                stage_plans=stage_plans,
+                metadata={
+                    "batch_size": float(batch_size),
+                    "seq_len": float(seq_len),
+                    "use_zero1": 1.0 if zero1 else 0.0,
+                    "use_activation_checkpointing": 1.0 if ckpt else 0.0,
+                },
+            )
+            self._plan_registry.save_plan(plan)
+            plans.append(plan)
+        await self._pipeline_metrics.set_partition_plan(plans[0].plan_id)
+        self.logger.info("📦 Partition plans frozen for %d rounds; first plan %s", num_rounds, plans[0].plan_id)
+
+    # Providers
+    def set_device_profile_provider(self, provider: Callable[[List[str]], List[DeviceConstraint]]):
+        self._device_profile_provider = provider
+
+    def set_model_structure_provider(self, provider: Callable[[], List[Dict[str, Any]]]):
+        self._model_structure_provider = provider
     
     async def _phase_validation_promotion(self):
         """Phase 5: Validate results and promote if successful."""

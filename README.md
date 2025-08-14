@@ -141,3 +141,89 @@ Blyan isn't just another AI platform – it's a movement toward AI that belongs 
 🚀 **[Start chatting now](https://blyan.com)** or **[connect your node](#connect-your-node)** to earn rewards
 
 *Blyan Network - AI by the people, for the people* ✨
+
+## 🚀 Pipeline Parallelism
+
+Production-ready distributed training with heterogeneous GPU support.
+
+### Key Features
+- **1F1B Scheduling**: Memory-efficient forward-backward pipelining
+- **Dynamic Partitioning**: Auto-partition models across heterogeneous GPUs
+- **RPC System**: HTTP/gRPC with chunking, compression, backpressure
+- **Fault Tolerance**: Automatic failover and single-node fallback
+- **Real-time Monitoring**: VRAM tracking, metrics, and alerts
+
+### Quick Start
+
+```bash
+# Setup environment variables
+export BLYAN_PIPELINE_TRANSPORT=grpc  # or http
+export TRAINING_ENABLE=1
+export TRAINING_MODEL_NAME=gpt-oss-20b
+export USE_DDP=1  # Distributed Data Parallel
+export USE_ZERO1=1  # ZeRO optimizer
+
+# Start pipeline training
+python -m backend.learning.pipeline_round_service
+
+# Monitor GPU memory
+python scripts/monitor_memory_vram.py --interval 5
+
+# Setup automation (cron jobs)
+python scripts/setup_pipeline_cron.py --all
+```
+
+### Configuration
+
+Key environment variables:
+- `BLYAN_PIPELINE_TIMEOUT_S`: RPC timeout (default: 5.0)
+- `BLYAN_PIPELINE_MAX_RETRIES`: Retry attempts (default: 2)
+- `BLYAN_PIPELINE_CHUNK_BYTES`: Chunk size for large tensors (default: 1MB)
+- `BLYAN_PIPELINE_COMPRESSION`: Enable compression (none|gzip)
+- `BLYAN_TLS_CERT`, `BLYAN_TLS_KEY`: TLS/mTLS configuration
+
+### Architecture
+- **Cost Model**: `backend/learning/pipeline_cost_model.py`
+- **Partitioner**: `backend/learning/pipeline_partitioning.py`
+- **RPC System**: `backend/learning/pipeline_rpc.py`
+- **Round Manager**: `backend/learning/pipeline_round_service.py`
+- **Metrics**: `backend/learning/pipeline_metrics.py`
+- Trainer: `backend/learning/pipeline_parallel.py`
+- RPC: `backend/learning/pipeline_rpc.py` (HTTP, timeouts/retries/circuit breaker, gzip+chunking)
+- Metrics: `backend/learning/pipeline_metrics.py` (exported via `/metrics`)
+- Plan registry: `backend/learning/partition_plan_registry.py`
+- Memory policy: `backend/learning/memory_policy.py`
+
+Node-side RPC endpoints for activations/grads are exposed by `backend/p2p/distributed_inference.py` under `/pipeline/*` with mTLS optional via `BLYAN_TLS_CERT`/`BLYAN_TLS_KEY`.
+
+Epoch scheduler integrates partition planning and freezes a plan per epoch/round in `backend/core/epoch_scheduler.py`.
+
+Environment variables (operation guide):
+
+- `BLYAN_PIPELINE_TRANSPORT`: http|grpc (default http)
+- `BLYAN_PIPELINE_TIMEOUT_S`: RPC timeout seconds
+- `BLYAN_PIPELINE_MAX_RETRIES`: max retries for RPC
+- `BLYAN_PIPELINE_BACKOFF_BASE_S`: base backoff seconds (exponential)
+- `BLYAN_PIPELINE_BREAKER_THRESHOLD`: circuit breaker failure threshold
+- `BLYAN_PIPELINE_BREAKER_RESET_S`: circuit half-open reset window
+- `BLYAN_PIPELINE_CHUNK_BYTES`: chunk size for activations/gradients
+- `BLYAN_PIPELINE_COMPRESSION`: none|gzip
+- `BLYAN_PIPELINE_MAX_BUFFER_MB`: server buffer watermark for backpressure
+- `BLYAN_ROUND_MAX_FAILURES`: failures before plan fallback
+- `BLYAN_PIPELINE_ROUND_INTERVAL`: interval between rounds
+- `BLYAN_TLS_CERT`: CA bundle path for TLS verification
+- `BLYAN_TLS_CLIENT_CERT`/`BLYAN_TLS_CLIENT_KEY`: client cert/key for mTLS
+
+CLI:
+
+```
+python scripts/plan_cli.py snapshot --epoch E1 --round round_0 --stages n1:0:11 n2:12:23 --zero1 --plan-id plan_E1_r0
+python scripts/plan_cli.py validate --file data/partition_plans/draft_plan_E1_r0.json
+python scripts/plan_cli.py promote --file data/partition_plans/draft_plan_E1_r0.json
+```
+
+Tests:
+
+```
+pytest -q tests/test_partitioning.py tests/test_pipeline_rpc_chunking.py
+```

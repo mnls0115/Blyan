@@ -51,6 +51,10 @@ message DeltaSubmission {
     
     // Compression metadata
     CompressionMetadata compression = 8;
+
+    // Anchors for safe aggregation
+    string base_block_hash = 9;  // Required: base version hash for CAS
+    int64 round_id = 10;         // Required: learning round identifier
 }
 
 message DeltaBatchSubmission {

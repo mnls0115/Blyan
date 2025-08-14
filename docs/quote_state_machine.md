@@ -1,5 +1,12 @@
 # 견적-결제-사용 상태머신 문서
 
+Pipeline operation quick guide
+
+- Transport switch: set `BLYAN_PIPELINE_TRANSPORT=http` or `grpc` and restart nodes
+- TLS client/server: set `BLYAN_TLS_CERT` (and optional `BLYAN_TLS_CLIENT_CERT`/`BLYAN_TLS_CLIENT_KEY`)
+- Retry/backoff: `BLYAN_PIPELINE_MAX_RETRIES`, `BLYAN_PIPELINE_BACKOFF_BASE_S`
+- Chunking/compression: `BLYAN_PIPELINE_CHUNK_BYTES`, `BLYAN_PIPELINE_COMPRESSION=gzip`
+- Round fallback threshold: `BLYAN_ROUND_MAX_FAILURES`
 ## 🔄 상태 플로우 다이어그램
 
 ```

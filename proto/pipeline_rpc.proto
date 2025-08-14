@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package blyan.pipeline;
+
+// Pipeline RPC service for activations/gradients.
+service PipelineService {
+  rpc SendActivations(ActivationPacket) returns (Ack);
+  rpc RecvActivations(ActivationKey) returns (ActivationPacket);
+  rpc SendGrads(GradientPacket) returns (Ack);
+  rpc RecvGrads(ActivationKey) returns (GradientPacket);
+  // Future: streaming for large tensors
+  rpc StreamActivations(stream ActivationChunk) returns (Ack);
+  rpc StreamGrads(stream GradientChunk) returns (Ack);
+}
+
+message ActivationChunk {
+  int32 stage_id = 1;
+  string microbatch_id = 2;
+  int32 chunk_index = 3;
+  int32 total_chunks = 4;
+  bytes data = 5;
+}
+
+message ActivationKey {
+  int32 stage_id = 1;
+  string microbatch_id = 2;
+}
+
+message ActivationPacket {
+  int32 stage_id = 1;
+  string microbatch_id = 2;
+  bytes blob = 3;
+  // Reserved for future compressed/chunk metadata
+  // string compression = 4;
+}
+
+message GradientPacket {
+  int32 stage_id = 1;
+  string microbatch_id = 2;
+  bytes blob = 3;
+  // string compression = 4;
+}
+
+message Ack {
+  bool ok = 1;
+}
+

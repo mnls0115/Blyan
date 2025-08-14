@@ -8,8 +8,7 @@ const API_CONFIG = {
         ? 'http://127.0.0.1:8000' 
         : `${window.location.protocol}//${window.location.hostname}/api`,
     
-    // Individual endpoints
-    chat: '/chat',
+    // Individual endpoints  
     balance: '/balance/',
     chain: '/chain/B/blocks?limit=10',
     polStatus: '/pol/status'

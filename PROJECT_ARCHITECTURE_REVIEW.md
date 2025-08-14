@@ -58,6 +58,26 @@ backend/model/
 - Dynamic routing (기본 구현만)
 - Expert 특화 학습
 
+### 파이프라인 병렬 학습(1F1B) 개요
+```
+backend/learning/
+├── pipeline_parallel.py         # 1F1B 스케줄러 스켈레톤(스테이지/마이크로배치)
+├── pipeline_rpc.py              # HTTP RPC(백오프/재시도/서킷브레이커/청크/압축/TLS)
+├── pipeline_rpc_client_grpc.py  # gRPC 클라이언트(백오프/재시도)
+├── pipeline_metrics.py          # 파이프라인 메트릭 내장 수집기
+├── partition_plan_registry.py   # 에폭/라운드별 파티션 플랜 스냅샷/검증
+├── round_plan_manager.py        # 라운드 실패 카운팅/폴백 관리
+├── pipeline_round_service.py    # 라운드 실행 루프(리셋/재할당/싱글노드 폴백)
+├── stage_reallocator.py         # 고장/정체 노드 재할당 제안
+├── ddp_utils.py                 # DDP 초기화/래핑 유틸
+└── zero1.py                     # ZeRO‑1(ZeroRedundancyOptimizer) 래핑
+```
+
+- 스케줄: 1F1B(Forward/Backward 교차) 루프를 스테이지 단위로 실행
+- 전송: HTTP 기본, gRPC 선택. 대용량 텐서는 청크+gzip 전송 및 백프레셔(429) 적용
+- 신뢰성: 지수 백오프/최대 재시도/서킷브레이커 환경변수화, TLS/mTLS 지원
+- 관측성: Prometheus로 파이프라인 지표 노출, 싱글 노드 폴백 알람 기록
+
 ## 1.3 추론 (Inference)
 
 ### 주요 파일
@@ -97,25 +117,52 @@ backend/p2p/
 ### 주요 파일
 ```
 backend/learning/
-├── micro_step_trainer.py    # 마이크로스텝 학습
-├── dual_model_manager.py    # 이중 모델 관리
-└── tile_coordinator.py      # 타일 기반 분산 학습
+├── pipeline_parallel.py         # 1F1B 파이프라인 스케줄러
+├── micro_step_trainer.py        # 마이크로스텝 학습
+├── pipeline_round_service.py    # 라운드 서비스(연속 라운드/리셋/폴백)
+├── round_plan_manager.py        # 라운드 실패/폴백 정책
+├── partition_plan_registry.py   # 파티션 플랜 저장/불러오기/검증
+├── pipeline_rpc.py              # HTTP RPC(청크/압축/백오프/TLS)
+├── pipeline_rpc_client_grpc.py  # gRPC RPC
+├── pipeline_metrics.py          # 파이프라인 지표 수집
+├── stage_reallocator.py         # 스테이지 재할당
+├── ddp_utils.py                 # DDP 래핑
+└── zero1.py                     # ZeRO‑1 최적화 래핑
 ```
 
 ### 학습 메커니즘
-- **Concurrent Learning**: 추론과 동시 실행
-- **Micro-stepping**: 50-200ms 단위 학습
-- **Tile-based**: 4MB 타일로 분할된 gradient
+- **Pipeline Parallel (1F1B)**: 스테이지 별 마이크로배치 파이프라인으로 Forward/Backward 교차
+- **Micro-stepping**: 짧은 스텝으로 누적 그라디언트
+- **DDP/ZeRO‑1**: 선택적 데이터 병렬 및 옵티마이저 상태 샤딩
+- **플랜 고정(Freeze)**: 에폭/라운드별 파티션 플랜 스냅샷 적용, 실패 시 폴백
 
 ### 현재 상태
 🔶 **부분 구현**
-- 기본 학습 루프
-- Micro-stepping 프레임워크
+- 1F1B 스케줄러 스켈레톤 동작, 연결/웜업/리셋/라운드 구동 구현
+- Micro-stepping 학습 루프 구현
 
 ❌ **미구현**
-- 실제 backward pass
-- Gradient aggregation
+- 대규모 실제 모델의 end‑to‑end 분산 학습 검증(멀티노드 환경 필요)
+- 분산 Gradient 집계 최적화
 - PoL 검증 통합
+
+### 운영 환경변수 (Training/Pipeline)
+- `BLYAN_PIPELINE_TRANSPORT`: `http|grpc`
+- `BLYAN_PIPELINE_TIMEOUT_S`, `BLYAN_PIPELINE_MAX_RETRIES`, `BLYAN_PIPELINE_BACKOFF_BASE_S`
+- `BLYAN_PIPELINE_BREAKER_THRESHOLD`, `BLYAN_PIPELINE_BREAKER_RESET_S`
+- `BLYAN_PIPELINE_CHUNK_BYTES`, `BLYAN_PIPELINE_COMPRESSION=none|gzip`, `BLYAN_PIPELINE_MAX_BUFFER_MB`
+- `BLYAN_ROUND_MAX_FAILURES`, `BLYAN_PIPELINE_ROUND_INTERVAL`
+- TLS: `BLYAN_TLS_CERT`, `BLYAN_TLS_CLIENT_CERT`, `BLYAN_TLS_CLIENT_KEY`
+- 학습: `TRAINING_ENABLE`, `USE_DDP`, `USE_ZERO1`, `TRAINING_*`
+
+### 메트릭 & 알람 (Prometheus)
+- `blyan_pipeline_stage_occupancy{stage}`
+- `blyan_pipeline_rpc_errors`
+- `blyan_pipeline_round_failures`, `blyan_pipeline_resets`, `blyan_pipeline_fallback_activations`
+- `blyan_pipeline_fallback_mode_active`, `blyan_pipeline_current_stage_count`
+- `blyan_pipeline_microbatch_wait_seconds_*`
+- `blyan_partition_drift{plan_id}`
+- 싱글 노드 폴백 시 보안 이벤트: `throughput_degraded_single_node`
 
 ## 1.5 데이터 품질 관리
 

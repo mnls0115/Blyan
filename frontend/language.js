@@ -74,6 +74,11 @@ const translations = {
         // Join Network page
         joinNetworkTitle: 'Join the Blyan Network',
         shareComputingPower: 'Share your computing power and earn rewards',
+        quickStartNode: 'Easy Setup',
+        oneClickNodeSetup: 'Join with one click! Get your access key and start earning rewards in seconds:',
+        generateNodeKey: 'Get My Access Key',
+        getSetupCommands: 'Show Setup Guide',
+        apiKeyExplanation: 'We\'ll give you an access key and show you exactly how to start earning with your computer:',
         systemCheck: 'System Check',
         checkRequirements: "Let's check if your computer meets the requirements:",
         cpuRequirement: 'CPU: Multi-core processor',
@@ -249,7 +254,33 @@ const translations = {
         completeFirstContribution: 'Complete your first contribution to earn badges!',
         newUser: 'New User',
         welcomeToBlyan: 'Welcome to Blyan!',
-        getStartedMessage: 'Get started by using the chat interface or contributing data to earn your first badges!'
+        getStartedMessage: 'Get started by using the chat interface or contributing data to earn your first badges!',
+        
+        // Troubleshooting translations
+        troubleshooting: 'Troubleshooting',
+        dockerNotFoundError: '"Docker not found" error',
+        dockerNotFoundSolution: 'Install Docker Desktop for your operating system:',
+        dockerInstallWindows: 'Windows/Mac: Download from Docker Desktop',
+        dockerInstallLinux: 'Linux: Use your package manager (e.g., sudo apt install docker.io)',
+        dockerRestart: 'Then restart your terminal and try again.',
+        
+        nvidiaToolkitError: '"NVIDIA Container Toolkit not found"',
+        nvidiaToolkitSolution: 'Install NVIDIA Container Toolkit to enable GPU access in Docker:',
+        nvidiaInstallGuide: 'Follow the complete installation guide at NVIDIA docs.',
+        
+        nodeNotFoundError: 'Node shows as "Not found yet"',
+        nodeNotFoundSolutions: 'Common solutions:',
+        nodeWaitTime: 'Wait 30-60 seconds - Node registration takes time',
+        checkDockerLogs: 'Check Docker logs: docker logs blyan-node',
+        verifyApiKey: 'Verify API key: Make sure you copied the exact command',
+        checkFirewall: 'Firewall: Ensure Docker can access the internet',
+        
+        noRewardsError: '"No rewards yet" after running',
+        rewardsDependOnDemand: 'Rewards depend on network demand:',
+        normalWaitTime: 'Normal: It can take 10-30 minutes to receive first requests',
+        checkStatus: 'Check status: Use the "Verify Connection" button above',
+        donorMode: 'Donor mode: If enabled, you won\'t receive rewards but help the network',
+        networkLoad: 'Network load: Rewards vary with AI inference demand'
     },
     
     ko: {
@@ -322,6 +353,11 @@ const translations = {
         // Join Network page
         joinNetworkTitle: 'Blyan 네트워크 참여',
         shareComputingPower: '컴퓨팅 파워를 공유하고 보상을 받으세요',
+        quickStartNode: '간편 시작하기',
+        oneClickNodeSetup: '클릭 한 번으로 참여하세요! API 키를 받고 바로 컴퓨팅 파워 기여를 시작할 수 있습니다:',
+        generateNodeKey: '참여 키 발급받기',
+        getSetupCommands: '설치 가이드 보기',
+        apiKeyExplanation: '참여 키를 발급받으면 여러분의 컴퓨터에서 노드를 실행하는 방법을 안내해드립니다:',
         systemCheck: '시스템 확인',
         checkRequirements: '컴퓨터가 요구 사항을 충족하는지 확인해보겠습니다:',
         cpuRequirement: 'CPU: 멀티코어 프로세서',
@@ -510,7 +546,40 @@ const translations = {
         addComment: '댓글을 입력하세요...',
         reply: '답글',
         like: '좋아요',
-        unlike: '좋아요 취소'
+        unlike: '좋아요 취소',
+
+        // Missing chat page translations
+        typeYourMessage: '메시지를 입력하세요...',
+        
+        // Chat sidebar translations
+        chats: '채팅 기록',
+        newChat: '새로운 채팅',
+        
+        // Troubleshooting translations
+        troubleshooting: '문제 해결',
+        dockerNotFoundError: '"Docker를 찾을 수 없습니다" 오류',
+        dockerNotFoundSolution: '운영체제에 맞는 Docker Desktop을 설치하세요:',
+        dockerInstallWindows: 'Windows/Mac: Docker Desktop에서 다운로드',
+        dockerInstallLinux: 'Linux: 패키지 매니저 사용 (예: sudo apt install docker.io)',
+        dockerRestart: '터미널을 재시작하고 다시 시도하세요.',
+        
+        nvidiaToolkitError: '"NVIDIA Container Toolkit을 찾을 수 없습니다"',
+        nvidiaToolkitSolution: 'Docker에서 GPU 접근을 위해 NVIDIA Container Toolkit을 설치하세요:',
+        nvidiaInstallGuide: 'NVIDIA 문서에서 전체 설치 가이드를 확인하세요.',
+        
+        nodeNotFoundError: '노드가 "아직 찾을 수 없음"으로 표시',
+        nodeNotFoundSolutions: '일반적인 해결 방법:',
+        nodeWaitTime: '30-60초 대기 - 노드 등록에는 시간이 걸립니다',
+        checkDockerLogs: 'Docker 로그 확인: docker logs blyan-node',
+        verifyApiKey: 'API 키 확인: 정확한 명령어를 복사했는지 확인하세요',
+        checkFirewall: '방화벽: Docker가 인터넷에 접근할 수 있는지 확인하세요',
+        
+        noRewardsError: '실행 후 "아직 보상 없음"',
+        rewardsDependOnDemand: '보상은 네트워크 수요에 따라 달라집니다:',
+        normalWaitTime: '정상: 첫 요청을 받기까지 10-30분 걸릴 수 있습니다',
+        checkStatus: '상태 확인: 위의 "연결 확인" 버튼을 사용하세요',
+        donorMode: '기부자 모드: 활성화된 경우 보상을 받지 않지만 네트워크를 도와줍니다',
+        networkLoad: '네트워크 부하: 보상은 AI 추론 수요에 따라 변동됩니다'
     }
 };
 

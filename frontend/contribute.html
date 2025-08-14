@@ -56,25 +56,23 @@
             display: flex;
             align-items: center;
             margin-bottom: 10px;
-        }
-        .requirement-item:last-child {
-            margin-bottom: 0;
+            padding: 8px 0;
         }
         .status-indicator {
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
-            margin-right: 10px;
+            margin-right: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .status-good {
+            background: #28a745;
             color: white;
         }
-        .status-checking { background: #ffc107; }
-        .status-good { background: #28a745; }
-        .status-warning { background: #fd7e14; }
-        .status-error { background: #dc3545; }
         .join-button {
             background: var(--primary-color);
             color: white;
@@ -82,21 +80,23 @@
             padding: 15px 30px;
             border-radius: 8px;
             font-size: 1.1em;
+            font-weight: bold;
             cursor: pointer;
             width: 100%;
             margin-top: 20px;
-            transition: background 0.3s ease;
+            transition: all 0.3s ease;
         }
-        .join-button:hover:not(:disabled) {
-            background: var(--primary-hover);
+        .join-button:hover {
+            background: var(--primary-color-dark);
+            transform: translateY(-2px);
         }
         .join-button:disabled {
-            background: #ccc;
+            background: #6c757d;
             cursor: not-allowed;
+            transform: none;
         }
         .earnings-preview {
-            background: linear-gradient(135deg, #28a745, #20c997);
-            color: white;
+            background: #e7f5e7;
             padding: 25px;
             border-radius: 12px;
             margin-top: 20px;
@@ -104,20 +104,193 @@
         .earnings-number {
             font-size: 2em;
             font-weight: bold;
+            color: var(--primary-color);
         }
-        .node-status {
-            display: none;
-            margin-top: 20px;
-            padding: 20px;
-            background: #e7f5e7;
+        .donor-mode-toggle {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
             border-radius: 8px;
-            border-left: 4px solid #28a745;
+            border: 1px solid #dee2e6;
         }
-        #disconnect-node {
+        .donor-mode-toggle input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+        }
+        .donor-mode-toggle label {
+            font-weight: 500;
+            flex: 1;
+        }
+        .code-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .copy-btn {
+            background: #0ea5e9;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .inline-input {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .hint {
+            color: #64748b;
+            font-size: 0.92em;
+            margin-top: 6px;
+        }
+        .verify-note {
+            margin-top: 10px;
+            color: #0f766e;
+            background: #ecfeff;
+            border-left: 4px solid #06b6d4;
+            padding: 10px 12px;
+            border-radius: 8px;
+        }
+        .install-helpers {
+            margin: 15px 0;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .install-link {
+            background: #f1f5f9;
+            color: #334155;
+            text-decoration: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+        }
+        .install-link:hover {
+            background: #e2e8f0;
+            text-decoration: none;
+            color: #1e293b;
+        }
+        .faq-section {
+            margin-top: 20px;
+        }
+        .faq-item {
+            margin-bottom: 10px;
+        }
+        .faq-summary {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 1px solid #e9ecef;
+            font-weight: 500;
+        }
+        .faq-summary:hover {
+            background: #e9ecef;
+        }
+        .faq-content {
+            padding: 12px;
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+        }
+        .cli-check {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin: 8px 0;
+        }
+        .monitoring-panel {
+            background: #f8fffe;
+            border: 1px solid #10b981;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
             display: none;
         }
-        #disconnect-node:hover {
-            background: #c82333 !important;
+        .monitoring-panel.active {
+            display: block;
+        }
+        .monitoring-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .monitor-stat {
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        }
+        .monitor-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #059669;
+        }
+        .monitor-label {
+            font-size: 0.8em;
+            color: #6b7280;
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        .status-badge.online {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .status-badge.offline {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .status-checking {
+            background: #fbbf24;
+            color: white;
+        }
+        .status-warning {
+            background: #f59e0b;
+            color: white;
+        }
+        .status-error {
+            background: #ef4444;
+            color: white;
+        }
+        .preflight-button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        .preflight-button:hover {
+            background: #4f46e5;
+        }
+        .preflight-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
         }
     </style>
 </head>
@@ -130,39 +303,33 @@
             <p data-i18n="shareComputingPower">Share your computing power and earn rewards</p>
         </div>
 
-        <!-- System Requirements -->
+        <!-- Quick Start Node Connection -->
         <div class="setup-card">
             <div class="step-title">
                 <span class="step-number">1</span>
-                <span data-i18n="systemCheck">System Check</span>
+                <span data-i18n="quickStartNode">Quick Start Node</span>
             </div>
-            <p data-i18n="checkRequirements">Let's check if your computer meets the requirements:</p>
+            <p data-i18n="oneClickNodeSetup">Get your API key and start contributing compute power in seconds:</p>
             
             <div class="requirements">
                 <div class="requirement-item">
-                    <div class="status-indicator status-checking" id="cpu-status">...</div>
-                    <span data-i18n="cpuRequirement">CPU: Multi-core processor</span>
+                    <div class="status-indicator status-checking" id="gpu-check">⏳</div>
+                    <span id="gpu-status">GPU: Checking graphics card...</span>
                 </div>
                 <div class="requirement-item">
-                    <div class="status-indicator status-checking" id="memory-status">...</div>
-                    <span data-i18n="memoryRequirement">Memory: At least 4GB RAM available</span>
+                    <div class="status-indicator status-checking" id="api-check">⏳</div>
+                    <span id="api-status">API: Testing connection to Blyan network...</span>
                 </div>
                 <div class="requirement-item">
-                    <div class="status-indicator status-checking" id="network-status">...</div>
-                    <span data-i18n="networkRequirement">Network: Stable internet connection</span>
-                </div>
-                <div class="requirement-item">
-                    <div class="status-indicator status-checking" id="gpu-status">...</div>
-                    <span data-i18n="gpuRequirement">GPU: Checking for AI acceleration hardware</span>
-                </div>
-                <div class="requirement-item">
-                    <div class="status-indicator status-checking" id="browser-status">...</div>
-                    <span data-i18n="browserRequirement">Browser: Modern browser with WebAssembly support</span>
+                    <div class="status-indicator status-checking" id="browser-check">⏳</div>
+                    <span id="browser-status">Browser: Checking compatibility...</span>
                 </div>
             </div>
             
-            <button id="check-system" class="join-button" data-i18n="checkMySystem">
-                Check My System
+            <button id="run-preflight" class="preflight-button">🔍 Run System Check</button>
+            
+            <button id="generate-node-key" class="join-button" data-i18n="generateNodeKey">
+                Generate Node Key
             </button>
         </div>
 
@@ -170,42 +337,102 @@
         <div class="setup-card">
             <div class="step-title">
                 <span class="step-number">2</span>
-                <span data-i18n="startYourNode">Start Your Node</span>
+                <span data-i18n="getSetupCommands">Get Setup Commands</span>
             </div>
-            <p data-i18n="oneClickSetup">One-click setup to join the network as an expert node:</p>
+            <p data-i18n="apiKeyExplanation">We'll generate an API key and show you the exact commands to run your node:</p>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
-                <div>
-                    <label for="node-name" data-i18n="nodeName">Node Name:</label>
-                    <input type="text" id="node-name" placeholder="My AI Node" 
-                           style="width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+            <!-- API Key Generation Result -->
+            <div id="setup-result" style="display:none; margin-top:16px;">
+                <h4>🔑 Your Node Commands:</h4>
+                <div class="code-row">
+                    <label for="node-id-input" style="font-weight:600; min-width: 90px;">Node name</label>
+                    <input id="node-id-input" class="inline-input" placeholder="e.g., gpu-rig-01" />
                 </div>
-                <div>
-                    <label for="resource-limit" data-i18n="processingMode">Processing Mode:</label>
-                    <select id="resource-limit" style="width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
-                        <option value="cpu-25" data-i18n="cpuLight">CPU Only - 25% (Light)</option>
-                        <option value="cpu-50" selected data-i18n="cpuBalanced">CPU Only - 50% (Balanced)</option>
-                        <option value="cpu-75" data-i18n="cpuHigh">CPU Only - 75% (High)</option>
-                        <option value="gpu-25" disabled data-i18n="gpuLight">GPU Accelerated - 25%</option>
-                        <option value="gpu-50" disabled data-i18n="gpuBalanced">GPU Accelerated - 50%</option>
-                        <option value="gpu-75" disabled data-i18n="gpuHigh">GPU Accelerated - 75%</option>
-                    </select>
-                </div>
-            </div>
-            
-            <button id="start-node" class="join-button" disabled data-i18n="startMyNode">
-                🚀 Start My Node
-            </button>
-            
-            <div class="node-status" id="node-status">
-                <h4 data-i18n="nodeRunning">✅ Node Running Successfully!</h4>
-                <p><strong data-i18n="nodeId">Node ID:</strong> <span id="node-id">-</span></p>
-                <p><strong data-i18n="status">Status:</strong> <span id="node-health" data-i18n="active">Active</span></p>
-                <p><strong data-i18n="requestsServed">Requests Served:</strong> <span id="requests-served">0</span></p>
+
+                <div class="hint">Tip: Use a short, unique name to identify this machine. It will appear in the node list.</div>
+
+                <h5 style="margin-top:14px;">Docker (interactive)</h5>
+                <div style="background:#0f172a; color:#e5e7eb; padding:12px; border-radius:8px; font-family:monospace; font-size:12px; overflow:auto; margin:8px 0;" id="docker-command"></div>
+                <button class="copy-btn" data-copy-target="docker-command">Copy</button>
+
+                <h5 style="margin-top:14px;">Docker (background)</h5>
+                <div style="background:#0f172a; color:#e5e7eb; padding:12px; border-radius:8px; font-family:monospace; font-size:12px; overflow:auto; margin:8px 0;" id="docker-command-detached"></div>
+                <button class="copy-btn" data-copy-target="docker-command-detached">Copy</button>
                 
-                <button id="disconnect-node" class="join-button" style="background: #dc3545; margin-top: 15px;" data-i18n="disconnectNode">
-                    🔌 Disconnect Node
-                </button>
+                <h5>Alternative (Python):</h5>
+                <pre id="python-commands" style="background:#f3f4f6; padding:10px; border-radius:8px; white-space:pre-wrap; font-size:12px;"></pre>
+                <button class="copy-btn" data-copy-target="python-commands">Copy</button>
+                
+                <div style="margin-top:15px; padding:12px; background:#f0f9ff; border-radius:8px; border-left:4px solid #0ea5e9;">
+                    <p><strong>💡 Instructions:</strong></p>
+                    <ol style="margin:8px 0; padding-left:20px;">
+                        <li>Copy the Docker command and run it on your GPU machine</li>
+                        <li>Make sure Docker and NVIDIA Container Toolkit are installed</li>
+                        <li>Your node will automatically connect and start earning rewards</li>
+                    </ol>
+                </div>
+                
+                <div class="install-helpers">
+                    <a href="https://docs.docker.com/get-docker/" target="_blank" class="install-link">
+                        📦 Install Docker
+                    </a>
+                    <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html" target="_blank" class="install-link">
+                        🐳 NVIDIA Container Toolkit
+                    </a>
+                    <a href="https://github.com/docker/cli/releases" target="_blank" class="install-link">
+                        🔧 Docker CLI
+                    </a>
+                </div>
+                
+                <div class="faq-section">
+                    <h5 style="margin-bottom: 10px;">🔧 Quick System Check</h5>
+                    <p style="margin-bottom: 10px; font-size: 0.9em; color: #64748b;">Run these commands on your node machine to verify installation:</p>
+                    <div class="cli-check">docker --version && nvidia-smi && docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi</div>
+                </div>
+                
+                <!-- Donor Mode Toggle -->
+                <div class="donor-mode-toggle" style="margin-top:15px;">
+                    <input type="checkbox" id="donor-mode-checkbox">
+                    <label for="donor-mode-checkbox">
+                        🎁 Enable Donor Mode (Help free-tier users, no rewards)
+                    </label>
+                </div>
+
+                <div class="code-row" style="justify-content: space-between;">
+                    <button id="verify-node-btn" class="join-button" style="max-width: 280px;">
+                        Verify Connection
+                    </button>
+                </div>
+                <div id="verify-status" class="verify-note" style="display:none;"></div>
+                
+                <!-- Monitoring Panel -->
+                <div id="monitoring-panel" class="monitoring-panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h5>📊 Node Performance</h5>
+                        <span id="node-status-badge" class="status-badge offline">Offline</span>
+                    </div>
+                    <div class="monitoring-grid">
+                        <div class="monitor-stat">
+                            <div class="monitor-value" id="requests-served">0</div>
+                            <div class="monitor-label">Requests Served</div>
+                        </div>
+                        <div class="monitor-stat">
+                            <div class="monitor-value" id="current-earnings">$0.00</div>
+                            <div class="monitor-label">Earnings Today</div>
+                        </div>
+                        <div class="monitor-stat">
+                            <div class="monitor-value" id="uptime-display">0h</div>
+                            <div class="monitor-label">Uptime</div>
+                        </div>
+                        <div class="monitor-stat">
+                            <div class="monitor-value" id="expert-count">0</div>
+                            <div class="monitor-label">Active Experts</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; text-align: center; font-size: 0.9em; color: #6b7280;">
+                        Last updated: <span id="last-updated">Never</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -223,12 +450,79 @@
                     <div data-i18n="perDay">per day (estimated)</div>
                 </div>
                 <div style="margin-top: 15px; font-size: 0.9em; opacity: 0.9;">
-                    <span data-i18n="earningsNote">💡 Earnings based on RTX 3090 benchmarks (~$210/day for 10 GPUs). Your actual earnings may vary.</span>
+                    <span id="earnings-note" data-i18n="earningsNote">💡 Earnings based on RTX 3090 benchmarks. Your actual earnings may vary based on GPU model and network demand.</span>
                 </div>
             </div>
         </div>
 
-        <!-- Advanced Options -->
+        <!-- Troubleshooting -->
+        <div class="setup-card">
+            <div class="step-title">🔧 <span data-i18n="troubleshooting">Troubleshooting</span></div>
+            
+            <div class="faq-section">
+                <div class="faq-item">
+                    <div class="faq-summary" onclick="toggleFaq(this)">
+                        ❌ <span data-i18n="dockerNotFoundError">"Docker not found" error</span>
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-content" style="display: none;">
+                        <p data-i18n="dockerNotFoundSolution">Install Docker Desktop for your operating system:</p>
+                        <ul>
+                            <li><strong data-i18n="dockerInstallWindows">Windows/Mac: Download from Docker Desktop</strong> (<a href="https://docs.docker.com/get-docker/" target="_blank">Link</a>)</li>
+                            <li><strong data-i18n="dockerInstallLinux">Linux: Use your package manager (e.g., sudo apt install docker.io)</strong></li>
+                        </ul>
+                        <p data-i18n="dockerRestart">Then restart your terminal and try again.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-summary" onclick="toggleFaq(this)">
+                        🐳 <span data-i18n="nvidiaToolkitError">"NVIDIA Container Toolkit not found"</span>
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-content" style="display: none;">
+                        <p data-i18n="nvidiaToolkitSolution">Install NVIDIA Container Toolkit to enable GPU access in Docker:</p>
+                        <div class="cli-check">curl -fsSL https://nvidia.github.io/nvidia-docker/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-docker.gpg</div>
+                        <p><span data-i18n="nvidiaInstallGuide">Follow the complete installation guide at</span> <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html" target="_blank">NVIDIA docs</a>.</p>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-summary" onclick="toggleFaq(this)">
+                        ⚠️ <span data-i18n="nodeNotFoundError">Node shows as "Not found yet"</span>
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-content" style="display: none;">
+                        <p data-i18n="nodeNotFoundSolutions">Common solutions:</p>
+                        <ul>
+                            <li><strong data-i18n="nodeWaitTime">Wait 30-60 seconds - Node registration takes time</strong></li>
+                            <li><strong data-i18n="checkDockerLogs">Check Docker logs: docker logs blyan-node</strong></li>
+                            <li><strong data-i18n="verifyApiKey">Verify API key: Make sure you copied the exact command</strong></li>
+                            <li><strong data-i18n="checkFirewall">Firewall: Ensure Docker can access the internet</strong></li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-summary" onclick="toggleFaq(this)">
+                        💰 <span data-i18n="noRewardsError">"No rewards yet" after running</span>
+                        <span style="float: right;">▼</span>
+                    </div>
+                    <div class="faq-content" style="display: none;">
+                        <p data-i18n="rewardsDependOnDemand">Rewards depend on network demand:</p>
+                        <ul>
+                            <li><strong data-i18n="normalWaitTime">Normal: It can take 10-30 minutes to receive first requests</strong></li>
+                            <li><strong data-i18n="checkStatus">Check status: Use the "Verify Connection" button above</strong></li>
+                            <li><strong data-i18n="donorMode">Donor mode: If enabled, you won't receive rewards but help the network</strong></li>
+                            <li><strong data-i18n="networkLoad">Network load: Rewards vary with AI inference demand</strong></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Options (Hidden for MVP) -->
+        <!--
         <div class="setup-card">
             <div class="step-title" data-i18n="advancedOptions">Advanced Options</div>
             <p style="color: var(--text-muted);">
@@ -237,679 +531,517 @@
                 <span data-i18n="expertNodeManagement">for expert node management and detailed analytics.</span>
             </p>
         </div>
+        -->
     </div>
 
     <script src="config.js"></script>
     <script src="common-header.js"></script>
+    <script src="wallet.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // Create header
             document.getElementById('header-container').innerHTML = createAIBlockHeader('contribute');
             
-            const checkSystemBtn = document.getElementById('check-system');
-            const startNodeBtn = document.getElementById('start-node');
-            const nodeStatus = document.getElementById('node-status');
-            
-            checkSystemBtn.addEventListener('click', checkSystemRequirements);
-            startNodeBtn.addEventListener('click', startNode);
-            
-            // Add disconnect button listener
-            const disconnectBtn = document.getElementById('disconnect-node');
-            disconnectBtn.addEventListener('click', disconnectNode);
-            
-            // Auto-generate node name
-            document.getElementById('node-name').value = `Node-${Math.random().toString(36).substr(2, 6)}`;
-            
-            // Add event listeners for settings changes
-            document.getElementById('node-name').addEventListener('input', enableReconnectIfNeeded);
-            document.getElementById('resource-limit').addEventListener('change', enableReconnectIfNeeded);
-            
-            // Check for existing node session and system status
-            checkExistingNode();
-            checkSavedSystemStatus();
+            // Wire up buttons
+            document.getElementById('generate-node-key').addEventListener('click', generateNodeKey);
+            document.getElementById('run-preflight').addEventListener('click', runPreflightChecks);
+
+                // Delegated copy buttons
+                document.body.addEventListener('click', (e) => {
+                    const target = e.target;
+                    if (target && target.matches('.copy-btn')) {
+                        const id = target.getAttribute('data-copy-target');
+                        const el = document.getElementById(id);
+                        if (el) copyToClipboard(el.textContent.trim());
+                    }
+                });
+                
+                // Auto-run preflight checks on load
+                setTimeout(runPreflightChecks, 1000);
         });
-        
-        async function checkExistingNode() {
-            const savedNode = localStorage.getItem('blyan-node');
-            if (savedNode) {
-                try {
-                    const nodeData = JSON.parse(savedNode);
-                    
-                    // Check if node still exists in network
-                    const nodesResponse = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
-                    if (nodesResponse.ok) {
-                        const nodesData = await nodesResponse.json();
-                        const existingNode = nodesData.nodes.find(n => n.node_id === nodeData.nodeId);
-                        
-                        if (existingNode) {
-                            // Reconnect to existing node
-                            document.getElementById('node-id').textContent = nodeData.nodeId;
-                            document.getElementById('node-name').value = nodeData.nodeName;
-                            document.getElementById('node-status').style.display = 'block';
-                            
-                            const startBtn = document.getElementById('start-node');
-                            startBtn.textContent = '🔄 Reconnected!';
-                            startBtn.style.background = '#28a745';
-                            startBtn.disabled = true;
-                            
-                            // Show disconnect button
-                            document.getElementById('disconnect-node').style.display = 'block';
-                            
-                            // Resume monitoring
-                            startNodeActivityMonitoring(nodeData.nodeId);
-                            
-                            console.log('Reconnected to existing node:', nodeData.nodeId);
-                        } else {
-                            // Node no longer exists, clear saved data
-                            localStorage.removeItem('blyan-node');
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to reconnect to existing node:', error);
-                    localStorage.removeItem('blyan-node');
-                }
-            }
-        }
-        
-        function checkSavedSystemStatus() {
-            const savedStatus = localStorage.getItem('aiblock-system-status');
-            if (savedStatus) {
-                try {
-                    const statusData = JSON.parse(savedStatus);
-                    const age = Date.now() - statusData.timestamp;
-                    
-                    // Use saved status if less than 1 hour old
-                    if (age < 3600000) {
-                        displaySystemStatus(statusData.results);
-                        document.getElementById('start-node').disabled = !statusData.allPassed;
-                        
-                        // Enable GPU options if GPU was detected
-                        const gpuResult = statusData.results.find(r => r.label && r.label.includes('GPU:'));
-                        if (gpuResult && gpuResult.passed && gpuResult.tier) {
-                            enableGPUOptions(gpuResult.tier, gpuResult.gpuCount || 1);
-                        }
-                        
-                        const checkBtn = document.getElementById('check-system');
-                        if (statusData.allPassed) {
-                            checkBtn.textContent = '✅ System Ready!';
-                            checkBtn.style.background = '#28a745';
-                        } else {
-                            checkBtn.textContent = '⚠️ Some Requirements Failed';
-                            checkBtn.style.background = '#fd7e14';
-                        }
-                        return;
-                    }
-                } catch (error) {
-                    console.error('Failed to load saved system status:', error);
-                }
-            }
-        }
-        
-        function displaySystemStatus(results) {
-            const statusElements = [
-                'cpu-status',
-                'memory-status',
-                'network-status',
-                'gpu-status',      // ← 이 줄을 추가하고
-                'browser-status',
-            ];
 
-            results.forEach((result, index) => {
-                const element = document.getElementById(statusElements[index]);
-                if (!element) return; // 안전장치
-                element.className = `status-indicator ${result.passed ? 'status-good' : 'status-error'}`;
-                element.textContent = result.passed ? '✓' : '✗';
-                element.nextElementSibling.innerHTML = result.label;
-            });
-        }
-
-
-        async function checkSystemRequirements() {
-            const checks = [
-                { 
-                    id: 'cpu-status', 
-                    name: 'CPU',
-                    check: async () => {
-                        const cores = navigator.hardwareConcurrency || 0;
-                        return { passed: cores >= 2, detail: `${cores} cores` };
-                    }
-                },
-                { 
-                    id: 'memory-status', 
-                    name: 'Memory',
-                    check: async () => {
-                        const deviceMemory = navigator.deviceMemory || 0;
-                        
-                        // Try multiple methods to estimate memory
-                        try {
-                            // Method 1: Hardware concurrency hint (most reliable for estimation)
-                            const cores = navigator.hardwareConcurrency || 4;
-                            let estimatedRAM = cores >= 10 ? 24 : cores >= 8 ? 16 : cores >= 4 ? 8 : 4;
-                            
-                            // Method 2: Performance memory info (Chrome only, for JS heap)
-                            const perfMemory = performance.memory ? {
-                                limit: Math.round(performance.memory.jsHeapSizeLimit / (1024**2))
-                            } : null;
-                            
-                            let memoryGB = deviceMemory;
-                            let source = 'Device Memory API';
-                            
-                            // Use device memory if available and reasonable
-                            if (deviceMemory > 0 && deviceMemory <= 64) {
-                                memoryGB = deviceMemory;
-                                source = 'Device Memory API';
-                            } else {
-                                // Fall back to CPU-based estimation
-                                memoryGB = estimatedRAM;
-                                source = `CPU-based estimate (${cores} cores)`;
-                            }
-                            
-                            // For Mac systems, use more conservative but realistic estimates
-                            const userAgent = navigator.userAgent;
-                            if (userAgent.includes('Mac') && cores >= 8) {
-                                // M1/M2/M3/M4 MacBooks typically have 16-32GB
-                                if (cores >= 10) {
-                                    memoryGB = 24; // M4 Pro/Max typically 24-36GB
-                                } else if (cores >= 8) {
-                                    memoryGB = 16; // M1/M2/M3 typically 16-24GB
-                                }
-                                source = 'macOS high-performance system';
-                            }
-                            
-                            const detail = memoryGB > 0 ? 
-                                `${memoryGB}GB (${source})` : 
-                                'Available (unknown amount)';
-                                
-                            return { 
-                                passed: memoryGB >= 4 || memoryGB === 0, // Pass if unknown
-                                detail: detail 
-                            };
-                        } catch (error) {
-                            return { passed: true, detail: 'Available (detection failed)' };
-                        }
-                    }
-                },
-                { 
-                    id: 'network-status', 
-                    name: 'Network',
-                    check: async () => {
-                        const online = navigator.onLine;
-                        if (online) {
-                            // Test actual connectivity
-                            try {
-                                const start = Date.now();
-                                await fetch(`${API_CONFIG.baseURL}/pol/status`, { 
-                                    method: 'GET',
-                                    cache: 'no-cache',
-                                    signal: AbortSignal.timeout(5000)
-                                });
-                                const latency = Date.now() - start;
-                                return { passed: latency < 2000, detail: `${latency}ms latency` };
-                            } catch (error) {
-                                return { passed: false, detail: 'API unreachable' };
-                            }
-                        }
-                        return { passed: false, detail: 'Offline' };
-                    }
-                },
-                { 
-                    id: 'gpu-status', 
-                    name: 'GPU',
-                    check: async () => {
-                        try {
-                            // Check for GPU via WebGL
-                            const canvas = document.createElement('canvas');
-                            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                            
-                            if (!gl) {
-                                return { passed: false, detail: 'No WebGL support' };
-                            }
-                            
-                            // Get GPU info
-                            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                            let gpuInfo = 'Detected';
-                            let gpuCount = 1;
-                            
-                            if (debugInfo) {
-                                const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-                                gpuInfo = renderer;
-                                
-                                // Try to detect multiple GPUs
-                                if (renderer.includes('RTX 4090')) {
-                                    gpuCount = 1; // High-end single GPU
-                                } else if (renderer.includes('RTX') || renderer.includes('GTX')) {
-                                    gpuCount = 1; // NVIDIA GPU detected
-                                } else if (renderer.includes('Radeon')) {
-                                    gpuCount = 1; // AMD GPU detected
-                                } else if (renderer.includes('Apple')) {
-                                    const cores = navigator.hardwareConcurrency || 8;
-                                    gpuCount = cores >= 10 ? 2 : 1; // M4 Pro/Max might have dual GPU
-                                }
-                            }
-                            
-                            // Estimate GPU performance tier
-                            let tier = 'Unknown';
-                            if (gpuInfo.includes('4090') || gpuInfo.includes('4080')) {
-                                tier = 'High-end (RTX 40 series)';
-                            } else if (gpuInfo.includes('3090') || gpuInfo.includes('3080')) {
-                                tier = 'High-end (RTX 30 series)';
-                            } else if (gpuInfo.includes('RTX') || gpuInfo.includes('GTX 16')) {
-                                tier = 'Mid-range NVIDIA';
-                            } else if (gpuInfo.includes('Apple M')) {
-                                tier = 'Apple Silicon (AI optimized)';
-                            } else if (gpuInfo.includes('Radeon')) {
-                                tier = 'AMD Radeon';
-                            }
-                            
-                            return { 
-                                passed: true, 
-                                detail: `${tier} (${gpuCount} GPU${gpuCount > 1 ? 's' : ''})`,
-                                gpuInfo: gpuInfo,
-                                gpuCount: gpuCount,
-                                tier: tier
-                            };
-                        } catch (error) {
-                            return { passed: false, detail: 'GPU detection failed' };
-                        }
-                    }
-                },
-                { 
-                    id: 'browser-status', 
-                    name: 'Browser',
-                    check: async () => {
-                        const hasWasm = typeof WebAssembly === 'object';
-                        const hasWorker = typeof Worker !== 'undefined';
-                        const hasModules = 'noModule' in HTMLScriptElement.prototype;
-                        
-                        const score = [hasWasm, hasWorker, hasModules].filter(Boolean).length;
-                        return { 
-                            passed: score >= 2, 
-                            detail: `${score}/3 features` 
-                        };
-                    }
-                }
-            ];
-
-            for (let i = 0; i < checks.length; i++) {
-                const element = document.getElementById(checks[i].id);
-                element.className = 'status-indicator status-checking';
-                element.textContent = '...';
-                
-                await new Promise(resolve => setTimeout(resolve, 800)); // Show checking state
-                
-                const result = await checks[i].check();
-                
-                element.className = `status-indicator ${result.passed ? 'status-good' : 'status-error'}`;
-                element.textContent = result.passed ? '✓' : '✗';
-                
-                // Update requirement text with details
-                const requirementText = element.nextElementSibling;
-                requirementText.innerHTML = `${checks[i].name}: ${result.detail}`;
-            }
-
-            // Check if all requirements pass
-            const results = await Promise.all(checks.map(check => check.check()));
-            const allPassed = results.every(result => result.passed);
+        async function generateNodeKey() {
+            const btn = document.getElementById('generate-node-key');
+            const setupResult = document.getElementById('setup-result');
+            const dockerCmd = document.getElementById('docker-command');
+                const dockerCmdDetached = document.getElementById('docker-command-detached');
+            const pythonCmd = document.getElementById('python-commands');
             
-            // Enable GPU options if GPU is detected
-            const gpuResult = results.find((result, index) => checks[index].id === 'gpu-status');
-            if (gpuResult && gpuResult.passed) {
-                enableGPUOptions(gpuResult.tier, gpuResult.gpuCount);
-            }
-            
-            // Save system status with extended GPU info
-            const statusData = {
-                results: results.map((result, index) => ({
-                    ...result,
-                    label: `${checks[index].name}: ${result.detail}`,
-                    // Preserve GPU-specific data
-                    ...(checks[index].id === 'gpu-status' && result.tier ? {
-                        tier: result.tier,
-                        gpuInfo: result.gpuInfo,
-                        gpuCount: result.gpuCount
-                    } : {})
-                })),
-                allPassed: allPassed,
-                timestamp: Date.now()
-            };
-            localStorage.setItem('aiblock-system-status', JSON.stringify(statusData));
-            
-            document.getElementById('start-node').disabled = !allPassed;
-            
-            const checkBtn = document.getElementById('check-system');
-            if (allPassed) {
-                checkBtn.textContent = '✅ System Ready!';
-                checkBtn.style.background = '#28a745';
-            } else {
-                checkBtn.textContent = '⚠️ Some Requirements Failed';
-                checkBtn.style.background = '#fd7e14';
-            }
-            
-            return allPassed;
-        }
-
-        async function startNode() {
-            const nodeName = document.getElementById('node-name').value;
-            const resourceLimit = document.getElementById('resource-limit').value;
-            const startBtn = document.getElementById('start-node');
-            
-            startBtn.disabled = true;
-            startBtn.textContent = '🔄 Starting Node...';
+            btn.disabled = true;
+            btn.textContent = 'Generating Key...';
             
             try {
-                // Generate unique node ID and port
-                const nodeId = `user_${Math.random().toString(36).substr(2, 8)}`;
-                const nodePort = 8100 + Math.floor(Math.random() * 100); // Use ports 8100-8199 for user nodes
-                
-                // Step 1: Register node with P2P network
-                startBtn.textContent = '🔄 Registering with network...';
-                
-                const registrationData = {
-                    node_id: nodeId,
-                    host: 'localhost', // In production, would be user's actual IP
-                    port: nodePort,
-                    available_experts: ['layer0.expert0'], // Start with basic expert
-                    node_name: nodeName,
-                    resource_limit: resourceLimit,
-                    node_type: 'user_contributed',
-                    hardware_info: getHardwareInfo()
-                };
-                
-                const registerResponse = await fetch(`${API_CONFIG.baseURL}/p2p/register`, {
+                // Request node_operator API key
+                const response = await fetch(`${API_CONFIG.baseURL}/auth/register_api_key`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(registrationData)
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        name: `contrib-node-${Date.now()}`, 
+                        key_type: 'node_operator' 
+                    })
                 });
                 
-                if (!registerResponse.ok) {
-                    throw new Error(`Registration failed: ${registerResponse.status}`);
+                if (!response.ok) {
+                    throw new Error(await response.text());
                 }
                 
-                const registrationResult = await registerResponse.json();
-                console.log('Node registered:', registrationResult);
+                const data = await response.json();
+                const apiKey = data.api_key;
+                    window._nodeApiKey = apiKey;
                 
-                // Step 2: Verify registration
-                startBtn.textContent = '🔄 Verifying registration...';
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Save API key for later use
+                try { 
+                    localStorage.setItem('apiKey', apiKey); 
+                } catch {}
                 
-                const nodesResponse = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
-                if (nodesResponse.ok) {
-                    const nodesData = await nodesResponse.json();
-                    const ourNode = nodesData.nodes.find(n => n.node_id === nodeId);
-                    
-                    if (!ourNode) {
-                        throw new Error('Node registration verification failed');
-                    }
-                    
-                    console.log('Node verified in network:', ourNode);
-                }
-                
-                // Step 3: Start activity monitoring
-                startBtn.textContent = '🔄 Starting activity monitoring...';
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                // Show success
-                document.getElementById('node-id').textContent = nodeId;
-                document.getElementById('node-status').style.display = 'block';
-                
-                startBtn.textContent = '✅ Node Active!';
-                startBtn.style.background = '#28a745';
-                
-                // Show disconnect button
-                document.getElementById('disconnect-node').style.display = 'block';
-                
-                // Save node info to localStorage
-                const nodeData = {
-                    nodeId: nodeId,
-                    nodeName: nodeName,
-                    resourceLimit: resourceLimit,
-                    startTime: Date.now()
-                };
-                localStorage.setItem('blyan-node', JSON.stringify(nodeData));
-                
-                // Start real activity monitoring
-                startNodeActivityMonitoring(nodeId);
-                
-                // Transfer to global scope for persistence
-                setTimeout(transferToGlobalScope, 1000);
-                
-                // Re-enable settings change detection
-                document.getElementById('node-name').addEventListener('input', enableReconnectIfNeeded);
-                document.getElementById('resource-limit').addEventListener('change', enableReconnectIfNeeded);
-                
-            } catch (error) {
-                console.error('Node startup failed:', error);
-                startBtn.textContent = '❌ Failed to Start';
-                startBtn.style.background = '#dc3545';
-                startBtn.disabled = false;
-                
-                // Show error details
-                alert(`Failed to start node: ${error.message}`);
-            }
-        }
-        
-        function startNodeActivityMonitoring(nodeId) {
-            // Check for actual contributions every 15 seconds
-            const monitoringInterval = setInterval(async () => {
-                try {
-                    // Get real node contribution stats
-                    const statsResponse = await fetch(`${API_CONFIG.baseURL}/p2p/node_stats/${nodeId}`);
-                    if (statsResponse.ok) {
-                        const statsData = await statsResponse.json();
+                    // Prefill Node ID (restore from localStorage or generate new)
+                    const nodeIdInput = document.getElementById('node-id-input');
+                    if (nodeIdInput) {
+                        const savedNodeId = localStorage.getItem('lastNodeId');
+                        const defaultId = savedNodeId || `gpu-${Math.random().toString(36).slice(2,8)}`;
+                        nodeIdInput.value = defaultId;
                         
-                        // Update node health status
-                        document.getElementById('node-health').textContent = 'Active';
-                        
-                        // Update real contribution data
-                        const totalInferences = statsData.contributions.total_inferences || 0;
-                        const realEarnings = statsData.contributions.estimated_earnings || 0;
-                        
-                        document.getElementById('requests-served').textContent = totalInferences;
-                        document.getElementById('estimated-earnings').textContent = `$${realEarnings.toFixed(4)}`;
-                        
-                        // Show detailed contribution breakdown in console for debugging
-                        if (statsData.contributions.expert_contributions) {
-                            console.log('Expert contributions:', statsData.contributions.expert_contributions);
-                        }
-                        
-                    } else if (statsResponse.status === 404) {
-                        // Node was removed from network
-                        document.getElementById('node-health').textContent = 'Disconnected';
-                        clearInterval(monitoringInterval);
-                    } else {
-                        // Try fallback: check if node still exists in nodes list
-                        const nodesResponse = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
-                        if (nodesResponse.ok) {
-                            const nodesData = await nodesResponse.json();
-                            const ourNode = nodesData.nodes.find(n => n.node_id === nodeId);
-                            
-                            if (ourNode) {
-                                document.getElementById('node-health').textContent = 'Active (stats pending)';
-                            } else {
-                                document.getElementById('node-health').textContent = 'Disconnected';
-                                clearInterval(monitoringInterval);
+                        // Save to localStorage on change
+                        nodeIdInput.addEventListener('input', (e) => {
+                            if (e.target.value.trim()) {
+                                localStorage.setItem('lastNodeId', e.target.value.trim());
                             }
-                        }
+                            updateCommands();
+                        });
                     }
-                } catch (error) {
-                    console.error('Activity monitoring error:', error);
-                    document.getElementById('node-health').textContent = 'Error';
-                }
-            }, 15000);
-            
-            // Send periodic heartbeat to keep node alive
-            const heartbeatInterval = setInterval(async () => {
-                try {
-                    await fetch(`${API_CONFIG.baseURL}/p2p/heartbeat/${nodeId}`, {
-                        method: 'POST'
-                    });
-                } catch (error) {
-                    console.error('Heartbeat failed:', error);
-                }
-            }, 30000);
-            
-            // Store intervals for cleanup
-            window.nodeMonitoring = {
-                monitoring: monitoringInterval,
-                heartbeat: heartbeatInterval,
-                nodeId: nodeId
-            };
+                    // Donor toggle
+                    const donorToggle = document.getElementById('donor-mode-checkbox');
+                    if (donorToggle) donorToggle.addEventListener('change', updateCommands);
+                    
+                    function effectiveNodeId() {
+                        const input = document.getElementById('node-id-input');
+                        return (input && input.value.trim()) || `gpu-${Date.now()}`;
+                    }
+                    
+                    function buildDocker(interactive = true) {
+                        const nodeId = effectiveNodeId();
+                        const donor = document.getElementById('donor-mode-checkbox')?.checked;
+                        const donorLine = donor ? `\n  -e DONOR_MODE=true \\\n` : '';
+                        const tty = interactive ? '--rm -it' : '-d --name blyan-node';
+                        return `docker run --gpus all ${tty} \\\n  -e BLYAN_API_KEY=${apiKey} \\\n  -e MAIN_SERVER_URL=${location.origin}/api \\\n  -e NODE_ID=${nodeId} \\\n${donorLine}  ghcr.io/blyan-network/expert-node:latest`;
+                    }
+                    
+                    function buildPython() {
+                        const nodeId = effectiveNodeId();
+                        const donor = document.getElementById('donor-mode-checkbox')?.checked;
+                        const donorLine = donor ? `\nexport DONOR_MODE=true` : '';
+                        return `# Set environment variables
+export BLYAN_API_KEY=${apiKey}
+export MAIN_SERVER_URL=${location.origin}/api
+export NODE_ID=${nodeId}${donorLine}
+
+# Run the node (requires repo clone)
+python runpod_node.py`;
+                    }
+                    
+                    function updateCommands() {
+                        dockerCmd.textContent = buildDocker(true);
+                        dockerCmdDetached.textContent = buildDocker(false);
+                        pythonCmd.textContent = buildPython();
+                    }
+                    
+                    // Expose for listeners
+                    window.updateCommands = updateCommands;
+                    updateCommands();
+                
+                // Show the result
+                setupResult.style.display = 'block';
+                btn.textContent = '✅ Key Generated!';
+                btn.style.background = '#22c55e';
+                
+                    // Wire verify button
+                    const verifyBtn = document.getElementById('verify-node-btn');
+                    if (verifyBtn) {
+                        verifyBtn.onclick = verifyRegistration;
+                    }
+                    
+            } catch (error) {
+                console.error('Failed to generate node key:', error);
+                let errorMsg = 'Network error';
+                if (error.message.includes('400')) errorMsg = 'Invalid request - check API';
+                else if (error.message.includes('401')) errorMsg = 'Authentication failed';  
+                else if (error.message.includes('429')) errorMsg = 'Rate limited - wait 1 minute';
+                else if (error.message.includes('500')) errorMsg = 'Server error - try again';
+                else if (error.message.includes('network')) errorMsg = 'Check internet connection';
+                
+                btn.textContent = `❌ ${errorMsg}`;
+                btn.style.background = '#ef4444';
+                
+                setTimeout(() => {
+                    btn.textContent = 'Generate Node Key';
+                    btn.style.background = '';
+                    btn.disabled = false;
+                }, 4000);
+            }
         }
 
-        // Global node monitoring setup - survives page navigation
-        window.globalNodeMonitoring = window.globalNodeMonitoring || null;
-        
-        // Transfer local monitoring to global scope
-        function transferToGlobalScope() {
-            if (window.nodeMonitoring && !window.globalNodeMonitoring) {
-                window.globalNodeMonitoring = window.nodeMonitoring;
-                console.log('Node monitoring transferred to global scope');
+            function copyToClipboard(text) {
+                try {
+                    navigator.clipboard.writeText(text);
+                } catch (e) {
+                    const ta = document.createElement('textarea');
+                    ta.value = text; document.body.appendChild(ta); ta.select();
+                    document.execCommand('copy'); document.body.removeChild(ta);
+                }
             }
-        }
-        
-        // Check for existing global monitoring on page load
-        function checkGlobalMonitoring() {
-            if (window.globalNodeMonitoring) {
-                window.nodeMonitoring = window.globalNodeMonitoring;
-                console.log('Restored node monitoring from global scope');
+
+            let monitoringInterval = null;
+            
+            async function verifyRegistration() {
+                const statusEl = document.getElementById('verify-status');
+                if (!statusEl) return;
+                statusEl.style.display = 'block';
+                statusEl.textContent = 'Checking node registry...';
                 
-                // Update UI to reflect active node
-                const savedNode = localStorage.getItem('blyan-node');
-                if (savedNode) {
+                try {
+                    const nodeId = (document.getElementById('node-id-input')?.value || '').trim();
+                    if (!nodeId) {
+                        statusEl.textContent = '❌ Please enter a node name first';
+                        return;
+                    }
+                    
+                    // Phase 1: Check if node exists in registry
+                    statusEl.textContent = 'Checking node registry...';
+                    const nodesResp = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
+                    if (!nodesResp.ok) throw new Error('Registry API unavailable');
+                    
+                    const nodesData = await nodesResp.json();
+                    const foundNode = (nodesData.nodes || []).find(n => n.node_id === nodeId);
+                    
+                    if (!foundNode) {
+                        statusEl.textContent = '❌ Not found yet. Make sure the container is running and wait ~30s, then try again.';
+                        stopNodeMonitoring();
+                        return;
+                    }
+                    
+                    // Phase 2: Get detailed node stats
+                    statusEl.textContent = 'Node found! Checking detailed status...';
+                    let nodeStats = null;
                     try {
-                        const nodeData = JSON.parse(savedNode);
-                        document.getElementById('node-id').textContent = nodeData.nodeId;
-                        document.getElementById('node-status').style.display = 'block';
-                        
-                        const startBtn = document.getElementById('start-node');
-                        startBtn.textContent = '✅ Node Active!';
-                        startBtn.style.background = '#28a745';
-                        startBtn.disabled = true;
-                        
-                        document.getElementById('disconnect-node').style.display = 'block';
+                        const statsResp = await fetch(`${API_CONFIG.baseURL}/p2p/node_stats/${nodeId}`);
+                        if (statsResp.ok) {
+                            nodeStats = await statsResp.json();
+                        }
+                    } catch (e) {
+                        // Stats API might not be available yet
+                    }
+                    
+                    // Phase 3: Check donor stats if in donor mode
+                    let donorInfo = '';
+                    const isDonorMode = document.getElementById('donor-mode-checkbox')?.checked;
+                    if (isDonorMode) {
+                        statusEl.textContent = 'Checking donor network status...';
+                        try {
+                            const donorResp = await fetch(`${API_CONFIG.baseURL}/p2p/donor_stats`);
+                            if (donorResp.ok) {
+                                const donorData = await donorResp.json();
+                                const summary = donorData.summary || {};
+                                donorInfo = ` | 🎁 Donor: ${summary.total_donor_nodes || 0} active donors (${summary.donor_percentage || 0}% network)`;
+                            }
+                        } catch (e) {
+                            // Donor stats not critical
+                        }
+                    }
+                    
+                    // Build comprehensive status message
+                    let statusMsg = `✅ Connected: ${foundNode.node_id}`;
+                    statusMsg += ` | Experts: ${foundNode.available_experts?.join(', ') || 'loading...'}`;
+                    
+                    if (nodeStats) {
+                        const hb = nodeStats.node_info && nodeStats.node_info.last_heartbeat;
+                        if (hb) {
+                            const hbMs = hb > 1e12 ? hb : hb * 1000; // handle seconds vs ms
+                            const lastSeen = Math.round((Date.now() - hbMs) / 1000);
+                            statusMsg += ` | Last heartbeat: ${lastSeen}s ago`;
+                        }
+                        if (nodeStats.contributions?.total_inferences) {
+                            statusMsg += ` | Requests served: ${nodeStats.contributions.total_inferences}`;
+                        }
+                    }
+                    
+                    statusMsg += donorInfo;
+                    statusEl.textContent = statusMsg;
+                    
+                    // Start monitoring if node is found
+                    startNodeMonitoring(nodeId);
+                    
+                } catch (e) {
+                    let errorMsg = e.message;
+                    if (e.message.includes('fetch')) errorMsg = 'Network error - check internet connection';
+                    else if (e.message.includes('404')) errorMsg = 'API endpoint not found';
+                    statusEl.textContent = `❌ Verify failed: ${errorMsg}`;
+                    stopNodeMonitoring();
+                }
+            }
+            
+            function startNodeMonitoring(nodeId) {
+                // Show monitoring panel
+                const panel = document.getElementById('monitoring-panel');
+                if (panel) panel.classList.add('active');
+                
+                // Clear existing interval
+                if (monitoringInterval) clearInterval(monitoringInterval);
+                
+                // Start polling every 15 seconds
+                const pollNodeStats = async () => {
+                    try {
+                        const response = await fetch(`${API_CONFIG.baseURL}/p2p/node_stats/${nodeId}`);
+                        if (response.ok) {
+                            const stats = await response.json();
+                            updateMonitoringDisplay(stats, true);
+                        } else if (response.status === 404) {
+                            // Node not found in stats, but might still be in registry
+                            updateMonitoringDisplay(null, false);
+                        }
                     } catch (error) {
-                        console.error('Failed to restore node UI:', error);
+                        console.error('Monitoring error:', error);
+                        updateMonitoringDisplay(null, false);
+                    }
+                };
+                
+                // Initial poll
+                pollNodeStats();
+                
+                // Set up interval
+                monitoringInterval = setInterval(pollNodeStats, 15000);
+            }
+            
+            function stopNodeMonitoring() {
+                if (monitoringInterval) {
+                    clearInterval(monitoringInterval);
+                    monitoringInterval = null;
+                }
+                
+                // Hide monitoring panel
+                const panel = document.getElementById('monitoring-panel');
+                if (panel) panel.classList.remove('active');
+            }
+            
+            function updateMonitoringDisplay(stats, isOnline) {
+                // Update status badge with donor mode indication
+                const badge = document.getElementById('node-status-badge');
+                const isDonorMode = document.getElementById('donor-mode-checkbox')?.checked;
+                
+                if (badge) {
+                    if (isOnline) {
+                        badge.textContent = isDonorMode ? 'Donor Online' : 'Online';
+                        badge.className = `status-badge ${isDonorMode ? 'online' : 'online'}`;
+                    } else {
+                        badge.textContent = 'Offline';
+                        badge.className = 'status-badge offline';
                     }
                 }
+                
+                // Update stats
+                if (stats && stats.contributions) {
+                    const contrib = stats.contributions;
+                    
+                    document.getElementById('requests-served').textContent = contrib.total_inferences || 0;
+                    
+                    // Show earnings or donor message
+                    if (isDonorMode) {
+                        document.getElementById('current-earnings').textContent = 'Donor 🎁';
+                    } else {
+                        document.getElementById('current-earnings').textContent = 
+                            `$${(contrib.estimated_earnings || 0).toFixed(4)}`;
+                    }
+                    
+                    document.getElementById('expert-count').textContent = 
+                        Object.keys(contrib.expert_contributions || {}).length;
+                    
+                    // Update main earnings preview with live data when available
+                    if (contrib.estimated_earnings && !isDonorMode) {
+                        const dailyEstimate = (contrib.estimated_earnings * 24 * 60 * 60 / (Date.now() / 1000));
+                        document.getElementById('estimated-earnings').textContent = `$${dailyEstimate.toFixed(2)}`;
+                        document.getElementById('earnings-note').textContent = 
+                            '✅ Live earnings data from your active node';
+                    }
+                    
+                    // Calculate uptime (rough estimate from last heartbeat)
+                    const hb = stats.node_info && stats.node_info.last_heartbeat;
+                    if (hb) {
+                        const hbMs = hb > 1e12 ? hb : hb * 1000; // seconds->ms if needed
+                        const uptimeMs = Math.max(0, Date.now() - hbMs);
+                        const uptimeHours = uptimeMs / (1000 * 60 * 60);
+                        if (uptimeHours < 1) {
+                            const uptimeMinutes = Math.floor(uptimeMs / (1000 * 60));
+                            document.getElementById('uptime-display').textContent = `${uptimeMinutes}m`;
+                        } else {
+                            document.getElementById('uptime-display').textContent = `${uptimeHours.toFixed(1)}h`;
+                        }
+                    }
+                } else {
+                    // Clear stats if offline or no data
+                    document.getElementById('requests-served').textContent = '0';
+                    document.getElementById('current-earnings').textContent = isDonorMode ? 'Donor 🎁' : '$0.00';
+                    document.getElementById('expert-count').textContent = '0';
+                    document.getElementById('uptime-display').textContent = '0m';
+                    
+                    // Reset earnings preview to default when no data
+                    document.getElementById('estimated-earnings').textContent = '~$2.15';
+                    document.getElementById('earnings-note').textContent = 
+                        '💡 Earnings based on RTX 3090 benchmarks. Your actual earnings may vary based on GPU model and network demand.';
+                }
+                
+                // Update timestamp
+                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
             }
-        }
-        
-        // Call on page load
-        checkGlobalMonitoring();
-        
-        // Cleanup function when leaving page - only clear if actually unloading
-        window.addEventListener('beforeunload', () => {
-            // Don't clear intervals on navigation, only on actual page close
-            console.log('Page navigation detected, keeping node monitoring active');
-        });
-        
-        function enableReconnectIfNeeded() {
-            const savedNode = localStorage.getItem('blyan-node');
-            if (savedNode) {
-                const startBtn = document.getElementById('start-node');
-                if (startBtn.textContent.includes('Reconnected') || startBtn.textContent.includes('Active')) {
-                    startBtn.textContent = '🔄 Update & Reconnect';
-                    startBtn.style.background = '#fd7e14'; // Orange color
-                    startBtn.disabled = false;
+            
+            function toggleFaq(element) {
+                const content = element.nextElementSibling;
+                const arrow = element.querySelector('span');
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    arrow.textContent = '▲';
+                } else {
+                    content.style.display = 'none';
+                    arrow.textContent = '▼';
                 }
             }
-        }
-        
-        function getHardwareInfo() {
-            const savedStatus = localStorage.getItem('aiblock-system-status');
-            let hardwareInfo = {
-                cpu_cores: navigator.hardwareConcurrency || 4,
-                processing_mode: document.getElementById('resource-limit').value,
-                gpu_available: false
-            };
             
-            if (savedStatus) {
+            async function runPreflightChecks() {
+                const preflightBtn = document.getElementById('run-preflight');
+                if (preflightBtn) {
+                    preflightBtn.disabled = true;
+                    preflightBtn.textContent = '🔍 Checking...';
+                }
+                
+                // Reset all indicators to checking state
+                document.getElementById('gpu-check').className = 'status-indicator status-checking';
+                document.getElementById('api-check').className = 'status-indicator status-checking';
+                document.getElementById('browser-check').className = 'status-indicator status-checking';
+                
+                // Run checks with delays for better UX
+                await checkGPU();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                await checkAPI();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                await checkBrowser();
+                
+                if (preflightBtn) {
+                    preflightBtn.disabled = false;
+                    preflightBtn.textContent = '🔍 Run System Check';
+                }
+            }
+            
+            async function checkGPU() {
+                const indicator = document.getElementById('gpu-check');
+                const status = document.getElementById('gpu-status');
+                
                 try {
-                    const statusData = JSON.parse(savedStatus);
-                    const gpuResult = statusData.results.find(r => r.label.includes('GPU:'));
-                    if (gpuResult && gpuResult.passed) {
-                        hardwareInfo.gpu_available = true;
-                        hardwareInfo.gpu_info = gpuResult.detail;
+                    // Try WebGL GPU detection
+                    const canvas = document.createElement('canvas');
+                    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                    
+                    if (!gl) {
+                        indicator.className = 'status-indicator status-error';
+                        indicator.textContent = '❌';
+                        status.textContent = 'GPU: No WebGL support detected - may not have compatible GPU';
+                        return;
+                    }
+                    
+                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                    let gpuInfo = 'Compatible GPU detected';
+                    
+                    if (debugInfo) {
+                        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+                        if (renderer.includes('NVIDIA') || renderer.includes('GeForce') || renderer.includes('RTX')) {
+                            gpuInfo = `NVIDIA GPU: ${renderer.split(' ').slice(0, 3).join(' ')}`;
+                            indicator.className = 'status-indicator status-good';
+                            indicator.textContent = '✅';
+                        } else if (renderer.includes('AMD') || renderer.includes('Radeon')) {
+                            gpuInfo = `AMD GPU: ${renderer.split(' ').slice(0, 3).join(' ')}`;
+                            indicator.className = 'status-indicator status-good';
+                            indicator.textContent = '✅';
+                        } else if (renderer.includes('Apple') || renderer.includes('Metal')) {
+                            gpuInfo = `Apple Silicon: ${renderer.split(' ').slice(0, 2).join(' ')}`;
+                            indicator.className = 'status-indicator status-good';
+                            indicator.textContent = '✅';
+                        } else {
+                            gpuInfo = `GPU detected: ${renderer.split(' ').slice(0, 2).join(' ')}`;
+                            indicator.className = 'status-indicator status-warning';
+                            indicator.textContent = '⚠️';
+                        }
+                    } else {
+                        indicator.className = 'status-indicator status-warning';
+                        indicator.textContent = '⚠️';
+                    }
+                    
+                    status.textContent = `GPU: ${gpuInfo}`;
+                    
+                } catch (error) {
+                    indicator.className = 'status-indicator status-error';
+                    indicator.textContent = '❌';
+                    status.textContent = 'GPU: Detection failed - unknown graphics hardware';
+                }
+            }
+            
+            async function checkAPI() {
+                const indicator = document.getElementById('api-check');
+                const status = document.getElementById('api-status');
+                
+                try {
+                    const start = Date.now();
+                    const response = await fetch(`${API_CONFIG.baseURL}/pol/status`, {
+                        method: 'GET',
+                        signal: AbortSignal.timeout(5000)
+                    });
+                    const latency = Date.now() - start;
+                    
+                    if (response.ok) {
+                        indicator.className = 'status-indicator status-good';
+                        indicator.textContent = '✅';
+                        status.textContent = `API: Connected to Blyan network (${latency}ms)`;
+                    } else {
+                        indicator.className = 'status-indicator status-warning';
+                        indicator.textContent = '⚠️';
+                        status.textContent = `API: Connected but issues detected (${response.status})`;
                     }
                 } catch (error) {
-                    console.error('Failed to parse hardware info:', error);
+                    indicator.className = 'status-indicator status-error';
+                    indicator.textContent = '❌';
+                    status.textContent = 'API: Cannot reach Blyan network - check internet connection';
                 }
             }
             
-            return hardwareInfo;
-        }
-        
-        function enableGPUOptions(gpuTier, gpuCount) {
-            const resourceSelect = document.getElementById('resource-limit');
-            const gpuOptions = resourceSelect.querySelectorAll('option[value^="gpu-"]');
-            gpuOptions.forEach(option => {
-                option.disabled = false;
-                option.textContent = option.textContent.replace(' (GPU required)', '');
-            });
-            
-            // Update earnings estimate
-            updateEarningsEstimate(gpuTier, gpuCount);
-        }
-        
-        function updateEarningsEstimate(gpuTier, gpuCount) {
-            let dailyEstimate = 0.00; // Base CPU earning
-            
-            // GPU-based earnings (based on RTX 3090 = $21/day benchmark)
-            if (gpuTier.includes('4090')) {
-                dailyEstimate = 28.0 * gpuCount; // RTX 4090 ~33% faster than 3090
-            } else if (gpuTier.includes('4080')) {
-                dailyEstimate = 23.0 * gpuCount; // RTX 4080 ~10% faster than 3090
-            } else if (gpuTier.includes('3090')) {
-                dailyEstimate = 21.0 * gpuCount; // RTX 3090 benchmark
-            } else if (gpuTier.includes('3080')) {
-                dailyEstimate = 16.0 * gpuCount; // RTX 3080 ~25% slower than 3090
-            } else if (gpuTier.includes('Apple M')) {
-                dailyEstimate = 12.0 * gpuCount; // Apple Silicon AI optimized
-            } else if (gpuTier.includes('RTX') || gpuTier.includes('GTX')) {
-                dailyEstimate = 8.0 * gpuCount; // Mid-range NVIDIA
-            } else if (gpuTier.includes('Radeon')) {
-                dailyEstimate = 6.0 * gpuCount; // AMD Radeon
+            async function checkBrowser() {
+                const indicator = document.getElementById('browser-check');
+                const status = document.getElementById('browser-status');
+                
+                try {
+                    const features = {
+                        wasm: typeof WebAssembly === 'object',
+                        workers: typeof Worker !== 'undefined',
+                        fetch: typeof fetch !== 'undefined',
+                        es6: typeof Symbol !== 'undefined'
+                    };
+                    
+                    const score = Object.values(features).filter(Boolean).length;
+                    
+                    if (score === 4) {
+                        indicator.className = 'status-indicator status-good';
+                        indicator.textContent = '✅';
+                        status.textContent = 'Browser: Fully compatible with all features';
+                    } else if (score >= 3) {
+                        indicator.className = 'status-indicator status-warning';
+                        indicator.textContent = '⚠️';
+                        status.textContent = `Browser: Mostly compatible (${score}/4 features)`;
+                    } else {
+                        indicator.className = 'status-indicator status-error';
+                        indicator.textContent = '❌';
+                        status.textContent = `Browser: Limited compatibility (${score}/4 features)`;
+                    }
+                } catch (error) {
+                    indicator.className = 'status-indicator status-error';
+                    indicator.textContent = '❌';
+                    status.textContent = 'Browser: Compatibility check failed';
+                }
             }
-            
-            document.getElementById('estimated-earnings').textContent = `~$${dailyEstimate.toFixed(2)}`;
-        }
-        
-        // Add explicit disconnect button
-        function disconnectNode() {
-            if (window.nodeMonitoring) {
-                // Clear intervals
-                clearInterval(window.nodeMonitoring.monitoring);
-                clearInterval(window.nodeMonitoring.heartbeat);
-                
-                // Unregister node
-                fetch(`${API_CONFIG.baseURL}/p2p/nodes/${window.nodeMonitoring.nodeId}`, {
-                    method: 'DELETE'
-                }).then(() => {
-                    console.log('Node manually disconnected');
-                }).catch(error => {
-                    console.error('Failed to unregister node:', error);
-                });
-                
-                // Clear saved data
-                localStorage.removeItem('blyan-node');
-                
-                // Reset UI
-                document.getElementById('node-status').style.display = 'none';
-                const startBtn = document.getElementById('start-node');
-                startBtn.textContent = '🚀 Start My Node';
-                startBtn.style.background = '';
-                startBtn.disabled = false;
-                
-                // Hide disconnect button
-                document.getElementById('disconnect-node').style.display = 'none';
-                
-                // Clear both local and global monitoring
-                window.nodeMonitoring = null;
-                window.globalNodeMonitoring = null;
-            }
-        }
     </script>
 </body>
 </html>

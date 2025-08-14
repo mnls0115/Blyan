@@ -161,9 +161,10 @@ class AtomicChatHandler:
                 detail=f"Resource limit exceeded: {denial_reason}"
             )
         
-        # Reserve the quota (will be rolled back on failure)
-        is_free_tier = (limits_info.get("free_requests_remaining", 0) > 0 or
-                       limits_info.get("bonus_requests_available", 0) > 0)
+            # Reserve the quota (will be rolled back on failure)
+            is_free_tier = (limits_info.get("free_requests_remaining", 0) > 0 or
+                           limits_info.get("bonus_requests_available", 0) > 0)
+            ctx.is_free_tier_request = is_free_tier
         
         if is_free_tier:
             # Reserve free tier quota
@@ -294,10 +295,12 @@ class AtomicChatHandler:
                 if available_experts:
                     selected_experts = available_experts[:request.top_k_experts]
                     
+                    prefer_donor = getattr(ctx, "is_free_tier_request", False)
                     response_text, routing_info = await distributed_coordinator.distribute_inference(
                         prompt=request.prompt,
                         required_experts=selected_experts,
-                        max_new_tokens=request.max_new_tokens
+                        max_new_tokens=request.max_new_tokens,
+                        prefer_donor=prefer_donor
                     )
                     
                     ctx.inference_completed = True

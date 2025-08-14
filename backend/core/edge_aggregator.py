@@ -33,6 +33,7 @@ class DeltaSubmission:
     timestamp: float
     sequence_number: int
     base_block_hash: Optional[str] = None  # Base version for CAS
+    round_id: Optional[int] = None  # Learning round anchor
     signature: Optional[str] = None
 
 @dataclass
@@ -40,6 +41,7 @@ class AggregationBatch:
     """Batch of deltas for aggregation"""
     tile_id: str
     base_block_hash: Optional[str] = None  # Base version all deltas in batch share
+    round_id: Optional[int] = None  # Round anchor all deltas share
     deltas: List[DeltaSubmission] = field(default_factory=list)
     batch_start_time: float = 0.0
     target_primary: Optional[str] = None
@@ -154,8 +156,13 @@ class EdgeAggregator:
             # Update node tracking
             self.node_last_seen[submission.node_id] = submission.timestamp
             
-            # Create unique batch key based on tile_id + base_block_hash
-            batch_key = f"{submission.tile_id}:{submission.base_block_hash or 'genesis'}"
+            # Validate anchors presence
+            if not submission.base_block_hash or submission.round_id is None:
+                logger.warning("Missing base_block_hash/round_id in delta submission; rejecting")
+                return False
+
+            # Create unique batch key based on tile_id + base_block_hash + round_id
+            batch_key = f"{submission.tile_id}:{submission.base_block_hash}:{submission.round_id}"
             
             # Get or create batch for tile+base combination
             if batch_key not in self.pending_batches:
@@ -164,15 +171,19 @@ class EdgeAggregator:
                 self.pending_batches[batch_key] = AggregationBatch(
                     tile_id=submission.tile_id,
                     base_block_hash=submission.base_block_hash,
+                    round_id=submission.round_id,
                     batch_start_time=time.time(),
                     target_primary=primary_node
                 )
             
             batch = self.pending_batches[batch_key]
             
-            # Verify same base version
+            # Verify same base version and round_id
             if batch.base_block_hash != submission.base_block_hash:
                 logger.warning(f"Base version mismatch in batch: expected {batch.base_block_hash}, got {submission.base_block_hash}")
+                return False
+            if batch.round_id != submission.round_id:
+                logger.warning(f"Round mismatch in batch: expected {batch.round_id}, got {submission.round_id}")
                 return False
             
             # Add delta to batch

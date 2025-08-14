@@ -16,6 +16,9 @@ from enum import Enum
 
 from .block import Block, BlockHeader
 from .chain import Chain
+from typing import Tuple
+import torch
+import torch.nn as nn
 
 
 class MigrationType(Enum):
@@ -383,6 +386,68 @@ class ArchitectureMigrationManager:
                 
         except Exception as e:
             return False, f"Migration execution error: {str(e)}"
+
+
+# ------------------------------ Net2Wider/Deeper Utilities (Skeleton) ------------------------------
+
+class Net2Ops:
+    """Utilities to widen/deepen transformer-like layers while preserving function approximately."""
+
+    @staticmethod
+    def net2wider_linear(layer: nn.Linear, new_out_features: int) -> nn.Linear:
+        """Return a widened Linear layer (out_features↑) with weight cloning.
+        Preserves function approximately by duplicating rows and scaling.
+        """
+        if new_out_features <= layer.out_features:
+            raise ValueError("new_out_features must be greater than current out_features")
+        device = layer.weight.device
+        dtype = layer.weight.dtype
+        old_w = layer.weight.data
+        old_b = layer.bias.data if layer.bias is not None else None
+        repeat = (new_out_features + old_w.size(0) - 1) // old_w.size(0)
+        expanded_w = old_w.repeat(repeat, 1)[:new_out_features, :].clone()
+        if old_b is not None:
+            expanded_b = old_b.repeat(repeat)[:new_out_features].clone()
+        else:
+            expanded_b = None
+        widened = nn.Linear(layer.in_features, new_out_features, bias=layer.bias is not None).to(device=device, dtype=dtype)
+        widened.weight.data.copy_(expanded_w)
+        if expanded_b is not None:
+            widened.bias.data.copy_(expanded_b)
+        return widened
+
+    @staticmethod
+    def net2deeper_block(block: nn.Module) -> nn.Sequential:
+        """Wrap an existing block with an identity-initialized extra layer (e.g., residual block)."""
+        # Placeholder: actual implementation depends on model architecture
+        identity = nn.Identity()
+        return nn.Sequential(block, identity)
+
+
+# ------------------------------ KD Pipeline Entry (Skeleton) ------------------------------
+
+class KnowledgeDistillationEntry:
+    """Entry points to run KD between teacher and student with minimal coupling."""
+
+    def __init__(self, teacher: nn.Module, student: nn.Module, temperature: float = 1.0, alpha: float = 0.5):
+        self.teacher = teacher.eval()
+        self.student = student.train()
+        self.temperature = temperature
+        self.alpha = alpha
+
+    def kd_loss(self, logits_student: torch.Tensor, logits_teacher: torch.Tensor, hard_loss: torch.Tensor) -> torch.Tensor:
+        t = self.temperature
+        soft_t = torch.log_softmax(logits_teacher / t, dim=-1)
+        soft_s = torch.log_softmax(logits_student / t, dim=-1)
+        kl = torch.sum(torch.exp(soft_t) * (soft_t - soft_s), dim=-1).mean() * (t * t)
+        return self.alpha * kl + (1 - self.alpha) * hard_loss
+
+    @torch.no_grad()
+    def teacher_forward(self, **inputs) -> torch.Tensor:
+        return self.teacher(**inputs).logits if hasattr(self.teacher, 'logits') else self.teacher(**inputs)
+
+    def student_forward(self, **inputs) -> torch.Tensor:
+        return self.student(**inputs).logits if hasattr(self.student, 'logits') else self.student(**inputs)
     
     def _save_migration_state(self):
         """Save migration state to disk."""

@@ -1,0 +1,17 @@
+[Unit]
+Description=AIBlock API Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/dnai
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 /root/dnai/api/server.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/aiblock.log
+StandardError=append:/var/log/aiblock.error.log
+
+[Install]
+WantedBy=multi-user.target

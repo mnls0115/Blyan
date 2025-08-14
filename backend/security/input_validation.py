@@ -252,6 +252,26 @@ def validate_request_data(func):
     
     return wrapper
 
+
+def validate_heartbeat_params(load_factor: float, net_mbps: float = None, latency_ms: float = None, vram_gb: float = None, tflops_est: float = None) -> None:
+    """Stricter validation for heartbeat inputs to prevent abuse."""
+    if not (0.0 <= load_factor <= 1.0):
+        raise SecurityError("load_factor out of range")
+    for name, val in (('net_mbps', net_mbps), ('latency_ms', latency_ms), ('vram_gb', vram_gb), ('tflops_est', tflops_est)):
+        if val is None:
+            continue
+        if not isinstance(val, (int, float)):
+            raise SecurityError(f"{name} must be numeric")
+        # allow reasonable bounds
+        if name == 'net_mbps' and not (0 <= val <= 100000):
+            raise SecurityError("net_mbps out of bounds")
+        if name == 'latency_ms' and not (0 <= val <= 100000):
+            raise SecurityError("latency_ms out of bounds")
+        if name == 'vram_gb' and not (0 <= val <= 200):
+            raise SecurityError("vram_gb out of bounds")
+        if name == 'tflops_est' and not (0 <= val <= 10000):
+            raise SecurityError("tflops_est out of bounds")
+
 # Global instance
 file_handler = SecureFileHandler([
     "./data",

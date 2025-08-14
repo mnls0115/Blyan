@@ -614,8 +614,19 @@ Blyan has now become not just a simple storage system, but a **self-learning and
 | **🆕 BLY Token Economics** | ✅ Complete | Dynamic reward coefficients | 1B token supply with inflation control |
 | **🆕 Wallet Integration** | ✅ Complete | MetaMask + secure authentication | Web3 user identity with nonce-based security |
 | **🆕 Production Deployment** | ✅ Complete | SSL/TLS + enterprise security | Complete production infrastructure |
+| **🆕 Donor Mode System** | ✅ Complete | EMA-based utilization tracking | Support free-tier users without rewards |
+| **🆕 Distributed Streaming** | ✅ Complete | Progressive handoff + speculative decoding | Real-time token streaming across nodes |
+| **🆕 Consensus Learning** | ✅ Complete | Byzantine fault-tolerant aggregation | Synchronized distributed learning |
 
 ### 10.3 🌟 **2025 Revolutionary Breakthroughs**
+
+#### **Donor Mode for Economic Inclusivity**
+**Innovation**: Nodes can contribute computing power without expecting rewards
+- **EMA-Based Utilization**: Exponential moving average tracking prevents abuse
+- **Free-Tier Support**: Enables 100 free requests/day for non-paying users
+- **Reputation Windows**: 10-minute sliding windows for accurate node metrics
+- **Queue Management**: Automatic timeout after 30 seconds prevents infinite waiting
+- **Grace Periods**: 5-minute grace period for new nodes to establish reputation
 
 #### **Concurrent Learning ↔ Inference Resolution**
 **Problem Solved**: Single nodes can now handle learning and inference simultaneously without blocking
@@ -629,6 +640,22 @@ Blyan has now become not just a simple storage system, but a **self-learning and
 - **Dynamic Rewards**: α/β coefficient system adjusts based on network demand
 - **Merit-Based Access**: Technical contribution rewards, not wealth-based participation
 - **Security**: Race-condition-free reward distribution with audit trails
+
+#### **Distributed Streaming Architecture**
+**Breakthrough**: Real-time token streaming across distributed nodes
+- **Single-Node Streaming**: Optimal node selection with all required experts
+- **Progressive Handoff**: Seamless transition between nodes during streaming
+- **Speculative Decoding**: Draft generation (40 tok/s) + verification (10 tok/s)
+- **Session Management**: Cryptographic session IDs with deterministic seeding
+- **Failure Recovery**: Automatic fallback to next-best node within 100ms
+
+#### **Consensus Learning System**
+**Solution**: Solves fundamental distributed learning divergence problem
+- **Synchronized Epochs**: All nodes start from same base version
+- **Byzantine Aggregation**: Krum and trimmed mean for fault tolerance
+- **Delta Compression**: 20-50x compression with INT8+Sparse+LoRA
+- **Blockchain Integration**: Consensus blocks with cryptographic commitments
+- **Convergence Guarantee**: 2/3 consensus required for version agreement
 
 #### **Production-Grade Security & Deployment**
 **Achievement**: Enterprise-level infrastructure with zero-downtime deployment

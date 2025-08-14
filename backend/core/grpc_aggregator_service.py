@@ -116,6 +116,8 @@ class EdgeAggregatorGrpcService:
                 delta=delta,
                 timestamp=request.timestamp,
                 sequence_number=request.sequence_number,
+                base_block_hash=getattr(request, 'base_block_hash', None),
+                round_id=getattr(request, 'round_id', None),
                 signature=request.signature
             )
             

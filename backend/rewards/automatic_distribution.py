@@ -217,6 +217,9 @@ class AutomaticRewardDistributor:
         for expert_name, usage in tracker.usage_stats.items():
             if usage['last_used'] > cutoff_time:
                 provider = usage.get('provider_address')
+                # Skip donor nodes (no rewards requested)
+                if usage.get('donor_mode') is True:
+                    continue
                 if provider:
                     if provider not in provider_stats:
                         provider_stats[provider] = {

@@ -36,6 +36,13 @@ NODE_ID = os.getenv("NODE_ID", f"runpod-20b-{os.getpid()}")
 NODE_HOST = os.getenv("NODE_HOST", "0.0.0.0")  # Runpod will provide external IP
 NODE_PORT = int(os.getenv("NODE_PORT", 8001))
 
+# Optional NVML for TFLOPS estimation
+try:
+    import pynvml  # type: ignore
+    _HAS_NVML = True
+except Exception:
+    _HAS_NVML = False
+
 # Optional model aliases for convenience (can be disabled via MODEL_ALIAS_DISABLE=1)
 MODEL_ALIASES: Dict[str, str] = {}
 
@@ -43,6 +50,71 @@ MODEL_ALIASES: Dict[str, str] = {}
 model_wrapper: Optional[ModelWrapper] = None
 registration_task = None
 served_expert_name: Optional[str] = None
+# Global TFLOPS estimate (FP32)
+TFLOPS_EST: Optional[float] = None
+
+
+def _cores_per_sm_from_cc(major: int, minor: int) -> int:
+    """Best-effort mapping of CUDA cores per SM given compute capability."""
+    # References: NVIDIA architecture guides (approximate)
+    cc = (major, minor)
+    if cc >= (9, 0):  # Hopper/Ada
+        return 128
+    if cc >= (8, 6):  # Ampere consumer
+        return 128
+    if cc >= (8, 0):  # A100
+        return 64
+    if cc >= (7, 5):  # Turing
+        return 64
+    if cc >= (7, 0):  # Volta
+        return 64
+    if cc >= (6, 0):  # Pascal
+        return 128
+    if cc >= (5, 0):  # Maxwell
+        return 128
+    if cc >= (3, 0):  # Kepler
+        return 192
+    return 64
+
+
+def _estimate_tflops_nvml(gpu_index: int = 0) -> Optional[float]:
+    """Estimate FP32 TFLOPS via NVML (no mock). Returns None if unavailable."""
+    if not _HAS_NVML:
+        return None
+    try:
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index)
+        # Compute capability
+        try:
+            major, minor = pynvml.nvmlDeviceGetCudaComputeCapability(handle)
+        except Exception:
+            major, minor = (0, 0)
+        # SM count
+        try:
+            sm_count = pynvml.nvmlDeviceGetMultiProcessorCount(handle)
+        except Exception:
+            sm_count = 0
+        # SM clock in MHz
+        try:
+            clock_sm_mhz = pynvml.nvmlDeviceGetClockInfo(handle, pynvml.NVML_CLOCK_SM)
+        except Exception:
+            clock_sm_mhz = 0
+        if sm_count <= 0 or clock_sm_mhz <= 0:
+            return None
+        cores_per_sm = _cores_per_sm_from_cc(major, minor)
+        clock_ghz = clock_sm_mhz / 1000.0
+        # FP32 TFLOPS ≈ SMs * cores/SM * clock_GHz * 2 (FMA)
+        tflops = sm_count * cores_per_sm * clock_ghz * 2.0 / 1e3
+        # Units: (cores) * GHz * 2 / 1e3 = TFLOPS (since cores*GHz gives Giga-ops/s)
+        # Correcting: cores*GHz*2 = GFLOPS; divide by 1000 for TFLOPS
+        return max(0.0, tflops)
+    except Exception:
+        return None
+    finally:
+        try:
+            pynvml.nvmlShutdown()
+        except Exception:
+            pass
 
 
 def _derive_expert_name_from_model(model_name: str) -> str:
@@ -91,7 +163,8 @@ async def register_with_main_server():
                     "vram_gb": torch.cuda.get_device_properties(0).total_memory / 1e9 if torch.cuda.is_available() else 0,
                     "quantization": os.getenv("MODEL_QUANTIZATION", "8bit"),
                     "max_batch_size": 4
-                }
+                },
+                "donor_mode": os.getenv("DONOR_MODE", "false").lower() in ("1", "true", "yes")
             }
             # Optional auth header for production API
             api_key = os.getenv("P2P_API_KEY") or os.getenv("API_KEY") or os.getenv("BLYAN_API_KEY")
@@ -110,7 +183,34 @@ async def register_with_main_server():
                     else:
                         logger.error(f"Registration failed: {response.status}")
             
-            # Send heartbeat every 30 seconds
+            # Send heartbeat every 30 seconds with basic metrics
+            try:
+                latency_ms = None
+                # Quick ping to main server
+                t0 = time.time()
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as s2:
+                    async with s2.get(f"{MAIN_SERVER_URL}/health") as _:
+                        pass
+                latency_ms = (time.time() - t0) * 1000.0
+            except Exception:
+                latency_ms = None
+
+            query = f"{MAIN_SERVER_URL}/p2p/heartbeat/{NODE_ID}?load_factor=0.2"
+            if torch.cuda.is_available():
+                vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+                query += f"&vram_gb={vram_gb:.2f}"
+            if latency_ms is not None:
+                query += f"&latency_ms={latency_ms:.2f}"
+            # TFLOPS estimation (NVML best-effort)
+            global TFLOPS_EST
+            if TFLOPS_EST is None:
+                TFLOPS_EST = _estimate_tflops_nvml(0)
+            if TFLOPS_EST is not None:
+                query += f"&tflops_est={TFLOPS_EST:.2f}"
+
+            async with aiohttp.ClientSession() as sbeat:
+                await sbeat.post(query, timeout=aiohttp.ClientTimeout(total=5))
+
             await asyncio.sleep(30)
             
         except Exception as e:
