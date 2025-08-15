@@ -31,7 +31,7 @@ start_server() {
     echo "🚀 Starting $name server on port $port..."
     
     # Set PYTHONPATH for all servers
-    export PYTHONPATH=/Users/mnls/projects/aiblock:$PYTHONPATH
+    export PYTHONPATH=/Users/mnls/projects/dnai:$PYTHONPATH
     
     if [ "$name" = "api" ]; then
         # Run API server directly with uvicorn (with PoL enabled)
@@ -39,16 +39,16 @@ start_server() {
         export POL_THRESHOLD=0.01
         export SKIP_POW=true  # 개발 환경에서는 PoW 스킵
         if [ -f "myenv/bin/python3" ]; then
-            PYTHONPATH=/Users/mnls/projects/aiblock ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true myenv/bin/uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/dnai ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true myenv/bin/uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
         else
-            PYTHONPATH=/Users/mnls/projects/aiblock ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/dnai ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
         fi
     else
         echo "Debug: Starting P2P node with command: python3 -m $module server $name $port"
         if [ -f "myenv/bin/python3" ]; then
-            PYTHONPATH=/Users/mnls/projects/aiblock myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/dnai myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
         else
-            PYTHONPATH=/Users/mnls/projects/aiblock python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/dnai python3 -m $module server $name $port > logs/${name}.log 2>&1 &
         fi
     fi
     

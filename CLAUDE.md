@@ -48,6 +48,150 @@ PY
 - **Server Status**: `./server.sh status` to check all services
 - **Restart**: `./server.sh restart` to apply code changes
 
+## Production Server Setup (DigitalOcean/VPS)
+
+### Prerequisites
+- Ubuntu 22.04+ server with at least 2GB RAM
+- Root access or sudo privileges
+- Domain name (optional but recommended)
+
+### Initial Server Setup
+```bash
+# 1. System update
+apt update && apt upgrade -y
+
+# 2. Install required packages
+apt install -y python3 python3-pip python3-venv git curl wget htop nginx
+
+# 3. Clone repository
+cd /root
+git clone https://github.com/mnls0115/Blyan.git dnai
+cd dnai
+
+# 4. Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 5. Install dependencies (CPU-only for VPS)
+export TMPDIR=/tmp
+pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install --no-cache-dir -r requirements.txt
+```
+
+### Systemd Service Configuration
+Create a systemd service for automatic startup and management:
+
+```bash
+# Create service file
+cat > /etc/systemd/system/dnai.service << 'EOF'
+[Unit]
+Description=DNAI API Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/dnai
+Environment="PATH=/root/dnai/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONPATH=/root/dnai"
+Environment="SKIP_DB_INIT=true"
+ExecStart=/root/dnai/.venv/bin/python -m api.server
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=15
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start service
+systemctl daemon-reload
+systemctl enable dnai
+systemctl start dnai
+systemctl status dnai --no-pager
+```
+
+### Service Management Commands
+```bash
+# Check service status
+systemctl status dnai
+
+# View logs
+journalctl -u dnai -f  # Real-time logs
+journalctl -u dnai -n 100  # Last 100 lines
+
+# Restart service (after code changes)
+systemctl restart dnai
+
+# Stop service
+systemctl stop dnai
+
+# Start service
+systemctl start dnai
+```
+
+### Nginx Configuration (Optional - for domain setup)
+```nginx
+server {
+    listen 80;
+    server_name blyan.com www.blyan.com;
+
+    location /api/ {
+        proxy_pass http://localhost:8000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        root /root/dnai/frontend;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+### Quick Update Script
+For updating code without losing data:
+```bash
+#!/bin/bash
+# Save as update.sh
+
+cd /root/dnai
+git pull origin main
+systemctl restart dnai
+echo "✅ Server updated and restarted"
+```
+
+### Troubleshooting
+```bash
+# Check if port 8000 is in use
+lsof -i:8000
+
+# Kill existing processes
+pkill -9 -f "python.*api.server"
+
+# Check disk space
+df -h
+
+# Clear pip cache if disk full
+pip cache purge
+rm -rf ~/.cache/pip
+
+# Test API health
+curl http://localhost:8000/health
+```
+
+### Security Notes
+- Use SSH keys instead of passwords for server access
+- Configure firewall (ufw) to restrict access
+- Consider using SSL/TLS certificates with Let's Encrypt
+- Regularly update system packages and dependencies
+
 ## Architecture
 
 ### Core Components
