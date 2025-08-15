@@ -4,6 +4,7 @@ Basic Monitoring and Alerting System
 Real-time security monitoring with immediate threat response.
 """
 
+import os
 import time
 import json
 import logging
