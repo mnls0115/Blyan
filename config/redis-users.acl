@@ -1,0 +1,17 @@
+# Redis ACL Configuration for Blyan Network
+# This file should be placed at /etc/redis/users.acl on production
+
+# Default user (disabled for security)
+user default on nopass ~* &* -@all
+
+# Application user - full access for API server
+user blyan_api on >your_strong_password_here ~* &* +@all
+
+# Node operator - limited access for P2P nodes
+user node_operator on >node_password_here ~node:* ~heartbeat:* +get +set +del +exists +expire +ttl
+
+# Monitoring user - read-only access
+user monitoring on >monitoring_password_here ~* &* +ping +info +config|get +client|list +slowlog|get
+
+# Backup user - for Redis backup operations  
+user backup on >backup_password_here ~* &* +bgsave +lastsave +info +config|get

@@ -324,6 +324,11 @@
             // Create header
             document.getElementById('header-container').innerHTML = createAIBlockHeader('home');
             
+            // Update header usage indicator
+            if (typeof updateHeaderUsage === 'function') {
+                await updateHeaderUsage();
+            }
+            
             // Load network status
             await loadNetworkStatus();
 

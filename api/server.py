@@ -184,6 +184,24 @@ app = FastAPI(
     version="2.0.0"
 )
 
+# Add CORS middleware for streaming and frontend access
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
+# Default to specific domains for production security
+default_origins = "https://blyan.com,https://www.blyan.com,https://blyan.net,https://www.blyan.net,http://localhost:*,http://127.0.0.1:*"
+allowed_origins = os.getenv("ALLOWED_ORIGINS", default_origins).split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,  # Configurable via environment
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Add OPTIONS for preflight
+    allow_headers=["*"],
+    expose_headers=["Content-Type", "Cache-Control", "X-RateLimit-*"],  # Expose headers for SSE
+    max_age=3600  # Cache preflight requests for 1 hour
+)
+
 # Include consensus router if available
 try:
     if 'consensus_router' in locals():
@@ -1870,11 +1888,35 @@ class NodeRegistrationResponse(BaseModel):
     donor_mode: Optional[bool] = None
 
 
+def is_valid_node_ip(host: str) -> bool:
+    """Check if host IP is valid for P2P nodes (reject private/loopback)."""
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address(host)
+        # Reject loopback, private, link-local addresses
+        if ip.is_loopback or ip.is_private or ip.is_link_local:
+            return False
+        # Reject reserved addresses
+        if ip.is_reserved or ip.is_multicast:
+            return False
+        return True
+    except ValueError:
+        # If it's not a valid IP, could be a domain name
+        # In production, you might want to resolve and check
+        return True  # Allow domain names for now
+
 @app.post("/p2p/register", response_model=NodeRegistrationResponse)
 async def register_expert_node(req: RegisterNodeRequest):
     """Register a new expert node for distributed inference."""
     if not distributed_coordinator:
         raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+    
+    # Validate IP address
+    if not is_valid_node_ip(req.host):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid host IP: {req.host}. Private, loopback, and reserved IPs are not allowed."
+        )
     
     node = ExpertNode(
         node_id=req.node_id,

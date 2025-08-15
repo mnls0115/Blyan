@@ -292,6 +292,94 @@
             background: #9ca3af;
             cursor: not-allowed;
         }
+        
+        /* Mobile responsiveness for 360-414px */
+        @media (max-width: 768px) {
+            .contribute-container {
+                padding: 8px;
+            }
+            
+            .setup-card {
+                margin: 8px 0;
+                padding: 16px;
+            }
+            
+            .code-row {
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .code-row label {
+                min-width: auto;
+                width: 100%;
+            }
+            
+            .inline-input, .inline-select {
+                width: 100%;
+                margin: 0;
+            }
+            
+            .cli-check {
+                font-size: 11px;
+                padding: 8px;
+                word-break: break-all;
+                overflow-x: auto;
+            }
+            
+            .monitoring-panel {
+                padding: 12px;
+            }
+            
+            .monitor-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+            
+            .faq-summary {
+                font-size: 14px;
+                padding: 12px;
+            }
+            
+            .faq-content {
+                padding: 12px;
+            }
+        }
+        
+        @media (max-width: 414px) {
+            .contribute-container {
+                padding: 4px;
+            }
+            
+            .hero-section {
+                padding: 20px 12px;
+            }
+            
+            .hero-section h1 {
+                font-size: 1.8em;
+            }
+            
+            .join-button, .preflight-button {
+                width: 100%;
+                padding: 12px;
+                font-size: 14px;
+            }
+            
+            .requirements {
+                gap: 8px;
+            }
+            
+            .requirement-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+                text-align: left;
+            }
+            
+            .status-indicator {
+                margin-right: 8px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -538,9 +626,14 @@
     <script src="common-header.js"></script>
     <script src="wallet.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             // Create header
             document.getElementById('header-container').innerHTML = createAIBlockHeader('contribute');
+            
+            // Update header usage indicator
+            if (typeof updateHeaderUsage === 'function') {
+                await updateHeaderUsage();
+            }
             
             // Wire up buttons
             document.getElementById('generate-node-key').addEventListener('click', generateNodeKey);

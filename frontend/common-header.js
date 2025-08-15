@@ -158,6 +158,64 @@ function updateStatusBadge(elementId, isOnline, text) {
     }
 }
 
+// Global function to update header usage indicator
+async function updateHeaderUsage() {
+    const headerIndicator = document.getElementById('header-usage-indicator');
+    const headerText = document.getElementById('header-usage-text');
+    
+    if (!headerIndicator || !headerText) return;
+    
+    try {
+        const userAddress = getUserAddress();
+        const response = await fetch(`${API_CONFIG.baseURL}/leaderboard/me/summary?address=${userAddress}`);
+        
+        let data;
+        if (response.ok) {
+            data = await response.json();
+        } else if (response.status === 404) {
+            // New user
+            data = { free_requests_remaining: 5, balance: 0, is_new_user: true };
+        } else {
+            return; // Don't show on error
+        }
+        
+        const freeRemaining = data.free_requests_remaining || 0;
+        const balance = parseFloat(data.balance || 0);
+        
+        // Reset classes
+        headerIndicator.className = 'header-usage-badge';
+        
+        if (freeRemaining > 0) {
+            headerIndicator.classList.add('free-tier');
+            headerText.textContent = `🆓 ${freeRemaining} free`;
+        } else if (balance > 0) {
+            if (balance < 0.010) {
+                headerIndicator.classList.add('low-balance');
+                headerText.textContent = `⚠️ ${balance.toFixed(4)} BLY`;
+            } else {
+                headerIndicator.classList.add('paid-tier');
+                headerText.textContent = `💰 ${balance.toFixed(4)} BLY`;
+            }
+        } else {
+            headerIndicator.classList.add('low-balance');
+            headerText.textContent = '❌ No credits';
+        }
+        
+        headerIndicator.style.display = 'block';
+        
+    } catch (error) {
+        console.error('Error updating header usage:', error);
+    }
+}
+
+function getUserAddress() {
+    return localStorage.getItem('userAddress') || '0x' + Math.random().toString(16).substr(2, 40);
+}
+
+// Make functions globally available
+window.updateHeaderUsage = updateHeaderUsage;
+window.getUserAddress = getUserAddress;
+
 // 페이지 로드시 API 상태 체크
 document.addEventListener('DOMContentLoaded', () => {
     checkAPIStatus();

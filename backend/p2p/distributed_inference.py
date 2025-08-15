@@ -220,6 +220,21 @@ class ExpertNodeRegistry:
         node_ids = self.expert_to_nodes.get(expert_name, [])
         return [self.nodes[nid] for nid in node_ids if nid in self.nodes]
     
+    def cleanup_stale_nodes(self, ttl_seconds: int = 90):
+        """Remove nodes that haven't sent heartbeat within TTL."""
+        current_time = time.time()
+        stale_nodes = []
+        
+        for node_id, node in self.nodes.items():
+            if current_time - node.last_heartbeat > ttl_seconds:
+                stale_nodes.append(node_id)
+        
+        for node_id in stale_nodes:
+            logger.warning(f"Auto-removing stale node {node_id} (no heartbeat for {ttl_seconds}s)")
+            self.unregister_node(node_id)
+        
+        return len(stale_nodes)
+    
     def select_best_node(self, expert_name: str, prefer_donor: bool = False) -> Optional[ExpertNode]:
         """Select the best node for an expert based on load balancing and reputation.
         If prefer_donor is True, prioritize donor nodes when available.

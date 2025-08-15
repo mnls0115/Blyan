@@ -86,6 +86,25 @@ class StreamingChatHandler:
         - finished: bool
         """
         
+        # Check free tier limits first
+        from backend.core.free_tier import get_free_tier_manager
+        free_tier = get_free_tier_manager()
+        
+        input_tokens = len(prompt.split())  # Simple approximation
+        can_proceed, reason, limits_info = free_tier.can_make_request(
+            user_address, 
+            input_tokens, 
+            max_new_tokens
+        )
+        
+        if not can_proceed:
+            yield {
+                "type": "error",
+                "error": reason,
+                "limits_info": limits_info
+            }
+            return
+        
         stream_id = f"stream_{uuid.uuid4().hex[:12]}"
         cancel_event = asyncio.Event()
         self.cancellation_tokens[stream_id] = cancel_event
@@ -180,6 +199,11 @@ class StreamingChatHandler:
                 "timestamp": time.time()
             }
             
+            # Consume free tier request if successful
+            if not metrics.cancelled and metrics.tokens_generated > 0:
+                free_tier.consume_request(user_address, success=True)
+                logger.info(f"Free tier request consumed for user {user_address}")
+            
             # Finalize billing based on actual tokens
             await self._finalize_billing(
                 user_address,
@@ -191,6 +215,10 @@ class StreamingChatHandler:
         except Exception as e:
             logger.error(f"Stream {stream_id} failed: {e}")
             metrics.error = str(e)
+            
+            # Consume request even on failure (to prevent abuse)
+            free_tier.consume_request(user_address, success=False)
+            logger.info(f"Free tier request consumed (failed) for user {user_address}")
             
             yield {
                 "type": "error",

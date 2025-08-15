@@ -161,10 +161,10 @@ def get_user_summary(address: str) -> UserSummary:
         balance = Decimal("0")
     
     # Get free requests remaining from Redis SSOT
-    user_limits_key = f"user_limits:{address}"
+    user_limits_key = f"user_limits:{address.lower()}"
     user_limits = redis_client.hgetall(user_limits_key)
     
-    free_remaining = int(user_limits.get("free_remaining", 5))
+    free_remaining = int(user_limits.get("free_requests_remaining", 5))
     trust_level = int(user_limits.get("trust_level", 1))
     contribution_score = float(user_limits.get("contribution_score", 0))
     
@@ -182,7 +182,7 @@ def get_user_summary(address: str) -> UserSummary:
         contribution_score=contribution_score,
         trust_level=trust_level,
         free_requests_remaining=free_remaining,
-        total_requests_made=int(user_limits.get("total_requests", 0)),
+        total_requests_made=int(user_limits.get("total_requests_made", 0)),
         successful_validations=int(user_limits.get("successful_validations", 0)),
         datasets_contributed=int(user_limits.get("datasets_contributed", 0)),
         experts_improved=int(user_limits.get("experts_improved", 0)),

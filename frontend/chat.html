@@ -247,6 +247,80 @@
         .usage-fill.critical {
             background: linear-gradient(90deg, #ef4444, #dc2626);
         }
+        
+        /* Mobile responsiveness for 360-414px */
+        @media (max-width: 768px) {
+            .chat-layout {
+                flex-direction: column;
+                padding: 8px;
+            }
+            
+            .chat-sidebar {
+                width: 100%;
+                height: auto;
+                margin-bottom: 12px;
+                order: -1;
+            }
+            
+            .session-list {
+                max-height: 120px;
+                overflow-y: auto;
+            }
+            
+            .chat-container {
+                height: calc(100vh - 200px);
+                min-height: 400px;
+            }
+            
+            .chat-input {
+                font-size: 16px; /* Prevents zoom on iOS */
+                padding: 12px;
+            }
+            
+            .streaming-metrics {
+                flex-direction: column;
+                gap: 8px;
+                padding: 10px;
+            }
+            
+            .streaming-metrics .metric {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                width: 100%;
+            }
+            
+            .usage-indicator {
+                margin: 8px 0;
+                padding: 8px;
+            }
+        }
+        
+        @media (max-width: 414px) {
+            .chat-layout {
+                padding: 4px;
+            }
+            
+            .chat-form {
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .chat-input {
+                width: 100%;
+                margin-bottom: 8px;
+            }
+            
+            .send-button {
+                width: 100%;
+                padding: 12px;
+            }
+            
+            .message {
+                max-width: 95%;
+                padding: 10px;
+            }
+        }
     </style>
 </head>
 <body>

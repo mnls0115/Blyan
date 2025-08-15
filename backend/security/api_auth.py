@@ -9,12 +9,15 @@ import hashlib
 import secrets
 import time
 import json
+import logging
 from typing import Dict, Optional, Set
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from fastapi import HTTPException, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import RedirectResponse, JSONResponse
+
+logger = logging.getLogger(__name__)
 
 @dataclass 
 class APIKeyInfo:
@@ -331,7 +334,7 @@ class ProductionSecurityMiddleware:
                         )
                 
                 # Rate limiting for sensitive endpoints
-                if not self._check_rate_limit(key_info):
+                if not self._check_rate_limit(key_info, endpoint):
                     return JSONResponse(
                         status_code=429,
                         content={
@@ -351,6 +354,13 @@ class ProductionSecurityMiddleware:
         for header, value in self.security_headers.items():
             response.headers[header] = value
         
+        # 6. Log request with masked API key
+        if api_key:
+            masked_key = api_key[:8] + "..." + api_key[-4:] if len(api_key) > 12 else "***"
+            logger.info(f"Request: {request.method} {endpoint} [key: {masked_key}] [status: {response.status_code}]")
+        else:
+            logger.info(f"Request: {request.method} {endpoint} [no key] [status: {response.status_code}]")
+        
         return response
     
     def _extract_api_key(self, request: Request) -> Optional[str]:
@@ -367,10 +377,17 @@ class ProductionSecurityMiddleware:
         
         return None
     
-    def _check_rate_limit(self, key_info: APIKeyInfo) -> bool:
+    def _check_rate_limit(self, key_info: APIKeyInfo, endpoint: str = "") -> bool:
         """Check if request is within rate limit."""
         current_minute = int(time.time() / 60)
         key_id = key_info.key_id
+        
+        # Special stricter limits for P2P and auth registration
+        if endpoint.startswith("/p2p/") or endpoint == "/auth/register_api_key":
+            # 5 requests per minute for these endpoints
+            rate_limit = 5
+        else:
+            rate_limit = self.rate_limits.get(key_info.rate_limit_tier, 60)
         
         # Initialize tracking for this key
         if key_id not in self.request_counts:
@@ -385,7 +402,6 @@ class ProductionSecurityMiddleware:
         
         # Count requests in current minute
         current_count = self.request_counts[key_id].get(current_minute, 0)
-        rate_limit = self.rate_limits.get(key_info.rate_limit_tier, 60)
         
         if current_count >= rate_limit:
             return False
