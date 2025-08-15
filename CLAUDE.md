@@ -26,10 +26,10 @@ from backend.core.chain import Chain
 root_dir = Path("./data")
 meta_chain = Chain(root_dir, "A")
 spec = {
-    "model_name": "tiny_mistral_moe",  # Must match model in ./models/ directory
+    "model_name": "gpt_oss_20b",  # Must match model in ./models/ directory
     "architecture": "mixture-of-experts", 
-    "num_layers": 4,
-    "num_experts": 8,
+    "num_layers": 24,
+    "num_experts": 16,
     "routing_strategy": "top2"
 }
 meta_chain.add_block(json.dumps(spec).encode(), block_type='meta')
@@ -364,13 +364,13 @@ await coordinator.run_learning_round(
 python3 scripts/extract_individual_experts.py
 
 # Upload full MoE model (requires candidate-loss parameter) - creates single expert block
-python miner/upload_moe_parameters.py --address alice --model-file ./models/tiny_mistral_moe --meta-hash <full-meta-hash> --candidate-loss 0.8
+python miner/upload_moe_parameters.py --address alice --model-file ./models/gpt_oss_20b --meta-hash <full-meta-hash> --candidate-loss 0.8
 
 # Get correct meta hash
 curl -s http://127.0.0.1:8000/chain/A/blocks | grep -o '"hash":"[^"]*"' | head -1
 
 # Test MoE extraction (dry-run)
-python miner/upload_moe_parameters.py --address alice --model-file ./models/tiny_mistral_moe --meta-hash <hash> --candidate-loss 0.8 --dry-run
+python miner/upload_moe_parameters.py --address alice --model-file ./models/gpt_oss_20b --meta-hash <hash> --candidate-loss 0.8 --dry-run
 
 # Run distributed demo
 python scripts/demo_distributed_moe.py

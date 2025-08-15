@@ -44,7 +44,7 @@ case "$1" in
         META_HASH=$(curl -s http://127.0.0.1:8000/chain/A/blocks | grep -o '"hash":"[^"]*"' | head -1 | cut -d'"' -f4)
         python miner/upload_moe_parameters.py \
             --address alice \
-            --model-file ./models/tiny_mistral_moe \
+            --model-file ./models/gpt_oss_20b \
             --meta-hash $META_HASH \
             --candidate-loss 0.8 \
             --skip-pow

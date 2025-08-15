@@ -126,7 +126,7 @@ class MetaSpecV2:
     model_name: str = "evolving_blyan"
     
     # Base structure
-    base_num_layers: int = 4
+    base_num_layers: int = 24
     expandable_layers: List[int] = field(default_factory=lambda: [2, 3])
     
     # Dynamic expert configuration
@@ -271,7 +271,7 @@ class MetaSpecV2:
             generation=data.get("generation", 0),
             architecture=data.get("architecture", "adaptive-moe"),
             model_name=data.get("model_name", "evolving_blyan"),
-            base_num_layers=data.get("base_num_layers", 4),
+            base_num_layers=data.get("base_num_layers", 24),
             expandable_layers=data.get("expandable_layers", [2, 3]),
             dynamic_experts=dynamic_experts,
             architecture_mutations=arch_mutations,

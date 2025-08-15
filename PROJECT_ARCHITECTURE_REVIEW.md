@@ -392,7 +392,7 @@ scripts/
 ### 변환 프로세스
 ```python
 # 1. 모델 추출
-model = load_model("tiny_mistral_moe")
+model = load_model("gpt_oss_20b")
 
 # 2. Expert 분리
 for layer in model.layers:

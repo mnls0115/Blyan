@@ -456,8 +456,30 @@ class KnowledgeDistillationEntry:
     
     def _load_migration_state(self):
         """Load migration state from disk."""
-        # Implementation would load from JSON file
-        pass
+        try:
+            import os
+            import json
+            migration_state_file = "data/migration_state.json"
+            
+            if os.path.exists(migration_state_file):
+                with open(migration_state_file, 'r') as f:
+                    state = json.load(f)
+                    self.current_architecture_version = state.get('current_architecture_version', 'v1.0.0')
+                    self.last_epoch_event = state.get('last_epoch_event', 0.0)
+                    self.available_gpu_credits = state.get('available_gpu_credits', 0)
+            else:
+                # Create default state file
+                os.makedirs("data", exist_ok=True)
+                default_state = {
+                    'current_architecture_version': 'v1.0.0',
+                    'last_epoch_event': 0.0,
+                    'available_gpu_credits': 0
+                }
+                with open(migration_state_file, 'w') as f:
+                    json.dump(default_state, f, indent=2)
+        except Exception as e:
+            print(f"Warning: Could not load migration state: {e}")
+            # Use defaults if file loading fails
 
 
 # Predefined migration templates

@@ -122,7 +122,7 @@ python scripts/extract_individual_experts.py
 # 2. 블록 생성 & 업로드
 python miner/upload_moe_parameters.py \
     --address alice \
-    --model-file ./models/tiny_mistral_moe \
+    --model-file ./models/gpt_oss_20b \
     --meta-hash $(curl -s http://localhost:8000/chain/A/blocks | jq -r '.[0].hash')
 ```
 

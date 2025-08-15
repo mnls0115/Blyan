@@ -82,7 +82,7 @@ def execute(plan, candidates) -> stream
 ## 📅 8-12 Week Development Phases
 
 ### Phase A (2-3 weeks): Foundation & Evolution Infrastructure ✅ COMPLETED
-**Model**: `tiny_mistral_moe` or lightweight mock-MoE
+**Model**: `gpt_oss_20b` or lightweight mock-MoE
 **Focus**: Establish baseline reliability + basic evolution system
 
 **Target Metrics**:

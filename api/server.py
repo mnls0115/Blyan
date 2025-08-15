@@ -140,12 +140,12 @@ usage_tracker = ExpertUsageTracker(root_dir / "usage_log.json")
 podl_generator = PoDLGenerator()
 podl_verifier = PoDLVerifier(dataset_chain, param_chain)
 
-# Autonomous Evolution Systems
-migration_manager = ArchitectureMigrationManager(meta_chain, param_chain)
-epoch_scheduler = EpochEventScheduler(migration_manager, dataset_chain)
+# Autonomous Evolution Systems - Temporarily disabled for startup
+# migration_manager = ArchitectureMigrationManager(meta_chain, param_chain)
+# epoch_scheduler = EpochEventScheduler(migration_manager, dataset_chain)
 
 # Start autonomous evolution scheduler
-epoch_scheduler.start_scheduler()
+# epoch_scheduler.start_scheduler()
 
 # Security systems
 security_coordinator = DataSecurityCoordinator(root_dir / "expert_backups")

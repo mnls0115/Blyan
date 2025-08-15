@@ -360,7 +360,7 @@ class MoEModelManager:
             
             # Determine which layers have MoE
             moe_layers = []
-            for layer_idx in range(model_spec.get('num_layers', 4)):
+            for layer_idx in range(model_spec.get('num_layers', 24)):
                 layer_id = f"layer{layer_idx}"
                 if self._get_available_experts_for_layer(layer_id):
                     moe_layers.append(layer_id)
@@ -539,7 +539,7 @@ class MoEModelManager:
             # Load the base MoE model and apply Expert weights
             from .arch import ModelWrapper
             model_spec = self._extract_model_spec()
-            model_name = model_spec.get('model_name', 'tiny_mistral_moe')
+            model_name = model_spec.get('model_name', 'gpt_oss_20b')
             
             # Create model wrapper
             wrapper = ModelWrapper(model_name)

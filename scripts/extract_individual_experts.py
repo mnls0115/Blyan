@@ -130,7 +130,7 @@ def create_expert_blocks(experts: dict):
 
 def main():
     """Main function."""
-    model_path = "./models/tiny_mistral_moe"
+    model_path = "./models/gpt_oss_20b"
     
     if not Path(model_path).exists():
         print(f"❌ Model not found: {model_path}")
