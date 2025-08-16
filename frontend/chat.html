@@ -225,6 +225,29 @@
             margin-top: 4px;
         }
 
+        .chat-usage-indicator {
+            margin-top: 8px;
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .chat-usage-indicator span {
+            padding: 4px 12px;
+            background: var(--color-action-hover);
+            border: 1px solid var(--color-divider);
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+        }
+
+        .chat-usage-indicator #blyBalanceText {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            color: var(--color-background);
+            border-color: transparent;
+        }
+
         .chat-messages {
             flex: 1;
             padding: 24px;
@@ -407,6 +430,10 @@
             <div class="chat-header">
                 <div class="chat-title" data-i18n="aiAssistant">Blyan AI Assistant</div>
                 <div class="chat-subtitle" data-i18n="chatWithDistributed">Powered by decentralized intelligence</div>
+                <div class="chat-usage-indicator" id="chatUsageIndicator">
+                    <span id="chatUsageText" data-i18n="freeChatsRemaining">5 free chats remaining</span>
+                    <span id="blyBalanceText" style="display: none;">0 BLY</span>
+                </div>
             </div>
 
             <div class="chat-messages" id="chatMessages">
@@ -484,6 +511,9 @@
             // Load chat history
             await loadChatHistory();
 
+            // Initialize usage indicator
+            await updateChatUsage();
+
             // Check for message parameter in URL
             const urlParams = new URLSearchParams(window.location.search);
             const message = urlParams.get('message');
@@ -498,7 +528,10 @@
             icon.textContent = theme === 'light' ? '🌙' : '☀️';
         }
 
-        function startNewChat() {
+        async function startNewChat() {
+            // Refresh chat history first to ensure current conversation is saved
+            await loadChatHistory();
+            
             const chatMessages = document.getElementById('chatMessages');
             chatMessages.innerHTML = `
                 <div class="empty-state">
@@ -560,6 +593,13 @@
                     const data = await response.json();
                     addMessage(data.response, 'assistant');
                     conversationId = data.conversation_id;
+                    
+                    // 성공적인 채팅 시 사용량 증가
+                    incrementUsedChats();
+                    
+                    // Update usage count and refresh chat history
+                    await updateChatUsage();
+                    await loadChatHistory();
                 } else {
                     addMessage(t('errorEncountered') || 'Sorry, I encountered an error. Please try again.', 'assistant');
                 }
@@ -735,6 +775,58 @@
             conversation.messages.forEach(msg => {
                 addMessage(msg.content, msg.role === 'user' ? 'user' : 'assistant');
             });
+        }
+
+        // 채팅 사용량 추적 함수들
+        async function updateChatUsage() {
+            const chatUsageText = document.getElementById('chatUsageText');
+            const blyBalanceText = document.getElementById('blyBalanceText');
+            
+            // 무료 채팅 개수 계산 (localStorage에서 사용된 채팅 수 확인)
+            const usedChats = parseInt(localStorage.getItem('usedFreeChats') || '0');
+            const freeChatsRemaining = Math.max(0, 5 - usedChats);
+            
+            // 사용자 지갑이 있는지 확인
+            const userAddress = getUserAddress();
+            const hasWallet = userAddress && userAddress !== '0x' + Math.random().toString(16).substr(2, 40);
+            
+            if (hasWallet) {
+                // 지갑이 있으면 BLY 잔액 확인
+                try {
+                    const blyBalance = await getBlyBalance(userAddress);
+                    blyBalanceText.textContent = `${blyBalance} BLY`;
+                    blyBalanceText.style.display = 'inline-block';
+                    
+                    if (blyBalance > 0) {
+                        chatUsageText.style.display = 'none';
+                    } else {
+                        chatUsageText.textContent = t('freeChatsRemaining').replace('5', freeChatsRemaining.toString()) || `${freeChatsRemaining} free chats remaining`;
+                        chatUsageText.style.display = 'inline-block';
+                    }
+                } catch (error) {
+                    // BLY 잔액 조회 실패 시 무료 채팅만 표시
+                    chatUsageText.textContent = t('freeChatsRemaining').replace('5', freeChatsRemaining.toString()) || `${freeChatsRemaining} free chats remaining`;
+                    blyBalanceText.style.display = 'none';
+                }
+            } else {
+                // 지갑이 없으면 무료 채팅만 표시
+                chatUsageText.textContent = t('freeChatsRemaining').replace('5', freeChatsRemaining.toString()) || `${freeChatsRemaining} free chats remaining`;
+                blyBalanceText.style.display = 'none';
+            }
+        }
+
+        async function getBlyBalance(address) {
+            // BLY 잔액 조회 (wallet.js의 기존 함수 활용)
+            if (typeof window.getBlyBalance === 'function') {
+                return await window.getBlyBalance(address);
+            }
+            // 임시 구현 - 실제로는 API에서 가져와야 함
+            return parseInt(localStorage.getItem('blyBalance') || '0');
+        }
+
+        function incrementUsedChats() {
+            const usedChats = parseInt(localStorage.getItem('usedFreeChats') || '0');
+            localStorage.setItem('usedFreeChats', (usedChats + 1).toString());
         }
     </script>
 </body>

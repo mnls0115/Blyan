@@ -27,9 +27,6 @@ function createAIBlockHeader(currentPage = '') {
                 </nav>
                 <div class="status-indicators">
                     ${typeof createLanguageSelector !== 'undefined' ? createLanguageSelector() : ''}
-                    <div id="header-usage-indicator" class="header-usage-badge" style="display: none;">
-                        <span id="header-usage-text">--</span>
-                    </div>
                     <!-- Wallet functionality hidden for MVP - can be restored later -->
                     <!--
                     <div id="wallet-info" style="display: none;">
@@ -68,6 +65,8 @@ function refreshHeader() {
     if (headerContainer) {
         headerContainer.innerHTML = createAIBlockHeader(currentPage);
         updatePageLanguage();
+        // 헤더 재생성 후 캐시된 API 상태 로드
+        loadCachedAPIStatus();
     }
 }
 
@@ -130,6 +129,8 @@ async function checkAPIStatus() {
         const response = await fetch(API_CONFIG.baseURL + API_CONFIG.polStatus);
         if (response.ok) {
             const status = await response.json();
+            const apiStatus = { api: true, pol: status.pol_enabled };
+            localStorage.setItem('apiStatus', JSON.stringify(apiStatus));
             updateStatusBadge('api-status', true, 'API: Online');
             updateStatusBadge('pol-status', status.pol_enabled, 
                 `PoL: ${status.pol_enabled ? 'Enabled' : 'Disabled'}`);
@@ -137,6 +138,25 @@ async function checkAPIStatus() {
             throw new Error('API not responding');
         }
     } catch (error) {
+        const apiStatus = { api: false, pol: false };
+        localStorage.setItem('apiStatus', JSON.stringify(apiStatus));
+        updateStatusBadge('api-status', false, 'API: Offline');
+        updateStatusBadge('pol-status', false, 'PoL: Unknown');
+    }
+}
+
+// 캐시된 API 상태 로드 함수
+function loadCachedAPIStatus() {
+    try {
+        const cached = localStorage.getItem('apiStatus');
+        if (cached) {
+            const status = JSON.parse(cached);
+            updateStatusBadge('api-status', status.api, status.api ? 'API: Online' : 'API: Offline');
+            updateStatusBadge('pol-status', status.pol, 
+                status.pol ? 'PoL: Enabled' : status.api ? 'PoL: Disabled' : 'PoL: Unknown');
+        }
+    } catch (error) {
+        // 캐시 로드 실패 시 기본값 사용
         updateStatusBadge('api-status', false, 'API: Offline');
         updateStatusBadge('pol-status', false, 'PoL: Unknown');
     }
@@ -158,66 +178,21 @@ function updateStatusBadge(elementId, isOnline, text) {
     }
 }
 
-// Global function to update header usage indicator
-async function updateHeaderUsage() {
-    const headerIndicator = document.getElementById('header-usage-indicator');
-    const headerText = document.getElementById('header-usage-text');
-    
-    if (!headerIndicator || !headerText) return;
-    
-    try {
-        const userAddress = getUserAddress();
-        const response = await fetch(`${API_CONFIG.baseURL}/leaderboard/me/summary?address=${userAddress}`);
-        
-        let data;
-        if (response.ok) {
-            data = await response.json();
-        } else if (response.status === 404) {
-            // New user
-            data = { free_requests_remaining: 5, balance: 0, is_new_user: true };
-        } else {
-            return; // Don't show on error
-        }
-        
-        const freeRemaining = data.free_requests_remaining || 0;
-        const balance = parseFloat(data.balance || 0);
-        
-        // Reset classes
-        headerIndicator.className = 'header-usage-badge';
-        
-        if (freeRemaining > 0) {
-            headerIndicator.classList.add('free-tier');
-            headerText.textContent = `🆓 ${freeRemaining} free`;
-        } else if (balance > 0) {
-            if (balance < 0.010) {
-                headerIndicator.classList.add('low-balance');
-                headerText.textContent = `⚠️ ${balance.toFixed(4)} BLY`;
-            } else {
-                headerIndicator.classList.add('paid-tier');
-                headerText.textContent = `💰 ${balance.toFixed(4)} BLY`;
-            }
-        } else {
-            headerIndicator.classList.add('low-balance');
-            headerText.textContent = '❌ No credits';
-        }
-        
-        headerIndicator.style.display = 'block';
-        
-    } catch (error) {
-        console.error('Error updating header usage:', error);
-    }
-}
+// Header usage functionality removed - moved to chat page
 
 function getUserAddress() {
     return localStorage.getItem('userAddress') || '0x' + Math.random().toString(16).substr(2, 40);
 }
 
 // Make functions globally available
-window.updateHeaderUsage = updateHeaderUsage;
 window.getUserAddress = getUserAddress;
 
 // 페이지 로드시 API 상태 체크
 document.addEventListener('DOMContentLoaded', () => {
+    // 캐시된 상태를 먼저 로드
+    loadCachedAPIStatus();
+    // 실제 API 상태 체크
     checkAPIStatus();
-    setInterval(checkAPIStatus, 30000); // 30초마다 체크
+    // 30초마다 체크
+    setInterval(checkAPIStatus, 30000);
 });

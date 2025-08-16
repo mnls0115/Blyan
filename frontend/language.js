@@ -36,8 +36,8 @@ const translations = {
         mixtureOfExpertsDesc: 'Dynamic architecture routes tasks to optimal expert models, creating efficient AI that everyone can participate in.',
         
         // Home Page - Additional Sections
-        whyItMattersTitle: 'Why It Matters',
-        whyItMattersSubtitle: 'Building AI that belongs to humanity, not corporations',
+        whyItMattersTitle: 'Why Blyan?',
+        whyItMattersSubtitle: 'The world\'s first truly open AI ecosystem',
         transparencyTitle: 'Transparency',
         transparencyDesc: 'All model updates are verifiable on-chain. Let\'s check the AI evolution process together.',
         accessibilityTitle: 'Accessibility', 
@@ -61,6 +61,7 @@ const translations = {
         newChat: 'New Chat',
         welcomeToBlyanchat: 'Welcome to Blyan AI',
         welcomeChatDesc: 'Start a conversation with our decentralized AI assistant. Your questions will be processed by our global network of expert nodes.',
+        freeChatsRemaining: '5 free chats remaining',
         
         // Chat errors and messages
         connectionError: 'Connection error. Please check your network and try again.',
@@ -132,14 +133,14 @@ const translations = {
         mixtureOfExpertsDesc: '동적 아키텍처가 최적의 전문가 모델로 작업을 라우팅하여, 모두가 참여할 수 있는 효율적인 AI를 구성합니다.',
         
         // Home Page - Additional Sections
-        whyItMattersTitle: '왜 중요한가',
-        whyItMattersSubtitle: '기업이 아닌 인류를 위한 AI 구축',
+        whyItMattersTitle: '왜 Blyan인가',
+        whyItMattersSubtitle: '모두의, 모두를 위한, 모두가 함께 하는 AI',
         transparencyTitle: '투명성',
         transparencyDesc: '모든 모델 업데이트는 체인에서 검증 가능합니다. AI의 진화 과정을 같이 확인해보세요.',
         accessibilityTitle: '접근성', 
         accessibilityDesc: '전문 연구자부터 호기심 많은 일반인까지 누구나 참여할 수 있습니다.',
         collectiveOwnershipTitle: '집단 소유',
-        collectiveOwnershipDesc: '함께한다면, AI는 인류 전체의 것이 될 수 있습니다.',
+        collectiveOwnershipDesc: '함께 하면, AI는 모두를 위한 것이 될 수 있습니다.',
         joinMovementTitle: 'Blyan에 동참하세요',
         joinMovementDesc: 'Blyan은 단순한 블록체인이나 AI 스타트업이 아닙니다.\n모두의, 모두를 위한, 모두가 함께 하는, 인공지능을 만드는 일입니다.',
         bePartOfFuture: '미래의 AI를 함께 만들어보세요',
@@ -157,6 +158,7 @@ const translations = {
         newChat: '새로운 채팅',
         welcomeToBlyanchat: 'Blyan AI에 오신 것을 환영합니다',
         welcomeChatDesc: '탈중앙화된 AI 어시스턴트와 대화를 시작하세요. 질문은 전 세계 전문가 노드 네트워크에서 처리됩니다.',
+        freeChatsRemaining: '5개의 무료 채팅이 남았습니다',
         
         // Chat errors and messages
         connectionError: '연결 오류가 발생했습니다. 네트워크를 확인하고 다시 시도해주세요.',
