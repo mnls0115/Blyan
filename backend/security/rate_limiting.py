@@ -396,9 +396,8 @@ class RateLimitMiddleware:
         
     async def __call__(self, request: Request, call_next):
         """Rate limiting middleware."""
-        from backend.security.api_auth import get_api_key_info
-        
-        # Get API key info if available
+        # V1 API auth removed - rate limiting handled by V2 system
+        # Get API key info if available (from V2 system)
         key_info = getattr(request.state, "api_key_info", None)
         
         if key_info:
