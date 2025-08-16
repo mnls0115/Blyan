@@ -1,0 +1,287 @@
+/**
+ * Themed CSS for Common Header using semantic tokens
+ * Follows MUI design system principles with brand colors
+ */
+
+/* Header container */
+.Blyan-header {
+    background: var(--color-elevated);
+    border-bottom: 1px solid var(--color-divider);
+    padding: 0;
+    box-shadow: var(--shadow-sm);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.Blyan-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Brand title */
+.Blyan-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: color 0.3s ease;
+}
+
+/* Navigation tabs */
+.nav-tabs {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    margin: 0 32px;
+}
+
+.nav-tabs a {
+    padding: 8px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+}
+
+.nav-tabs a:hover {
+    background: var(--color-action-hover);
+    color: var(--color-text-primary);
+}
+
+.nav-tabs a.active {
+    color: var(--color-primary);
+    background: var(--color-action-selected);
+    font-weight: 600;
+}
+
+.nav-tabs a.active::after {
+    content: '';
+    position: absolute;
+    bottom: -13px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40%;
+    height: 3px;
+    background: var(--color-primary);
+    border-radius: 3px 3px 0 0;
+}
+
+/* Status indicators */
+.status-indicators {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* Status badges */
+.status-badge {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.3s ease;
+}
+
+.status-online {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10B981;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.status-offline {
+    background: var(--color-action-hover);
+    color: var(--color-text-disabled);
+    border: 1px solid var(--color-divider);
+}
+
+.status-loading {
+    background: rgba(251, 191, 36, 0.1);
+    color: #F59E0B;
+    border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+/* Usage badge */
+.header-usage-badge {
+    padding: 6px 12px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    transition: all 0.3s ease;
+}
+
+/* Language selector */
+.language-selector {
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    color: var(--color-text-primary);
+    transition: all 0.2s ease;
+}
+
+.language-selector:hover {
+    background: var(--color-action-hover);
+    border-color: var(--color-primary);
+}
+
+/* Wallet button (for future use) */
+.wallet-button {
+    background: var(--color-primary);
+    color: var(--color-background);
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wallet-button:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.wallet-balance {
+    font-weight: 600;
+    color: var(--color-primary);
+}
+
+.wallet-address {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    font-family: 'Courier New', monospace;
+}
+
+.contributor-badge {
+    padding: 4px 8px;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    color: var(--color-background);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+/* Page tabs (for sub-navigation) */
+.page-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--color-divider);
+    margin-bottom: 24px;
+}
+
+.page-tab {
+    padding: 10px 20px;
+    background: transparent;
+    border: 2px solid var(--color-divider);
+    border-radius: 8px;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.page-tab:hover {
+    background: var(--color-action-hover);
+    border-color: var(--color-primary);
+    color: var(--color-text-primary);
+}
+
+.page-tab.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-background);
+    font-weight: 600;
+}
+
+/* Tab content */
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .Blyan-nav {
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
+    }
+    
+    .nav-tabs {
+        margin: 0;
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .status-indicators {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .nav-tabs a.active::after {
+        display: none;
+    }
+}
+
+/* Dark mode specific adjustments */
+[data-theme="dark"] .Blyan-header {
+    background: var(--color-elevated);
+    border-bottom-color: var(--color-divider);
+}
+
+[data-theme="dark"] .status-online {
+    background: rgba(52, 211, 153, 0.15);
+    color: #34D399;
+    border-color: rgba(52, 211, 153, 0.3);
+}
+
+[data-theme="dark"] .status-loading {
+    background: rgba(251, 191, 36, 0.15);
+    color: #FBBf24;
+    border-color: rgba(251, 191, 36, 0.3);
+}

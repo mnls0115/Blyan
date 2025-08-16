@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation - Blyan</title>
+    <link rel="stylesheet" href="components.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="common-header-themed.css">
+    <link rel="stylesheet" href="page-template.css">
+    <script src="language.js"></script>
+    <script src="wallet.js"></script>
+    <script src="theme.js"></script>
+    <style>
+        /* Theme variables - same as homepage */
+        :root {
+            --color-primary: #1E3A8A;
+            --color-primary-light: #2E4EAE;
+            --color-primary-dark: #152C66;
+            --color-secondary: #06B6D4;
+            --color-secondary-light: #22D3EE;
+            --color-secondary-dark: #0891B2;
+            --color-background: #FFFFFF;
+            --color-surface: #F9FAFB;
+            --color-elevated: #FFFFFF;
+            --color-text-primary: #111827;
+            --color-text-secondary: #374151;
+            --color-text-disabled: #9CA3AF;
+            --color-divider: #E5E7EB;
+            --color-action-hover: rgba(30, 58, 138, 0.08);
+            --color-action-selected: rgba(30, 58, 138, 0.12);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.12);
+        }
+        
+        [data-theme="dark"] {
+            --color-primary: #22D3EE;
+            --color-primary-light: #67E8F9;
+            --color-primary-dark: #06B6D4;
+            --color-secondary: #2E4EAE;
+            --color-secondary-light: #4361C2;
+            --color-secondary-dark: #1E3A8A;
+            --color-background: #111827;
+            --color-surface: #1F2937;
+            --color-elevated: #0F172A;
+            --color-text-primary: #F9FAFB;
+            --color-text-secondary: #D1D5DB;
+            --color-text-disabled: #4B5563;
+            --color-divider: #374151;
+            --color-action-hover: rgba(6, 182, 212, 0.12);
+            --color-action-selected: rgba(6, 182, 212, 0.16);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.5);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--color-text-primary);
+            background-color: var(--color-background);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            margin: 0;
+        }
+
+        /* Documentation specific styles */
+        .doc-category {
+            margin-bottom: 32px;
+        }
+
+        .doc-category-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--color-primary);
+        }
+
+        .doc-links {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .doc-link {
+            padding: 12px 16px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-divider);
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--color-text-primary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .doc-link:hover {
+            background: var(--color-action-hover);
+            border-color: var(--color-primary);
+            transform: translateX(4px);
+        }
+
+        .doc-link-arrow {
+            color: var(--color-text-secondary);
+        }
+
+        /* Quick Start Section */
+        .quickstart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            margin-top: 32px;
+        }
+
+        .quickstart-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-divider);
+            border-radius: 12px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .quickstart-card:hover {
+            border-color: var(--color-primary);
+            box-shadow: var(--shadow-md);
+        }
+
+        .quickstart-number {
+            width: 32px;
+            height: 32px;
+            background: var(--color-primary);
+            color: var(--color-background);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .quickstart-title {
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 8px;
+        }
+
+        .quickstart-description {
+            color: var(--color-text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Theme toggle */
+        .theme-toggle {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: var(--color-background);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: var(--shadow-lg);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+        
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-xl);
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    
+    <!-- Hero Section -->
+    <div class="hero-section animate-in">
+        <div class="hero-container">
+            <h1 class="hero-title">Documentation & Resources</h1>
+            <p class="hero-subtitle">Everything you need to build with Blyan</p>
+            <p class="hero-description">
+                Comprehensive guides, API references, and tutorials to help you integrate 
+                with the Blyan network, contribute to the ecosystem, and build decentralized AI applications.
+            </p>
+            <div class="hero-actions">
+                <a href="#quickstart" class="cta-button cta-primary">Quick Start</a>
+                <a href="#api" class="cta-button cta-secondary">API Reference</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Documentation Categories -->
+    <div class="feature-section">
+        <div class="section-container">
+            <div class="section-header animate-in">
+                <h2 class="section-title">Explore Our Documentation</h2>
+                <p class="section-subtitle">Find the resources you need to get started</p>
+            </div>
+            <div class="card-grid">
+                <div class="feature-card animate-in">
+                    <div class="feature-icon">🚀</div>
+                    <h3 class="feature-title">Getting Started</h3>
+                    <p class="feature-description">
+                        New to Blyan? Start here with our beginner-friendly guides covering 
+                        basic concepts, setup instructions, and your first interactions.
+                    </p>
+                    <div class="doc-category">
+                        <div class="doc-links">
+                            <a href="#" class="doc-link">
+                                <span>Introduction to Blyan</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                            <a href="#" class="doc-link">
+                                <span>Understanding Proof-of-Learning</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                            <a href="#" class="doc-link">
+                                <span>Your First Chat</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="feature-card animate-in">
+                    <div class="feature-icon">⚙️</div>
+                    <h3 class="feature-title">Node Operation</h3>
+                    <p class="feature-description">
+                        Learn how to set up and operate a GPU node, optimize performance, 
+                        and maximize your earnings on the network.
+                    </p>
+                    <div class="doc-category">
+                        <div class="doc-links">
+                            <a href="#" class="doc-link">
+                                <span>Node Setup Guide</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                            <a href="#" class="doc-link">
+                                <span>Hardware Requirements</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                            <a href="#" class="doc-link">
+                                <span>Troubleshooting</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="feature-card animate-in">
+                    <div class="feature-icon">🔧</div>
+                    <h3 class="feature-title">Developer Tools</h3>
+                    <p class="feature-description">
+                        Build applications on top of Blyan with our comprehensive APIs, 
+                        SDKs, and integration guides for various platforms.
+                    </p>
+                    <div class="doc-category">
+                        <div class="doc-links">
+                            <a href="#" class="doc-link">
+                                <span>REST API Reference</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                            <a href="#" class="doc-link">
+                                <span>Python SDK</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                            <a href="#" class="doc-link">
+                                <span>JavaScript SDK</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="feature-card animate-in">
+                    <div class="feature-icon">🏗️</div>
+                    <h3 class="feature-title">Architecture</h3>
+                    <p class="feature-description">
+                        Deep dive into Blyan's technical architecture, consensus mechanisms, 
+                        and the innovative DAG blockchain structure.
+                    </p>
+                    <div class="doc-category">
+                        <div class="doc-links">
+                            <a href="#" class="doc-link">
+                                <span>System Architecture</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                            <a href="#" class="doc-link">
+                                <span>DAG Blockchain</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                            <a href="#" class="doc-link">
+                                <span>MoE Implementation</span>
+                                <span class="doc-link-arrow">→</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Start Section -->
+    <div id="quickstart" class="feature-section alt-background">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 class="section-title">Quick Start Guide</h2>
+                <p class="section-subtitle">Get up and running in minutes</p>
+            </div>
+            <div class="quickstart-grid">
+                <div class="quickstart-card">
+                    <div class="quickstart-number">1</div>
+                    <div class="quickstart-title">Create Account</div>
+                    <div class="quickstart-description">
+                        Sign up for a Blyan account to get your API keys and start interacting with the network.
+                    </div>
+                </div>
+                <div class="quickstart-card">
+                    <div class="quickstart-number">2</div>
+                    <div class="quickstart-title">Install SDK</div>
+                    <div class="quickstart-description">
+                        Choose your preferred language and install our SDK to integrate Blyan into your application.
+                    </div>
+                </div>
+                <div class="quickstart-card">
+                    <div class="quickstart-number">3</div>
+                    <div class="quickstart-title">Make First Call</div>
+                    <div class="quickstart-description">
+                        Use the SDK to make your first API call and experience decentralized AI in action.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Reference Preview -->
+    <div id="api" class="feature-section">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 class="section-title">API Reference</h2>
+                <p class="section-subtitle">Core endpoints for interacting with Blyan</p>
+            </div>
+            <div class="card-grid two-column">
+                <div class="feature-card">
+                    <h3 class="feature-title">Chat Endpoints</h3>
+                    <p class="feature-description">Send messages and receive AI responses</p>
+                    <div class="code-block" style="background: var(--color-elevated); border: 1px solid var(--color-divider); padding: 16px; border-radius: 8px; margin-top: 16px;">
+                        POST /api/chat<br>
+                        GET /api/chat/history<br>
+                        DELETE /api/chat/{id}
+                    </div>
+                </div>
+                <div class="feature-card">
+                    <h3 class="feature-title">Node Management</h3>
+                    <p class="feature-description">Register and manage GPU nodes</p>
+                    <div class="code-block" style="background: var(--color-elevated); border: 1px solid var(--color-divider); padding: 16px; border-radius: 8px; margin-top: 16px;">
+                        POST /api/nodes/register<br>
+                        GET /api/nodes/status<br>
+                        PUT /api/nodes/update
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resources Section -->
+    <div class="stats-section">
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-number">50+</div>
+                <div class="stat-label">API Endpoints</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">100+</div>
+                <div class="stat-label">Code Examples</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">24/7</div>
+                <div class="stat-label">Community Support</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">5</div>
+                <div class="stat-label">SDK Languages</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CTA Section -->
+    <div class="action-section">
+        <div class="action-content animate-in">
+            <h2 class="action-title">Need Help?</h2>
+            <p class="action-text">
+                Join our developer community for support, updates, and to connect with other builders 
+                working on the future of decentralized AI.
+            </p>
+            <a href="https://discord.gg/blyan" class="action-cta">Join Discord Community</a>
+        </div>
+    </div>
+
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <span id="themeIcon">🌙</span>
+    </button>
+
+    <script src="config.js"></script>
+    <script src="common-header.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize theme
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+            
+            // Create header - Note: 'docs' is not in the pages list, so we don't mark it as active
+            document.getElementById('header-container').innerHTML = createAIBlockHeader('');
+            
+            // Theme toggle functionality
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(newTheme);
+            });
+            
+            // Add scroll animations
+            const observerOptions = {
+                root: null,
+                rootMargin: '0px',
+                threshold: 0.1
+            };
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                    }
+                });
+            }, observerOptions);
+            
+            document.querySelectorAll('.feature-card, .section-header').forEach(el => {
+                observer.observe(el);
+            });
+        });
+        
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            icon.textContent = theme === 'light' ? '🌙' : '☀️';
+        }
+    </script>
+</body>
+</html>

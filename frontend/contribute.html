@@ -3,1153 +3,524 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Join Network - Blyan</title>
+    <title>Join the Network - Blyan</title>
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="common-header-themed.css">
+    <link rel="stylesheet" href="page-template.css">
     <script src="language.js"></script>
+    <script src="wallet.js"></script>
+    <script src="theme.js"></script>
     <style>
-        .contribute-container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
+        /* Theme variables */
+        :root {
+            --color-primary: #1E3A8A;
+            --color-primary-light: #2E4EAE;
+            --color-primary-dark: #152C66;
+            --color-secondary: #06B6D4;
+            --color-secondary-light: #22D3EE;
+            --color-secondary-dark: #0891B2;
+            --color-background: #FFFFFF;
+            --color-surface: #F9FAFB;
+            --color-elevated: #FFFFFF;
+            --color-text-primary: #111827;
+            --color-text-secondary: #374151;
+            --color-text-disabled: #9CA3AF;
+            --color-divider: #E5E7EB;
+            --color-action-hover: rgba(30, 58, 138, 0.08);
+            --color-action-selected: rgba(30, 58, 138, 0.12);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.12);
         }
-        .hero-section {
-            text-align: center;
-            padding: 40px 20px;
-            background: linear-gradient(135deg, var(--secondary-color), var(--primary-color));
-            color: white;
-            border-radius: 12px;
-            margin-bottom: 40px;
+        
+        [data-theme="dark"] {
+            --color-primary: #22D3EE;
+            --color-primary-light: #67E8F9;
+            --color-primary-dark: #06B6D4;
+            --color-secondary: #2E4EAE;
+            --color-secondary-light: #4361C2;
+            --color-secondary-dark: #1E3A8A;
+            --color-background: #111827;
+            --color-surface: #1F2937;
+            --color-elevated: #0F172A;
+            --color-text-primary: #F9FAFB;
+            --color-text-secondary: #D1D5DB;
+            --color-text-disabled: #4B5563;
+            --color-divider: #374151;
+            --color-action-hover: rgba(6, 182, 212, 0.12);
+            --color-action-selected: rgba(6, 182, 212, 0.16);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.5);
         }
-        .setup-card {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--color-text-primary);
+            background-color: var(--color-background);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            margin: 0;
         }
-        .step-number {
-            display: inline-block;
-            background: var(--primary-color);
-            color: white;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            text-align: center;
-            line-height: 30px;
-            font-weight: bold;
-            margin-right: 10px;
+
+        /* Requirements Grid */
+        .requirements-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+            margin-top: 40px;
         }
-        .step-title {
-            font-size: 1.3em;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: var(--text-color);
-        }
-        .requirements {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
+
         .requirement-item {
             display: flex;
             align-items: center;
-            margin-bottom: 10px;
-            padding: 8px 0;
+            gap: 12px;
+            padding: 16px;
+            background: linear-gradient(145deg, var(--color-surface), var(--color-elevated));
+            border-radius: 12px;
+            border: 1px solid var(--color-divider);
+            position: relative;
+            transition: all 0.3s ease;
         }
-        .status-indicator {
-            width: 24px;
-            height: 24px;
+        
+        .requirement-item::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+            border-radius: 12px 12px 0 0;
+        }
+        
+        .requirement-item:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            border-color: var(--color-primary);
+        }
+
+        .requirement-icon {
+            font-size: 24px;
+        }
+
+        .requirement-text {
+            flex: 1;
+        }
+
+        .requirement-label {
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 4px;
+        }
+
+        .requirement-value {
+            color: var(--color-text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Setup Steps */
+        .setup-steps {
+            counter-reset: step-counter;
+            margin-top: 40px;
+        }
+
+        .setup-step {
+            position: relative;
+            padding: 24px;
+            padding-left: 60px;
+            margin-bottom: 24px;
+            background: linear-gradient(145deg, var(--color-surface), var(--color-elevated));
+            border-radius: 12px;
+            border: 1px solid var(--color-divider);
+            transition: all 0.3s ease;
+        }
+        
+        .setup-step::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: linear-gradient(180deg, var(--color-primary), var(--color-secondary));
+            border-radius: 12px 0 0 12px;
+        }
+
+        .setup-step:hover {
+            border-color: var(--color-primary);
+            box-shadow: var(--shadow-md);
+            transform: translateX(4px);
+        }
+
+        .setup-step::before {
+            counter-increment: step-counter;
+            content: counter(step-counter);
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            color: var(--color-background);
             border-radius: 50%;
-            margin-right: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
+            font-weight: 600;
+            box-shadow: var(--shadow-sm);
+            z-index: 1;
+        }
+
+        .step-title {
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 8px;
+        }
+
+        .step-description {
+            color: var(--color-text-secondary);
+        }
+
+        /* Code block */
+        .code-block {
+            background: var(--color-elevated);
+            border: 1px solid var(--color-divider);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 12px;
+            font-family: 'Courier New', monospace;
             font-size: 14px;
+            overflow-x: auto;
+            color: var(--color-text-primary);
         }
-        .status-good {
-            background: #28a745;
-            color: white;
-        }
-        .join-button {
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 8px;
-            font-size: 1.1em;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 20px;
-            transition: all 0.3s ease;
-        }
-        .join-button:hover {
-            background: var(--primary-color-dark);
-            transform: translateY(-2px);
-        }
-        .join-button:disabled {
-            background: #6c757d;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .earnings-preview {
-            background: #e7f5e7;
-            padding: 25px;
-            border-radius: 12px;
-            margin-top: 20px;
-        }
-        .earnings-number {
-            font-size: 2em;
-            font-weight: bold;
-            color: var(--primary-color);
-        }
-        .donor-mode-toggle {
-            display: flex;
-            align-items: center;
-            margin: 15px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border: 1px solid #dee2e6;
-        }
-        .donor-mode-toggle input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            margin-right: 10px;
-        }
-        .donor-mode-toggle label {
-            font-weight: 500;
-            flex: 1;
-        }
-        .code-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .copy-btn {
-            background: #0ea5e9;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        .inline-input {
-            flex: 1;
-            padding: 8px 10px;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        .hint {
-            color: #64748b;
-            font-size: 0.92em;
-            margin-top: 6px;
-        }
-        .verify-note {
-            margin-top: 10px;
-            color: #0f766e;
-            background: #ecfeff;
-            border-left: 4px solid #06b6d4;
-            padding: 10px 12px;
-            border-radius: 8px;
-        }
-        .install-helpers {
-            margin: 15px 0;
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-        }
-        .install-link {
-            background: #f1f5f9;
-            color: #334155;
-            text-decoration: none;
-            padding: 8px 12px;
-            border-radius: 8px;
-            border: 1px solid #cbd5e1;
-            font-size: 0.9em;
-            transition: all 0.3s ease;
-        }
-        .install-link:hover {
-            background: #e2e8f0;
-            text-decoration: none;
-            color: #1e293b;
-        }
-        .faq-section {
-            margin-top: 20px;
-        }
-        .faq-item {
-            margin-bottom: 10px;
-        }
-        .faq-summary {
-            background: #f8f9fa;
-            padding: 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            border: 1px solid #e9ecef;
-            font-weight: 500;
-        }
-        .faq-summary:hover {
-            background: #e9ecef;
-        }
-        .faq-content {
-            padding: 12px;
-            background: #fff;
-            border: 1px solid #e9ecef;
-            border-top: none;
-            border-radius: 0 0 8px 8px;
-        }
-        .cli-check {
-            background: #1e293b;
-            color: #e2e8f0;
-            padding: 10px;
-            border-radius: 6px;
-            font-family: monospace;
-            font-size: 0.9em;
-            margin: 8px 0;
-        }
-        .monitoring-panel {
-            background: #f8fffe;
-            border: 1px solid #10b981;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
+
+        /* Modal styles for node key generation */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
             display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
         }
-        .monitoring-panel.active {
-            display: block;
+        
+        .modal-content {
+            background: var(--color-elevated);
+            color: var(--color-text-primary);
+            width: min(720px, 90%);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: var(--shadow-xl);
         }
-        .monitoring-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
         }
-        .monitor-stat {
-            text-align: center;
-            padding: 10px;
-            background: white;
-            border-radius: 6px;
-            border: 1px solid #e5e7eb;
+        
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin: 0;
         }
-        .monitor-value {
-            font-size: 1.4em;
-            font-weight: bold;
-            color: #059669;
-        }
-        .monitor-label {
-            font-size: 0.8em;
-            color: #6b7280;
-            text-transform: uppercase;
-            margin-top: 4px;
-        }
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 0.8em;
-            font-weight: 500;
-        }
-        .status-badge.online {
-            background: #dcfce7;
-            color: #166534;
-        }
-        .status-badge.offline {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        .status-checking {
-            background: #fbbf24;
-            color: white;
-        }
-        .status-warning {
-            background: #f59e0b;
-            color: white;
-        }
-        .status-error {
-            background: #ef4444;
-            color: white;
-        }
-        .preflight-button {
-            background: #6366f1;
-            color: white;
+        
+        .modal-close {
             border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
+            background: transparent;
+            font-size: 24px;
             cursor: pointer;
-            font-size: 0.9em;
-            margin-top: 10px;
+            color: var(--color-text-secondary);
+            padding: 4px;
+            transition: color 0.2s ease;
         }
-        .preflight-button:hover {
-            background: #4f46e5;
+        
+        .modal-close:hover {
+            color: var(--color-text-primary);
         }
-        .preflight-button:disabled {
-            background: #9ca3af;
+        
+        .modal-body {
+            color: var(--color-text-secondary);
+        }
+        
+        .modal-button {
+            background: var(--color-primary);
+            color: var(--color-background);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 16px;
+        }
+        
+        .modal-button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .modal-button:disabled {
+            opacity: 0.5;
             cursor: not-allowed;
         }
-        
-        /* Mobile responsiveness for 360-414px */
-        @media (max-width: 768px) {
-            .contribute-container {
-                padding: 8px;
-            }
-            
-            .setup-card {
-                margin: 8px 0;
-                padding: 16px;
-            }
-            
-            .code-row {
-                flex-direction: column;
-                gap: 8px;
-            }
-            
-            .code-row label {
-                min-width: auto;
-                width: 100%;
-            }
-            
-            .inline-input, .inline-select {
-                width: 100%;
-                margin: 0;
-            }
-            
-            .cli-check {
-                font-size: 11px;
-                padding: 8px;
-                word-break: break-all;
-                overflow-x: auto;
-            }
-            
-            .monitoring-panel {
-                padding: 12px;
-            }
-            
-            .monitor-item {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 4px;
-            }
-            
-            .faq-summary {
-                font-size: 14px;
-                padding: 12px;
-            }
-            
-            .faq-content {
-                padding: 12px;
-            }
+
+        /* Theme toggle */
+        .theme-toggle {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: var(--color-background);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: var(--shadow-lg);
+            transition: all 0.3s ease;
+            z-index: 100;
         }
         
-        @media (max-width: 414px) {
-            .contribute-container {
-                padding: 4px;
-            }
-            
-            .hero-section {
-                padding: 20px 12px;
-            }
-            
-            .hero-section h1 {
-                font-size: 1.8em;
-            }
-            
-            .join-button, .preflight-button {
-                width: 100%;
-                padding: 12px;
-                font-size: 14px;
-            }
-            
-            .requirements {
-                gap: 8px;
-            }
-            
-            .requirement-item {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 4px;
-                text-align: left;
-            }
-            
-            .status-indicator {
-                margin-right: 8px;
-            }
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-xl);
         }
     </style>
 </head>
 <body>
     <div id="header-container"></div>
-    
-    <div class="contribute-container">
-        <div class="hero-section">
-            <h1>⚡ <span data-i18n="joinNetworkTitle">Join the Blyan Network</span></h1>
-            <p data-i18n="shareComputingPower">Share your computing power and earn rewards</p>
+
+    <!-- Requirements Section -->
+    <div class="feature-section" style="padding-top: 40px;">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 class="section-title" data-i18n="systemRequirements">System Requirements</h2>
+                <p class="section-subtitle" data-i18n="systemRequirementsDesc">What you need to join the network</p>
+            </div>
+            <div class="requirements-grid">
+                <div class="requirement-item">
+                    <span class="requirement-icon">🖥️</span>
+                    <div class="requirement-text">
+                        <div class="requirement-label" data-i18n="gpu">GPU</div>
+                        <div class="requirement-value">NVIDIA GTX 1660 Super / RTX 2060 minimum</div>
+                    </div>
+                </div>
+                <div class="requirement-item">
+                    <span class="requirement-icon">💾</span>
+                    <div class="requirement-text">
+                        <div class="requirement-label" data-i18n="vram">VRAM</div>
+                        <div class="requirement-value">6GB minimum, RTX 3060+ recommended</div>
+                    </div>
+                </div>
+                <div class="requirement-item">
+                    <span class="requirement-icon">🌐</span>
+                    <div class="requirement-text">
+                        <div class="requirement-label" data-i18n="internet">Internet</div>
+                        <div class="requirement-value">100 Mbps+ stable connection</div>
+                    </div>
+                </div>
+                <div class="requirement-item">
+                    <span class="requirement-icon">🐳</span>
+                    <div class="requirement-text">
+                        <div class="requirement-label" data-i18n="software">Software</div>
+                        <div class="requirement-value">Docker & NVIDIA drivers</div>
+                    </div>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <!-- Quick Start Node Connection -->
-        <div class="setup-card">
-            <div class="step-title">
-                <span class="step-number">1</span>
-                <span data-i18n="quickStartNode">Quick Start Node</span>
+    <!-- Setup Guide Section -->
+    <div class="feature-section alt-background">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 class="section-title" data-i18n="quickSetupGuide">Quick Setup Guide</h2>
+                <p class="section-subtitle" data-i18n="quickSetupDesc">Join the network in 3 simple steps</p>
             </div>
-            <p data-i18n="oneClickNodeSetup">Get your API key and start contributing compute power in seconds:</p>
-            
-            <div class="requirements">
-                <div class="requirement-item">
-                    <div class="status-indicator status-checking" id="gpu-check">⏳</div>
-                    <span id="gpu-status">GPU: NVIDIA A100 80GB or H100 for 20B model learning</span>
+            <div class="setup-steps">
+                <div class="setup-step">
+                    <div class="step-title" data-i18n="installPrerequisites">Install Prerequisites</div>
+                    <div class="step-description" data-i18n="installPrereqDesc">
+                        Ensure Docker and NVIDIA Container Toolkit are installed on your system.
+                    </div>
+                    <div class="code-block">
+                        # Ubuntu/Debian<br>
+                        sudo apt-get install docker.io nvidia-container-toolkit<br><br>
+                        # Verify installation<br>
+                        docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+                    </div>
                 </div>
-                <div class="requirement-item">
-                    <div class="status-indicator status-checking" id="api-check">⏳</div>
-                    <span id="api-status">API: Testing connection to Blyan network...</span>
-                </div>
-                <div class="requirement-item">
-                    <div class="status-indicator status-good">✓</div>
-                    <span>Port: 8001 must be accessible (configure firewall/NAT)</span>
-                </div>
-                <div class="requirement-item">
-                    <div class="status-indicator status-good">✓</div>
-                    <span>Disk: ≥25-40GB free space for model weights</span>
-                </div>
-            </div>
-            
-            <button id="run-preflight" class="preflight-button">🔍 Run System Check</button>
-            
-            <button id="generate-node-key" class="join-button" data-i18n="generateNodeKey">
-                Generate Node Key
-            </button>
-        </div>
-
-        <!-- Node Setup -->
-        <div class="setup-card">
-            <div class="step-title">
-                <span class="step-number">2</span>
-                <span data-i18n="getSetupCommands">Get Setup Commands</span>
-            </div>
-            <p data-i18n="apiKeyExplanation">We'll generate an API key and show you the exact commands to run your node:</p>
-            
-            <!-- API Key Generation Result -->
-            <div id="setup-result" style="display:none; margin-top:16px;">
-                <h4>🔑 Your Node Commands:</h4>
-                <div class="code-row">
-                    <label for="node-id-input" style="font-weight:600; min-width: 90px;">Node name</label>
-                    <input id="node-id-input" class="inline-input" placeholder="e.g., gpu-rig-01" />
-                </div>
-
-                <div class="hint">Tip: Use a short, unique name to identify this machine. It will appear in the node list.</div>
-
-                <h5 style="margin-top:14px;">Docker (interactive)</h5>
-                <div style="background:#0f172a; color:#e5e7eb; padding:12px; border-radius:8px; font-family:monospace; font-size:12px; overflow:auto; margin:8px 0;" id="docker-command"></div>
-                <button class="copy-btn" data-copy-target="docker-command">Copy</button>
-
-                <h5 style="margin-top:14px;">Docker (background)</h5>
-                <div style="background:#0f172a; color:#e5e7eb; padding:12px; border-radius:8px; font-family:monospace; font-size:12px; overflow:auto; margin:8px 0;" id="docker-command-detached"></div>
-                <button class="copy-btn" data-copy-target="docker-command-detached">Copy</button>
-                
-                <h5>Alternative (Python):</h5>
-                <pre id="python-commands" style="background:#f3f4f6; padding:10px; border-radius:8px; white-space:pre-wrap; font-size:12px;"></pre>
-                <button class="copy-btn" data-copy-target="python-commands">Copy</button>
-                
-                <div style="margin-top:15px; padding:12px; background:#f0f9ff; border-radius:8px; border-left:4px solid #0ea5e9;">
-                    <p><strong>💡 Instructions:</strong></p>
-                    <ol style="margin:8px 0; padding-left:20px;">
-                        <li>Copy the Docker command and run it on your GPU machine</li>
-                        <li>Make sure Docker and NVIDIA Container Toolkit are installed</li>
-                        <li>Your node will automatically connect and start earning rewards</li>
-                    </ol>
-                </div>
-                
-                <div class="install-helpers">
-                    <a href="https://docs.docker.com/get-docker/" target="_blank" class="install-link">
-                        📦 Install Docker
-                    </a>
-                    <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html" target="_blank" class="install-link">
-                        🐳 NVIDIA Container Toolkit
-                    </a>
-                    <a href="https://github.com/docker/cli/releases" target="_blank" class="install-link">
-                        🔧 Docker CLI
-                    </a>
-                </div>
-                
-                <div class="faq-section">
-                    <h5 style="margin-bottom: 10px;">🔧 Quick System Check</h5>
-                    <p style="margin-bottom: 10px; font-size: 0.9em; color: #64748b;">Run these commands on your node machine to verify installation:</p>
-                    <div class="cli-check">docker --version && nvidia-smi && docker run --rm --gpus all nvidia/cuda:12.3.2-base-ubuntu22.04 nvidia-smi</div>
-                </div>
-                
-                <!-- Donor Mode Toggle -->
-                <div class="donor-mode-toggle" style="margin-top:15px;">
-                    <input type="checkbox" id="donor-mode-checkbox">
-                    <label for="donor-mode-checkbox">
-                        🎁 Enable Donor Mode (Help free-tier users, no rewards)
-                    </label>
-                </div>
-
-                <div class="code-row" style="justify-content: space-between;">
-                    <button id="verify-node-btn" class="join-button" style="max-width: 280px;">
-                        Verify Connection
+                <div class="setup-step">
+                    <div class="step-title" data-i18n="generateNodeKey">Generate Your Node Key</div>
+                    <div class="step-description" data-i18n="generateNodeKeyDesc">
+                        Click the button below to generate a unique API key for your node. This key identifies your contributions.
+                    </div>
+                    <button class="cta-button cta-primary" style="margin-top: 16px;" onclick="openJoinModal()" data-i18n="generateNodeKeyBtn">
+                        Generate Node Key
                     </button>
                 </div>
-                <div id="verify-status" class="verify-note" style="display:none;"></div>
-                
-                <!-- Monitoring Panel -->
-                <div id="monitoring-panel" class="monitoring-panel">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h5>📊 Node Performance</h5>
-                        <span id="node-status-badge" class="status-badge offline">Offline</span>
+                <div class="setup-step">
+                    <div class="step-title" data-i18n="runYourNode">Run Your Node</div>
+                    <div class="step-description" data-i18n="runYourNodeDesc">
+                        Copy and run the Docker command with your generated key to start contributing.
                     </div>
-                    <div class="monitoring-grid">
-                        <div class="monitor-stat">
-                            <div class="monitor-value" id="requests-served">0</div>
-                            <div class="monitor-label">Requests Served</div>
-                        </div>
-                        <div class="monitor-stat">
-                            <div class="monitor-value" id="current-earnings">$0.00</div>
-                            <div class="monitor-label">Earnings Today</div>
-                        </div>
-                        <div class="monitor-stat">
-                            <div class="monitor-value" id="uptime-display">0h</div>
-                            <div class="monitor-label">Uptime</div>
-                        </div>
-                        <div class="monitor-stat">
-                            <div class="monitor-value" id="expert-count">0</div>
-                            <div class="monitor-label">Active Experts</div>
-                        </div>
-                    </div>
-                    <div style="margin-top: 10px; text-align: center; font-size: 0.9em; color: #6b7280;">
-                        Last updated: <span id="last-updated">Never</span>
+                    <div class="code-block" id="dockerCommand" style="display: none;">
+                        docker run --gpus all --rm -it \<br>
+                        &nbsp;&nbsp;-e BLYAN_API_KEY=YOUR_KEY_HERE \<br>
+                        &nbsp;&nbsp;-e MAIN_SERVER_URL=https://blyan.com/api \<br>
+                        &nbsp;&nbsp;ghcr.io/blyan-network/expert-node:latest
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Earnings Preview -->
-        <div class="setup-card">
-            <div class="step-title">
-                <span class="step-number">3</span>
-                <span data-i18n="earnRewards">Earn Rewards</span>
-            </div>
-            <p data-i18n="estimatedEarnings">Your estimated earnings based on network activity:</p>
-            
-            <div class="earnings-preview">
-                <div style="text-align: center;">
-                    <div class="earnings-number" id="estimated-earnings">~$2.15</div>
-                    <div data-i18n="perDay">per day (estimated)</div>
-                </div>
-                <div style="margin-top: 15px; font-size: 0.9em; opacity: 0.9;">
-                    <span id="earnings-note" data-i18n="earningsNote">💡 Earnings based on RTX 3090 benchmarks. Your actual earnings may vary based on GPU model and network demand.</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Troubleshooting -->
-        <div class="setup-card">
-            <div class="step-title">🔧 <span data-i18n="troubleshooting">Troubleshooting</span></div>
-            
-            <div class="faq-section">
-                <div class="faq-item">
-                    <div class="faq-summary" onclick="toggleFaq(this)">
-                        ❌ <span data-i18n="dockerNotFoundError">"Docker not found" error</span>
-                        <span style="float: right;">▼</span>
-                    </div>
-                    <div class="faq-content" style="display: none;">
-                        <p data-i18n="dockerNotFoundSolution">Install Docker Desktop for your operating system:</p>
-                        <ul>
-                            <li><strong data-i18n="dockerInstallWindows">Windows/Mac: Download from Docker Desktop</strong> (<a href="https://docs.docker.com/get-docker/" target="_blank">Link</a>)</li>
-                            <li><strong data-i18n="dockerInstallLinux">Linux: Use your package manager (e.g., sudo apt install docker.io)</strong></li>
-                        </ul>
-                        <p data-i18n="dockerRestart">Then restart your terminal and try again.</p>
-                    </div>
-                </div>
-                
-                <div class="faq-item">
-                    <div class="faq-summary" onclick="toggleFaq(this)">
-                        🐳 <span data-i18n="nvidiaToolkitError">"NVIDIA Container Toolkit not found"</span>
-                        <span style="float: right;">▼</span>
-                    </div>
-                    <div class="faq-content" style="display: none;">
-                        <p data-i18n="nvidiaToolkitSolution">Install NVIDIA Container Toolkit to enable GPU access in Docker:</p>
-                        <div class="cli-check">curl -fsSL https://nvidia.github.io/nvidia-docker/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-docker.gpg</div>
-                        <p><span data-i18n="nvidiaInstallGuide">Follow the complete installation guide at</span> <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html" target="_blank">NVIDIA docs</a>.</p>
-                    </div>
-                </div>
-                
-                <div class="faq-item">
-                    <div class="faq-summary" onclick="toggleFaq(this)">
-                        ⚠️ <span data-i18n="nodeNotFoundError">Node shows as "Not found yet"</span>
-                        <span style="float: right;">▼</span>
-                    </div>
-                    <div class="faq-content" style="display: none;">
-                        <p data-i18n="nodeNotFoundSolutions">Common solutions:</p>
-                        <ul>
-                            <li><strong data-i18n="nodeWaitTime">Wait 30-60 seconds - Node registration takes time</strong></li>
-                            <li><strong data-i18n="checkDockerLogs">Check Docker logs: docker logs blyan-node</strong></li>
-                            <li><strong data-i18n="verifyApiKey">Verify API key: Make sure you copied the exact command</strong></li>
-                            <li><strong data-i18n="checkFirewall">Firewall: Ensure Docker can access the internet</strong></li>
-                        </ul>
-                    </div>
-                </div>
-                
-                <div class="faq-item">
-                    <div class="faq-summary" onclick="toggleFaq(this)">
-                        💰 <span data-i18n="noRewardsError">"No rewards yet" after running</span>
-                        <span style="float: right;">▼</span>
-                    </div>
-                    <div class="faq-content" style="display: none;">
-                        <p data-i18n="rewardsDependOnDemand">Rewards depend on network demand:</p>
-                        <ul>
-                            <li><strong data-i18n="normalWaitTime">Normal: It can take 10-30 minutes to receive first requests</strong></li>
-                            <li><strong data-i18n="checkStatus">Check status: Use the "Verify Connection" button above</strong></li>
-                            <li><strong data-i18n="donorMode">Donor mode: If enabled, you won't receive rewards but help the network</strong></li>
-                            <li><strong data-i18n="networkLoad">Network load: Rewards vary with AI inference demand</strong></li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Advanced Options (Hidden for MVP) -->
-        <!--
-        <div class="setup-card">
-            <div class="step-title" data-i18n="advancedOptions">Advanced Options</div>
-            <p style="color: var(--text-muted);">
-                <span data-i18n="wantMoreControl">Want more control? Check out the</span>
-                <a href="explorer.html" style="color: var(--primary-color);" data-i18n="technicalDashboard">technical dashboard</a> 
-                <span data-i18n="expertNodeManagement">for expert node management and detailed analytics.</span>
-            </p>
-        </div>
-        -->
     </div>
+
+    <!-- Rewards Section -->
+    <div class="stats-section">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 class="section-title" data-i18n="earningPotential">Earning Potential</h2>
+                <p class="section-subtitle" data-i18n="earningPotentialDesc">Estimated rewards based on GPU type</p>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-number">~25 BLY</div>
+                    <div class="stat-label">GTX 1660 Super / day</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">~40 BLY</div>
+                    <div class="stat-label">RTX 2060 / day</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">~75 BLY</div>
+                    <div class="stat-label">RTX 3060 / day</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">~150 BLY</div>
+                    <div class="stat-label">RTX 4070+ / day</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join modal -->
+    <div id="joinModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" data-i18n="joinTheNetwork">Join the Network</h3>
+                <button id="joinClose" class="modal-close" aria-label="Close modal">✖</button>
+            </div>
+            <div id="joinBody" class="modal-body">
+                <p data-i18n="joinModalDesc">We will create a node operator API key and show a one‑line command to start a GPU node. CPU mode is not supported for LLMs.</p>
+                <button id="provisionKeyBtn" class="modal-button" data-i18n="generateNodeKeyModal">Generate Node Key</button>
+                <div id="provisionResult" style="display:none;">
+                    <div class="code-block" id="commandBox"></div>
+                    <p style="margin-top:12px; color: var(--color-text-secondary);">
+                        <span data-i18n="copyRunCommand">1) Copy and run the command on a GPU machine (Docker required).</span><br/>
+                        <span data-i18n="orSetEnvAndRun">2) Or set the key as env and run the Python node.</span>
+                    </p>
+                    <pre id="altInstructions" class="code-block"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <span id="themeIcon">🌙</span>
+    </button>
 
     <script src="config.js"></script>
     <script src="common-header.js"></script>
-    <script src="wallet.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize theme
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+            
             // Create header
             document.getElementById('header-container').innerHTML = createAIBlockHeader('contribute');
             
-            // Update header usage indicator
-            if (typeof updateHeaderUsage === 'function') {
-                await updateHeaderUsage();
-            }
-            
-            // Wire up buttons
-            document.getElementById('generate-node-key').addEventListener('click', generateNodeKey);
-            document.getElementById('run-preflight').addEventListener('click', runPreflightChecks);
+            // Theme toggle functionality
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(newTheme);
+            });
 
-                // Delegated copy buttons
-                document.body.addEventListener('click', (e) => {
-                    const target = e.target;
-                    if (target && target.matches('.copy-btn')) {
-                        const id = target.getAttribute('data-copy-target');
-                        const el = document.getElementById(id);
-                        if (el) copyToClipboard(el.textContent.trim());
-                    }
-                });
-                
-                // Auto-run preflight checks on load
-                setTimeout(runPreflightChecks, 1000);
+            // Wire Join button
+            document.getElementById('joinClose').addEventListener('click', () => {
+                document.getElementById('joinModal').style.display = 'none';
+            });
+            document.getElementById('provisionKeyBtn').addEventListener('click', provisionNodeKeyAndShow);
         });
-
-        async function generateNodeKey() {
-            const btn = document.getElementById('generate-node-key');
-            const setupResult = document.getElementById('setup-result');
-            const dockerCmd = document.getElementById('docker-command');
-                const dockerCmdDetached = document.getElementById('docker-command-detached');
-            const pythonCmd = document.getElementById('python-commands');
-            
-            btn.disabled = true;
-            btn.textContent = 'Generating Key...';
-            
-            try {
-                // Request node_operator API key
-                const response = await fetch(`${API_CONFIG.baseURL}/auth/register_api_key`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        name: `contrib-node-${Date.now()}`, 
-                        key_type: 'node_operator' 
-                    })
-                });
-                
-                if (!response.ok) {
-                    throw new Error(await response.text());
-                }
-                
-                const data = await response.json();
-                const apiKey = data.api_key;
-                    window._nodeApiKey = apiKey;
-                
-                // Save API key for later use
-                try { 
-                    localStorage.setItem('apiKey', apiKey); 
-                } catch {}
-                
-                    // Prefill Node ID (restore from localStorage or generate new)
-                    const nodeIdInput = document.getElementById('node-id-input');
-                    if (nodeIdInput) {
-                        const savedNodeId = localStorage.getItem('lastNodeId');
-                        const defaultId = savedNodeId || `gpu-${Math.random().toString(36).slice(2,8)}`;
-                        nodeIdInput.value = defaultId;
-                        
-                        // Save to localStorage on change
-                        nodeIdInput.addEventListener('input', (e) => {
-                            if (e.target.value.trim()) {
-                                localStorage.setItem('lastNodeId', e.target.value.trim());
-                            }
-                            updateCommands();
-                        });
-                    }
-                    // Donor toggle
-                    const donorToggle = document.getElementById('donor-mode-checkbox');
-                    if (donorToggle) donorToggle.addEventListener('change', updateCommands);
-                    
-                    function effectiveNodeId() {
-                        const input = document.getElementById('node-id-input');
-                        return (input && input.value.trim()) || `gpu-${Date.now()}`;
-                    }
-                    
-                    function buildDocker(interactive = true) {
-                        const nodeId = effectiveNodeId();
-                        const donor = document.getElementById('donor-mode-checkbox')?.checked;
-                        const donorLine = donor ? `\n  -e DONOR_MODE=true \\\n` : '';
-                        const tty = interactive ? '--rm -it' : '-d --name blyan-node --restart unless-stopped';
-                        // Get public IP - user needs to set this!
-                        const publicIp = '$(curl -s https://checkip.amazonaws.com)';
-                        return `docker run --gpus all ${tty} \\\n  -p 8001:8001 \\\n  -e BLYAN_API_KEY=${apiKey} \\\n  -e MAIN_SERVER_URL=${location.origin}/api \\\n  -e NODE_ID=${nodeId} \\\n  -e NODE_PORT=8001 \\\n  -e RUNPOD_PUBLIC_IP=${publicIp} \\\n  -e BLOCKCHAIN_ONLY=false \\\n${donorLine}  ghcr.io/blyan-network/expert-node:latest`;
-                    }
-                    
-                    function buildPython() {
-                        const nodeId = effectiveNodeId();
-                        const donor = document.getElementById('donor-mode-checkbox')?.checked;
-                        const donorLine = donor ? `\nexport DONOR_MODE=true` : '';
-                        return `# Clone and setup
-git clone https://github.com/blyan-network/dnai.git && cd dnai
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements-gpu.txt
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-
-# Set environment variables
-export BLYAN_API_KEY=${apiKey}
-export MAIN_SERVER_URL=${location.origin}/api
-export NODE_ID=${nodeId}
-export NODE_PORT=8001
-export RUNPOD_PUBLIC_IP=$(curl -s https://checkip.amazonaws.com)
-export BLOCKCHAIN_ONLY=false${donorLine}
-
-# Run the node
-python runpod_node.py`;
-                    }
-                    
-                    function updateCommands() {
-                        dockerCmd.textContent = buildDocker(true);
-                        dockerCmdDetached.textContent = buildDocker(false);
-                        pythonCmd.textContent = buildPython();
-                    }
-                    
-                    // Expose for listeners
-                    window.updateCommands = updateCommands;
-                    updateCommands();
-                
-                // Show the result
-                setupResult.style.display = 'block';
-                btn.textContent = '✅ Key Generated!';
-                btn.style.background = '#22c55e';
-                
-                    // Wire verify button
-                    const verifyBtn = document.getElementById('verify-node-btn');
-                    if (verifyBtn) {
-                        verifyBtn.onclick = verifyRegistration;
-                    }
-                    
-            } catch (error) {
-                console.error('Failed to generate node key:', error);
-                let errorMsg = 'Network error';
-                if (error.message.includes('400')) errorMsg = 'Invalid request - check API';
-                else if (error.message.includes('401')) errorMsg = 'Authentication failed';  
-                else if (error.message.includes('429')) errorMsg = 'Rate limited - wait 1 minute';
-                else if (error.message.includes('500')) errorMsg = 'Server error - try again';
-                else if (error.message.includes('network')) errorMsg = 'Check internet connection';
-                
-                btn.textContent = `❌ ${errorMsg}`;
-                btn.style.background = '#ef4444';
-                
-                setTimeout(() => {
-                    btn.textContent = 'Generate Node Key';
-                    btn.style.background = '';
-                    btn.disabled = false;
-                }, 4000);
-            }
+        
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            icon.textContent = theme === 'light' ? '🌙' : '☀️';
         }
 
-            function copyToClipboard(text) {
-                try {
-                    navigator.clipboard.writeText(text);
-                } catch (e) {
-                    const ta = document.createElement('textarea');
-                    ta.value = text; document.body.appendChild(ta); ta.select();
-                    document.execCommand('copy'); document.body.removeChild(ta);
+        function openJoinModal() {
+            document.getElementById('joinModal').style.display = 'flex';
+        }
+        
+        async function provisionNodeKeyAndShow() {
+            const bodyEl = document.getElementById('joinBody');
+            const btn = document.getElementById('provisionKeyBtn');
+            const box = document.getElementById('commandBox');
+            const result = document.getElementById('provisionResult');
+            const alt = document.getElementById('altInstructions');
+            btn.disabled = true; 
+            btn.textContent = t('provisioning') || 'Provisioning…';
+            try {
+                // Request node_operator API key
+                const resp = await fetch(`${API_CONFIG?.baseURL || '/api'}/auth/register_api_key`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: `web-node-${Date.now()}`, key_type: 'node_operator' })
+                });
+                if (!resp.ok) {
+                    const err = await resp.text();
+                    throw new Error(err);
                 }
-            }
+                const data = await resp.json();
+                const apiKey = data.api_key;
+                // Persist for site APIs (quote/chat)
+                try { localStorage.setItem('apiKey', apiKey); } catch {}
 
-            let monitoringInterval = null;
-            
-            async function verifyRegistration() {
-                const statusEl = document.getElementById('verify-status');
-                if (!statusEl) return;
-                statusEl.style.display = 'block';
-                statusEl.textContent = 'Checking node registry...';
-                
-                try {
-                    const nodeId = (document.getElementById('node-id-input')?.value || '').trim();
-                    if (!nodeId) {
-                        statusEl.textContent = '❌ Please enter a node name first';
-                        return;
-                    }
-                    
-                    // Phase 1: Check if node exists in registry
-                    statusEl.textContent = 'Checking node registry...';
-                    const nodesResp = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
-                    if (!nodesResp.ok) throw new Error('Registry API unavailable');
-                    
-                    const nodesData = await nodesResp.json();
-                    const foundNode = (nodesData.nodes || []).find(n => n.node_id === nodeId);
-                    
-                    if (!foundNode) {
-                        statusEl.textContent = '❌ Not found yet. Make sure the container is running and wait ~30s, then try again.';
-                        stopNodeMonitoring();
-                        return;
-                    }
-                    
-                    // Phase 2: Get detailed node stats
-                    statusEl.textContent = 'Node found! Checking detailed status...';
-                    let nodeStats = null;
-                    try {
-                        const statsResp = await fetch(`${API_CONFIG.baseURL}/p2p/node_stats/${nodeId}`);
-                        if (statsResp.ok) {
-                            nodeStats = await statsResp.json();
-                        }
-                    } catch (e) {
-                        // Stats API might not be available yet
-                    }
-                    
-                    // Phase 3: Check donor stats if in donor mode
-                    let donorInfo = '';
-                    const isDonorMode = document.getElementById('donor-mode-checkbox')?.checked;
-                    if (isDonorMode) {
-                        statusEl.textContent = 'Checking donor network status...';
-                        try {
-                            const donorResp = await fetch(`${API_CONFIG.baseURL}/p2p/donor_stats`);
-                            if (donorResp.ok) {
-                                const donorData = await donorResp.json();
-                                const summary = donorData.summary || {};
-                                donorInfo = ` | 🎁 Donor: ${summary.total_donor_nodes || 0} active donors (${summary.donor_percentage || 0}% network)`;
-                            }
-                        } catch (e) {
-                            // Donor stats not critical
-                        }
-                    }
-                    
-                    // Build comprehensive status message
-                    let statusMsg = `✅ Connected: ${foundNode.node_id}`;
-                    statusMsg += ` | Experts: ${foundNode.available_experts?.join(', ') || 'loading...'}`;
-                    
-                    if (nodeStats) {
-                        const hb = nodeStats.node_info && nodeStats.node_info.last_heartbeat;
-                        if (hb) {
-                            const hbMs = hb > 1e12 ? hb : hb * 1000; // handle seconds vs ms
-                            const lastSeen = Math.round((Date.now() - hbMs) / 1000);
-                            statusMsg += ` | Last heartbeat: ${lastSeen}s ago`;
-                        }
-                        if (nodeStats.contributions?.total_inferences) {
-                            statusMsg += ` | Requests served: ${nodeStats.contributions.total_inferences}`;
-                        }
-                    }
-                    
-                    statusMsg += donorInfo;
-                    statusEl.textContent = statusMsg;
-                    
-                    // Start monitoring if node is found
-                    startNodeMonitoring(nodeId);
-                    
-                } catch (e) {
-                    let errorMsg = e.message;
-                    if (e.message.includes('fetch')) errorMsg = 'Network error - check internet connection';
-                    else if (e.message.includes('404')) errorMsg = 'API endpoint not found';
-                    statusEl.textContent = `❌ Verify failed: ${errorMsg}`;
-                    stopNodeMonitoring();
-                }
+                const dockerCmd = `docker run --gpus all --rm -it \\\n  -e BLYAN_API_KEY=${apiKey} \\\n  -e MAIN_SERVER_URL=${location.origin}/api \\\n  ghcr.io/blyan-network/expert-node:latest`;
+                box.textContent = dockerCmd;
+
+                const altText = `# Or Python (requires clone of repo)\nexport BLYAN_API_KEY=${apiKey}\nexport MAIN_SERVER_URL=${location.origin}/api\npython runpod_node.py`;
+                alt.textContent = altText;
+
+                result.style.display = 'block';
+                btn.style.display = 'none';
+            } catch (e) {
+                bodyEl.insertAdjacentHTML('beforeend', `<div style="color:#b91c1c; margin-top:10px;">${t('failedToProvisionKey') || 'Failed to provision key'}: ${e.message}</div>`);
+            } finally {
+                btn.disabled = false; 
+                btn.textContent = t('generateNodeKeyModal') || 'Generate Node Key';
             }
-            
-            function startNodeMonitoring(nodeId) {
-                // Show monitoring panel
-                const panel = document.getElementById('monitoring-panel');
-                if (panel) panel.classList.add('active');
-                
-                // Clear existing interval
-                if (monitoringInterval) clearInterval(monitoringInterval);
-                
-                // Start polling every 15 seconds
-                const pollNodeStats = async () => {
-                    try {
-                        const response = await fetch(`${API_CONFIG.baseURL}/p2p/node_stats/${nodeId}`);
-                        if (response.ok) {
-                            const stats = await response.json();
-                            updateMonitoringDisplay(stats, true);
-                        } else if (response.status === 404) {
-                            // Node not found in stats, but might still be in registry
-                            updateMonitoringDisplay(null, false);
-                        }
-                    } catch (error) {
-                        console.error('Monitoring error:', error);
-                        updateMonitoringDisplay(null, false);
-                    }
-                };
-                
-                // Initial poll
-                pollNodeStats();
-                
-                // Set up interval
-                monitoringInterval = setInterval(pollNodeStats, 15000);
-            }
-            
-            function stopNodeMonitoring() {
-                if (monitoringInterval) {
-                    clearInterval(monitoringInterval);
-                    monitoringInterval = null;
-                }
-                
-                // Hide monitoring panel
-                const panel = document.getElementById('monitoring-panel');
-                if (panel) panel.classList.remove('active');
-            }
-            
-            function updateMonitoringDisplay(stats, isOnline) {
-                // Update status badge with donor mode indication
-                const badge = document.getElementById('node-status-badge');
-                const isDonorMode = document.getElementById('donor-mode-checkbox')?.checked;
-                
-                if (badge) {
-                    if (isOnline) {
-                        badge.textContent = isDonorMode ? 'Donor Online' : 'Online';
-                        badge.className = `status-badge ${isDonorMode ? 'online' : 'online'}`;
-                    } else {
-                        badge.textContent = 'Offline';
-                        badge.className = 'status-badge offline';
-                    }
-                }
-                
-                // Update stats
-                if (stats && stats.contributions) {
-                    const contrib = stats.contributions;
-                    
-                    document.getElementById('requests-served').textContent = contrib.total_inferences || 0;
-                    
-                    // Show earnings or donor message
-                    if (isDonorMode) {
-                        document.getElementById('current-earnings').textContent = 'Donor 🎁';
-                    } else {
-                        document.getElementById('current-earnings').textContent = 
-                            `$${(contrib.estimated_earnings || 0).toFixed(4)}`;
-                    }
-                    
-                    document.getElementById('expert-count').textContent = 
-                        Object.keys(contrib.expert_contributions || {}).length;
-                    
-                    // Update main earnings preview with live data when available
-                    if (contrib.estimated_earnings && !isDonorMode) {
-                        const dailyEstimate = (contrib.estimated_earnings * 24 * 60 * 60 / (Date.now() / 1000));
-                        document.getElementById('estimated-earnings').textContent = `$${dailyEstimate.toFixed(2)}`;
-                        document.getElementById('earnings-note').textContent = 
-                            '✅ Live earnings data from your active node';
-                    }
-                    
-                    // Calculate uptime (rough estimate from last heartbeat)
-                    const hb = stats.node_info && stats.node_info.last_heartbeat;
-                    if (hb) {
-                        const hbMs = hb > 1e12 ? hb : hb * 1000; // seconds->ms if needed
-                        const uptimeMs = Math.max(0, Date.now() - hbMs);
-                        const uptimeHours = uptimeMs / (1000 * 60 * 60);
-                        if (uptimeHours < 1) {
-                            const uptimeMinutes = Math.floor(uptimeMs / (1000 * 60));
-                            document.getElementById('uptime-display').textContent = `${uptimeMinutes}m`;
-                        } else {
-                            document.getElementById('uptime-display').textContent = `${uptimeHours.toFixed(1)}h`;
-                        }
-                    }
-                } else {
-                    // Clear stats if offline or no data
-                    document.getElementById('requests-served').textContent = '0';
-                    document.getElementById('current-earnings').textContent = isDonorMode ? 'Donor 🎁' : '$0.00';
-                    document.getElementById('expert-count').textContent = '0';
-                    document.getElementById('uptime-display').textContent = '0m';
-                    
-                    // Reset earnings preview to default when no data
-                    document.getElementById('estimated-earnings').textContent = '~$2.15';
-                    document.getElementById('earnings-note').textContent = 
-                        '💡 Earnings based on RTX 3090 benchmarks. Your actual earnings may vary based on GPU model and network demand.';
-                }
-                
-                // Update timestamp
-                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
-            }
-            
-            function toggleFaq(element) {
-                const content = element.nextElementSibling;
-                const arrow = element.querySelector('span');
-                if (content.style.display === 'none') {
-                    content.style.display = 'block';
-                    arrow.textContent = '▲';
-                } else {
-                    content.style.display = 'none';
-                    arrow.textContent = '▼';
-                }
-            }
-            
-            async function runPreflightChecks() {
-                const preflightBtn = document.getElementById('run-preflight');
-                if (preflightBtn) {
-                    preflightBtn.disabled = true;
-                    preflightBtn.textContent = '🔍 Checking...';
-                }
-                
-                // Reset all indicators to checking state
-                document.getElementById('gpu-check').className = 'status-indicator status-checking';
-                document.getElementById('api-check').className = 'status-indicator status-checking';
-                document.getElementById('browser-check').className = 'status-indicator status-checking';
-                
-                // Run checks with delays for better UX
-                await checkGPU();
-                await new Promise(resolve => setTimeout(resolve, 500));
-                await checkAPI();
-                await new Promise(resolve => setTimeout(resolve, 500));
-                await checkBrowser();
-                
-                if (preflightBtn) {
-                    preflightBtn.disabled = false;
-                    preflightBtn.textContent = '🔍 Run System Check';
-                }
-            }
-            
-            async function checkGPU() {
-                const indicator = document.getElementById('gpu-check');
-                const status = document.getElementById('gpu-status');
-                
-                try {
-                    // Try WebGL GPU detection
-                    const canvas = document.createElement('canvas');
-                    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                    
-                    if (!gl) {
-                        indicator.className = 'status-indicator status-error';
-                        indicator.textContent = '❌';
-                        status.textContent = 'GPU: No WebGL support detected - may not have compatible GPU';
-                        return;
-                    }
-                    
-                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                    let gpuInfo = 'Compatible GPU detected';
-                    
-                    if (debugInfo) {
-                        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-                        if (renderer.includes('NVIDIA') || renderer.includes('GeForce') || renderer.includes('RTX')) {
-                            gpuInfo = `NVIDIA GPU: ${renderer.split(' ').slice(0, 3).join(' ')}`;
-                            indicator.className = 'status-indicator status-good';
-                            indicator.textContent = '✅';
-                        } else if (renderer.includes('AMD') || renderer.includes('Radeon')) {
-                            gpuInfo = `AMD GPU: ${renderer.split(' ').slice(0, 3).join(' ')}`;
-                            indicator.className = 'status-indicator status-good';
-                            indicator.textContent = '✅';
-                        } else if (renderer.includes('Apple') || renderer.includes('Metal')) {
-                            gpuInfo = `Apple Silicon: ${renderer.split(' ').slice(0, 2).join(' ')}`;
-                            indicator.className = 'status-indicator status-good';
-                            indicator.textContent = '✅';
-                        } else {
-                            gpuInfo = `GPU detected: ${renderer.split(' ').slice(0, 2).join(' ')}`;
-                            indicator.className = 'status-indicator status-warning';
-                            indicator.textContent = '⚠️';
-                        }
-                    } else {
-                        indicator.className = 'status-indicator status-warning';
-                        indicator.textContent = '⚠️';
-                    }
-                    
-                    status.textContent = `GPU: ${gpuInfo}`;
-                    
-                } catch (error) {
-                    indicator.className = 'status-indicator status-error';
-                    indicator.textContent = '❌';
-                    status.textContent = 'GPU: Detection failed - unknown graphics hardware';
-                }
-            }
-            
-            async function checkAPI() {
-                const indicator = document.getElementById('api-check');
-                const status = document.getElementById('api-status');
-                
-                try {
-                    const start = Date.now();
-                    const response = await fetch(`${API_CONFIG.baseURL}/pol/status`, {
-                        method: 'GET',
-                        signal: AbortSignal.timeout(5000)
-                    });
-                    const latency = Date.now() - start;
-                    
-                    if (response.ok) {
-                        indicator.className = 'status-indicator status-good';
-                        indicator.textContent = '✅';
-                        status.textContent = `API: Connected to Blyan network (${latency}ms)`;
-                    } else {
-                        indicator.className = 'status-indicator status-warning';
-                        indicator.textContent = '⚠️';
-                        status.textContent = `API: Connected but issues detected (${response.status})`;
-                    }
-                } catch (error) {
-                    indicator.className = 'status-indicator status-error';
-                    indicator.textContent = '❌';
-                    status.textContent = 'API: Cannot reach Blyan network - check internet connection';
-                }
-            }
-            
-            async function checkBrowser() {
-                const indicator = document.getElementById('browser-check');
-                const status = document.getElementById('browser-status');
-                
-                try {
-                    const features = {
-                        wasm: typeof WebAssembly === 'object',
-                        workers: typeof Worker !== 'undefined',
-                        fetch: typeof fetch !== 'undefined',
-                        es6: typeof Symbol !== 'undefined'
-                    };
-                    
-                    const score = Object.values(features).filter(Boolean).length;
-                    
-                    if (score === 4) {
-                        indicator.className = 'status-indicator status-good';
-                        indicator.textContent = '✅';
-                        status.textContent = 'Browser: Fully compatible with all features';
-                    } else if (score >= 3) {
-                        indicator.className = 'status-indicator status-warning';
-                        indicator.textContent = '⚠️';
-                        status.textContent = `Browser: Mostly compatible (${score}/4 features)`;
-                    } else {
-                        indicator.className = 'status-indicator status-error';
-                        indicator.textContent = '❌';
-                        status.textContent = `Browser: Limited compatibility (${score}/4 features)`;
-                    }
-                } catch (error) {
-                    indicator.className = 'status-indicator status-error';
-                    indicator.textContent = '❌';
-                    status.textContent = 'Browser: Compatibility check failed';
-                }
-            }
+        }
     </script>
 </body>
 </html>

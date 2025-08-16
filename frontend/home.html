@@ -6,177 +6,486 @@
     <title>Blyan - Decentralized AI Network</title>
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="common-header-themed.css">
     <script src="language.js"></script>
     <script src="wallet.js"></script>
+    <script src="theme.js"></script>
     <style>
-        .hero-section {
-            text-align: center;
-            padding: 60px 20px;
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            color: white;
-            margin-bottom: 40px;
+        /* Theme-based styling using semantic tokens */
+        :root {
+            /* Light mode CSS variables (default) */
+            --color-primary: #1E3A8A;
+            --color-primary-light: #2E4EAE;
+            --color-primary-dark: #152C66;
+            --color-secondary: #06B6D4;
+            --color-secondary-light: #22D3EE;
+            --color-secondary-dark: #0891B2;
+            --color-background: #FFFFFF;
+            --color-surface: #F9FAFB;
+            --color-elevated: #FFFFFF;
+            --color-text-primary: #111827;
+            --color-text-secondary: #374151;
+            --color-text-disabled: #9CA3AF;
+            --color-divider: #E5E7EB;
+            --color-action-hover: rgba(30, 58, 138, 0.08);
+            --color-action-selected: rgba(30, 58, 138, 0.12);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.12);
         }
-        .vision-section {
-            max-width: 1200px;
-            margin: 60px auto;
-            padding: 0 20px;
-            text-align: center;
+        
+        /* Dark mode CSS variables */
+        [data-theme="dark"] {
+            --color-primary: #22D3EE;
+            --color-primary-light: #67E8F9;
+            --color-primary-dark: #06B6D4;
+            --color-secondary: #2E4EAE;
+            --color-secondary-light: #4361C2;
+            --color-secondary-dark: #1E3A8A;
+            --color-background: #111827;
+            --color-surface: #1F2937;
+            --color-elevated: #0F172A;
+            --color-text-primary: #F9FAFB;
+            --color-text-secondary: #D1D5DB;
+            --color-text-disabled: #4B5563;
+            --color-divider: #374151;
+            --color-action-hover: rgba(6, 182, 212, 0.12);
+            --color-action-selected: rgba(6, 182, 212, 0.16);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.5);
         }
-        .vision-title {
-            font-size: 2.5em;
-            font-weight: bold;
-            color: var(--text-color);
-            margin-bottom: 40px;
-        }
-        .vision-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 30px;
-            margin-bottom: 40px;
-        }
-        .vision-card {
-            background: white;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            text-align: left;
-        }
-        .vision-card-title {
-            font-size: 1.4em;
-            font-weight: bold;
-            color: var(--primary-color);
-            margin-bottom: 15px;
-        }
-        .vision-card-description {
-            color: var(--text-muted);
-            line-height: 1.6;
-        }
-        .vision-comparison {
-            background: linear-gradient(135deg, #f0f4ff, #fff0f5);
-            border-radius: 12px;
-            padding: 40px 30px 30px 30px; /* extra top padding to avoid overlap */
-            margin: 40px 0;
-            font-size: 1.2em;
-            line-height: 1.8;
-            color: var(--text-color);
-            position: relative;
-        }
-        .vision-comparison::before {
-            content: '💡';
-            position: absolute;
-            top: 10px;     /* move into the container to avoid covering text */
-            right: 12px;   /* pin to top-right corner */
-            font-size: 1.5em;
-            background: transparent;
+        
+        /* Base styles using semantic tokens */
+        * {
+            margin: 0;
             padding: 0;
+            box-sizing: border-box;
         }
-        .language-selector {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 14px;
-            cursor: pointer;
-            margin-right: 15px;
-        }
-        .hero-title {
-            font-size: 3em;
-            font-weight: bold;
-            margin-bottom: 20px;
-        }
-        .hero-subtitle {
-            font-size: 1.3em;
-            opacity: 0.9;
-            margin-bottom: 40px;
-        }
-        .main-actions {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-        .action-card {
-            background: white;
-            border-radius: 12px;
-            padding: 40px;
-            text-align: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            transition: transform 0.3s ease;
-        }
-        .action-card:hover {
-            transform: translateY(-5px);
-        }
-        .action-icon {
-            font-size: 4em;
-            margin-bottom: 20px;
-        }
-        .action-title {
-            font-size: 1.8em;
-            font-weight: bold;
-            margin-bottom: 15px;
-            color: var(--text-color);
-        }
-        .action-description {
-            color: var(--text-muted);
-            margin-bottom: 25px;
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6;
+            color: var(--color-text-primary);
+            background-color: var(--color-background);
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
-        .action-button {
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 15px 30px;
+        
+        /* Hero Section - Using subtle gradient with brand colors (< 10% solid color) */
+        .hero-section {
+            background: linear-gradient(135deg, 
+                var(--color-primary) 0%, 
+                var(--color-secondary) 100%);
+            color: var(--color-background);
+            padding: 100px 20px 80px;
+            text-align: center;
+        }
+        
+        .hero-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .hero-title {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+            letter-spacing: -0.02em;
+            color: inherit;
+        }
+        
+        .hero-subtitle {
+            font-size: 1.5rem;
+            font-weight: 300;
+            margin-bottom: 20px;
+            opacity: 0.95;
+            color: inherit;
+        }
+        
+        .hero-description {
+            font-size: 1.125rem;
+            line-height: 1.7;
+            margin-bottom: 40px;
+            opacity: 0.9;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            color: inherit;
+        }
+        
+        .hero-actions {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .cta-button {
+            padding: 16px 32px;
             border-radius: 8px;
-            font-size: 1.1em;
-            cursor: pointer;
-            transition: background 0.3s ease;
+            font-size: 1.1rem;
+            font-weight: 600;
             text-decoration: none;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
             display: inline-block;
         }
-        .action-button:hover {
-            background: var(--primary-hover);
+        
+        .cta-primary {
+            background: var(--color-background);
+            color: var(--color-primary);
         }
-        .secondary-button {
-            background: var(--secondary-color);
+        
+        .cta-primary:hover {
+            background: var(--color-surface);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
         }
-        .secondary-button:hover {
-            background: var(--secondary-hover);
+        
+        .cta-secondary {
+            background: transparent;
+            color: var(--color-background);
+            border: 2px solid var(--color-background);
+            backdrop-filter: blur(8px);
         }
-        .status-section {
-            max-width: 1000px;
-            margin: 60px auto 0;
-            padding: 0 20px;
+        
+        .cta-secondary:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: var(--color-background);
+            transform: translateY(-2px);
         }
-        .status-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
+        
+        /* Core Innovation Section */
+        .innovation-section {
+            padding: 80px 20px;
+            background: var(--color-background);
         }
-        .status-card {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
+        
+        .section-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .section-header {
             text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 60px;
         }
-        .status-number {
-            font-size: 2em;
-            font-weight: bold;
-            color: var(--primary-color);
+        
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            margin-bottom: 16px;
         }
-        .status-label {
-            color: var(--text-muted);
-            margin-top: 5px;
+        
+        .section-subtitle {
+            font-size: 1.25rem;
+            color: var(--color-text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
         }
+        
+        .innovation-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 32px;
+        }
+        
+        .innovation-card {
+            background: var(--color-surface);
+            border-radius: 16px;
+            padding: 40px 32px;
+            transition: all 0.3s ease;
+            border: 1px solid var(--color-divider);
+        }
+        
+        .innovation-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-xl);
+            border-color: var(--color-primary);
+            background: var(--color-elevated);
+        }
+        
+        .innovation-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 24px;
+            color: var(--color-background);
+        }
+        
+        .innovation-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            margin-bottom: 12px;
+        }
+        
+        .innovation-description {
+            font-size: 1rem;
+            color: var(--color-text-secondary);
+            line-height: 1.7;
+        }
+        
+        /* Why It Matters Section */
+        .matters-section {
+            padding: 80px 20px;
+            background: var(--color-surface);
+        }
+        
+        .matters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 48px;
+            margin-top: 60px;
+        }
+        
+        .matters-item {
+            text-align: center;
+        }
+        
+        .matters-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            background: var(--color-action-hover);
+            border: 2px solid var(--color-divider);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+        }
+        
+        .matters-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 12px;
+        }
+        
+        .matters-description {
+            font-size: 1rem;
+            color: var(--color-text-secondary);
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        
+        /* Vision Section */
+        .vision-section {
+            padding: 100px 20px;
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+            color: var(--color-background);
+            text-align: center;
+        }
+        
+        .vision-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .vision-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: inherit;
+        }
+        
+        .vision-text {
+            font-size: 1.25rem;
+            line-height: 1.8;
+            margin-bottom: 40px;
+            opacity: 0.95;
+            color: inherit;
+        }
+        
+        .vision-cta {
+            padding: 18px 40px;
+            background: var(--color-background);
+            color: var(--color-primary);
+            border-radius: 8px;
+            font-size: 1.125rem;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        .vision-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-xl);
+            background: var(--color-surface);
+        }
+        
+        /* Responsive Design */
         @media (max-width: 768px) {
-            .main-actions {
+            .hero-title {
+                font-size: 2.5rem;
+            }
+            
+            .hero-subtitle {
+                font-size: 1.25rem;
+            }
+            
+            .section-title {
+                font-size: 2rem;
+            }
+            
+            .innovation-grid {
                 grid-template-columns: 1fr;
             }
-            .hero-title {
-                font-size: 2em;
+            
+            .matters-grid {
+                grid-template-columns: 1fr;
             }
+        }
+        
+        /* Subtle animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .animate-in {
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        /* Theme toggle button */
+        .theme-toggle {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: var(--color-background);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: var(--shadow-lg);
+            transition: all 0.3s ease;
+            z-index: 100;
+        }
+        
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-xl);
+        }
+        
+        /* Modal styling with semantic tokens */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: var(--color-elevated);
+            color: var(--color-text-primary);
+            width: min(720px, 90%);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: var(--shadow-xl);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin: 0;
+        }
+        
+        .modal-close {
+            border: none;
+            background: transparent;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--color-text-secondary);
+            padding: 4px;
+            transition: color 0.2s ease;
+        }
+        
+        .modal-close:hover {
+            color: var(--color-text-primary);
+        }
+        
+        .modal-body {
+            color: var(--color-text-secondary);
+        }
+        
+        .modal-button {
+            background: var(--color-primary);
+            color: var(--color-background);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 16px;
+        }
+        
+        .modal-button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .modal-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .code-block {
+            background: var(--color-elevated);
+            border: 1px solid var(--color-divider);
+            color: var(--color-text-primary);
+            padding: 16px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin-top: 16px;
+        }
+        
+        .instructions-block {
+            background: var(--color-surface);
+            border: 1px solid var(--color-divider);
+            padding: 16px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            margin-top: 16px;
+            color: var(--color-text-secondary);
         }
     </style>
 </head>
@@ -184,143 +493,139 @@
     <div id="header-container"></div>
     
     <!-- Hero Section -->
-    <div class="hero-section">
-        <div class="hero-title" data-i18n="heroTitle">Blyan</div>
-        <div class="hero-subtitle" data-i18n="heroSubtitle">The World's First Decentralized AI Network</div>
-        <p data-i18n="heroDescription">Experience AI powered by collective intelligence. Chat with AI or contribute your computing power to earn rewards.</p>
-        <div style="margin-top:24px;">
-            <a href="chat.html" class="action-button" data-i18n="startChatting">Start Chatting</a>
-            <a href="#" id="join-now-btn" class="action-button secondary-button" style="margin-left:10px;" data-i18n="joinNow">Join Now</a>
+    <div class="hero-section animate-in">
+        <div class="hero-container">
+            <h1 class="hero-title" data-i18n="heroMainTitle">Decentralized AI for Everyone</h1>
+            <p class="hero-subtitle" data-i18n="heroMainSubtitle">The world's first truly open AI ecosystem</p>
+            <p class="hero-description" data-i18n="heroMainDescription">
+                AI today is controlled by a few tech giants. Blyan changes this. 
+                We're building a global network where anyone can contribute to and benefit from AI's evolution.
+            </p>
+            <div class="hero-actions">
+                <a href="chat.html" class="cta-button cta-primary" data-i18n="startChat">Start Chat</a>
+                <a href="#" id="join-now-btn" class="cta-button cta-secondary" data-i18n="joinNow">Join Now</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core Innovation Section -->
+    <div class="innovation-section">
+        <div class="section-container">
+            <div class="section-header animate-in">
+                <h2 class="section-title" data-i18n="coreInnovationTitle">Our Core Innovation</h2>
+                <p class="section-subtitle" data-i18n="coreInnovationSubtitle">Three breakthrough technologies that make decentralized AI possible</p>
+            </div>
+            <div class="innovation-grid">
+                <div class="innovation-card animate-in">
+                    <div class="innovation-icon">🔐</div>
+                    <h3 class="innovation-title" data-i18n="proofOfLearningTitle">Proof-of-Learning</h3>
+                    <p class="innovation-description" data-i18n="proofOfLearningDesc">
+                        Instead of wasting energy on puzzles, nodes prove value by improving the AI model. 
+                        Only meaningful updates are accepted, ensuring constant evolution.
+                    </p>
+                </div>
+                <div class="innovation-card animate-in">
+                    <div class="innovation-icon">⚡</div>
+                    <h3 class="innovation-title" data-i18n="distributedGpuTitle">Distributed GPU Network</h3>
+                    <p class="innovation-description" data-i18n="distributedGpuDesc">
+                        AI training and inference powered by a global mesh of independent GPU nodes, 
+                        not a single data center. True decentralization at scale.
+                    </p>
+                </div>
+                <div class="innovation-card animate-in">
+                    <div class="innovation-icon">🧠</div>
+                    <h3 class="innovation-title" data-i18n="mixtureOfExpertsTitle">Mixture-of-Experts + DAG</h3>
+                    <p class="innovation-description" data-i18n="mixtureOfExpertsDesc">
+                        Dynamic architecture routes tasks to the best expert models, 
+                        making AI both more efficient and infinitely scalable.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Why It Matters Section -->
+    <div class="matters-section">
+        <div class="section-container">
+            <div class="section-header animate-in">
+                <h2 class="section-title" data-i18n="whyItMattersTitle">Why It Matters</h2>
+                <p class="section-subtitle" data-i18n="whyItMattersSubtitle">Building AI that belongs to humanity, not corporations</p>
+            </div>
+            <div class="matters-grid">
+                <div class="matters-item animate-in">
+                    <div class="matters-icon">🔍</div>
+                    <h3 class="matters-title" data-i18n="transparencyTitle">Transparency</h3>
+                    <p class="matters-description" data-i18n="transparencyDesc">
+                        Every model update is verifiable on-chain. See exactly how AI evolves.
+                    </p>
+                </div>
+                <div class="matters-item animate-in">
+                    <div class="matters-icon">🌍</div>
+                    <h3 class="matters-title" data-i18n="accessibilityTitle">Accessibility</h3>
+                    <p class="matters-description" data-i18n="accessibilityDesc">
+                        Anyone can join—from professional researchers to curious hobbyists.
+                    </p>
+                </div>
+                <div class="matters-item animate-in">
+                    <div class="matters-icon">🤝</div>
+                    <h3 class="matters-title" data-i18n="collectiveOwnershipTitle">Collective Ownership</h3>
+                    <p class="matters-description" data-i18n="collectiveOwnershipDesc">
+                        AI no longer belongs to corporations, but to all of humanity.
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- Vision Section -->
     <div class="vision-section">
-        <h2 class="vision-title" data-i18n="visionTitle">Why We Built Blyan</h2>
-        <div class="vision-grid">
-            <div class="vision-card">
-                <div class="vision-card-title" data-i18n="visionTrustworthy">Creating Transparent AI</div>
-                <div class="vision-card-description" data-i18n="visionTrustworthyDesc">While AI models remain complex, Blyan makes the computation process transparent: see which experts answered, verify every step, and trace all decisions on-chain.</div>
-            </div>
-            <div class="vision-card">
-                <div class="vision-card-title" data-i18n="visionDemocratic">Democratizing AI Development</div>
-                <div class="vision-card-description" data-i18n="visionDemocraticDesc">Not just for tech giants anymore. Together, we can build and evolve AI models collectively.</div>
-            </div>
-            <div class="vision-card">
-                <div class="vision-card-title" data-i18n="visionEvolution">Blockchain Evolution</div>
-                <div class="vision-card-description" data-i18n="visionEvolutionDesc">Beyond transaction records - a living, learning infrastructure for distributed intelligence.</div>
-            </div>
-        </div>
-        <div class="vision-comparison" data-i18n="visionComparison">
-            Did you know? The energy Bitcoin uses in just 3 hours could train a GPT-4 level AI model. With Proof-of-Learning, we turn computation into intelligence.
+        <div class="vision-content animate-in">
+            <h2 class="vision-title" data-i18n="joinMovementTitle">Join the Movement</h2>
+            <p class="vision-text" data-i18n="joinMovementDesc">
+                Blyan is not just another blockchain or AI startup. 
+                It's a movement to return AI to the people—to build an intelligence 
+                that is open, accountable, and collectively owned.
+            </p>
+            <a href="contribute.html" class="vision-cta" data-i18n="bePartOfFuture">Be Part of the Future</a>
         </div>
     </div>
-
-    <!-- Main Actions -->
-    <div class="main-actions">
-        <!-- Chat with AI -->
-        <div class="action-card">
-            <div class="action-icon">🤖</div>
-            <div class="action-title" data-i18n="chatWithAI">Chat with AI</div>
-            <div class="action-description" data-i18n="chatDescription">
-                Start a conversation with our decentralized AI. Powered by distributed experts across the network.
-            </div>
-            <a href="chat.html" class="action-button" data-i18n="startChatting">Start Chatting</a>
-        </div>
-
-        <!-- Upload Dataset (Hidden for MVP) -->
-        <!--
-        <div class="action-card">
-            <div class="action-icon">📊</div>
-            <div class="action-title" data-i18n="uploadDataset">Upload Dataset</div>
-            <div class="action-description" data-i18n="uploadDescription">
-                Contribute training data to improve AI models. Zero-cost participation with democratic governance.
-            </div>
-            <a href="dataset_upload.html" class="action-button secondary-button" data-i18n="uploadNow">Upload Now</a>
-        </div>
-        -->
-
-        <!-- Join Network -->
-        <div class="action-card">
-            <div class="action-icon">⚡</div>
-            <div class="action-title" data-i18n="joinTheNetwork">Join the Network</div>
-            <div class="action-description" data-i18n="joinDescription">
-                Share your GPU and earn rewards. One‑click issues a node key and shows the exact command to run.
-            </div>
-            <a href="contribute.html" class="action-button secondary-button" data-i18n="joinNow">Join Now</a>
-        </div>
-
-        <!-- Dataset Explorer (Hidden for MVP) -->
-        <!--
-        <div class="action-card">  
-            <div class="action-icon">🔍</div>
-            <div class="action-title" data-i18n="datasetExplorer">Dataset Explorer</div>
-            <div class="action-description" data-i18n="explorerDescription">
-                Explore community datasets, vote on proposals, and track data governance in real-time.
-            </div>
-            <a href="dataset_explorer.html" class="action-button secondary-button" data-i18n="exploreDatasets">Explore Datasets</a>
-        </div>
-        -->
-    </div>
-
-    <!-- Network Status -->
-    <div class="status-section">
-        <h2 style="text-align: center; margin-bottom: 30px; color: var(--text-color);" data-i18n="networkStatus">Network Status</h2>
-        <div class="status-grid">
-            <div class="status-card">
-                <div class="status-number" id="active-experts">-</div>
-                <div class="status-label" data-i18n="activeExperts">Active Experts</div>
-            </div>
-            <div class="status-card">
-                <div class="status-number" id="network-nodes">-</div>
-                <div class="status-label" data-i18n="networkNodes">Network Nodes</div>
-            </div>
-            <div class="status-card">
-                <div class="status-number" id="total-requests">-</div>
-                <div class="status-label" data-i18n="totalRequests">Total Requests</div>
-            </div>
-            <div class="status-card">
-                <div class="status-number" id="network-health">-</div>
-                <div class="status-label" data-i18n="networkHealth">Network Health</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Advanced Features Link (Hidden for MVP) -->
-    <!--
-    <div style="text-align: center; margin: 60px 0; padding: 20px;">
-        <p style="color: var(--text-muted); margin-bottom: 15px;" data-i18n="advancedFeatures">
-            Looking for advanced features?
-        </p>
-        <a href="explorer.html" style="color: var(--primary-color); text-decoration: none;" data-i18n="viewDashboard">
-            View Technical Dashboard & Analytics →
-        </a>
-    </div>
-    -->
 
     <script src="config.js"></script>
     <script src="common-header.js"></script>
     
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <span id="themeIcon">🌙</span>
+    </button>
+    
     <!-- Join modal -->
-    <div id="joinModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); align-items:center; justify-content:center; z-index:1000;">
-      <div style="background:#fff; width:min(720px,90%); border-radius:12px; padding:24px; box-shadow:0 20px 60px rgba(0,0,0,.2);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <h3 style="margin:0;">Join the Network</h3>
-          <button id="joinClose" style="border:none; background:transparent; font-size:20px; cursor:pointer;">✖</button>
+    <div id="joinModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Join the Network</h3>
+                <button id="joinClose" class="modal-close" aria-label="Close modal">✖</button>
+            </div>
+            <div id="joinBody" class="modal-body">
+                <p>We will create a node operator API key and show a one‑line command to start a GPU node. CPU mode is not supported for LLMs.</p>
+                <button id="provisionKeyBtn" class="modal-button">Generate Node Key</button>
+                <div id="provisionResult" style="display:none;">
+                    <div class="code-block" id="commandBox"></div>
+                    <p style="margin-top:12px; color: var(--color-text-secondary);">
+                        1) Copy and run the command on a GPU machine (Docker required).<br/>
+                        2) Or set the key as env and run the Python node.
+                    </p>
+                    <pre id="altInstructions" class="instructions-block"></pre>
+                </div>
+            </div>
         </div>
-        <div id="joinBody">
-          <p>We will create a node operator API key and show a one‑line command to start a GPU node. CPU mode is not supported for LLMs.</p>
-          <button id="provisionKeyBtn" class="action-button">Generate Node Key</button>
-          <div id="provisionResult" style="display:none; margin-top:16px;">
-            <div style="background:#0f172a; color:#e5e7eb; padding:12px; border-radius:8px; font-family:monospace; font-size:12px; overflow:auto;" id="commandBox"></div>
-            <p style="margin-top:12px;">1) Copy and run the command on a GPU machine (Docker required).<br/>2) Or set the key as env and run the Python node.</p>
-            <pre id="altInstructions" style="background:#f3f4f6; padding:10px; border-radius:8px; white-space:pre-wrap;"></pre>
-          </div>
-        </div>
-      </div>
     </div>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize theme
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+            
             // Create header
             document.getElementById('header-container').innerHTML = createAIBlockHeader('home');
             
@@ -328,46 +633,46 @@
             if (typeof updateHeaderUsage === 'function') {
                 await updateHeaderUsage();
             }
-            
-            // Load network status
-            await loadNetworkStatus();
 
-            // Wire Join buttons
-            const openJoin = () => document.getElementById('joinModal').style.display = 'flex';
+            // Theme toggle functionality
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(newTheme);
+            });
+
+            // Wire Join button
+            const openJoin = () => {
+                document.getElementById('joinModal').style.display = 'flex';
+            };
             document.getElementById('join-now-btn').addEventListener('click', openJoin);
-            document.getElementById('join-network-btn').addEventListener('click', openJoin);
-            document.getElementById('joinClose').addEventListener('click', () => (document.getElementById('joinModal').style.display = 'none'));
+            document.getElementById('joinClose').addEventListener('click', () => {
+                document.getElementById('joinModal').style.display = 'none';
+            });
             document.getElementById('provisionKeyBtn').addEventListener('click', provisionNodeKeyAndShow);
+            
+            // Add scroll animations
+            const observerOptions = {
+                root: null,
+                rootMargin: '0px',
+                threshold: 0.1
+            };
+            
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                    }
+                });
+            }, observerOptions);
+            
+            // Observe all animatable elements
+            document.querySelectorAll('.innovation-card, .matters-item, .section-header').forEach(el => {
+                observer.observe(el);
+            });
         });
-
-        async function loadNetworkStatus() {
-            try {
-                // Get expert stats
-                const expertsResponse = await fetch(`${API_CONFIG.baseURL}/experts/top?limit=100`);
-                if (expertsResponse.ok) {
-                    const expertsData = await expertsResponse.json();
-                    document.getElementById('active-experts').textContent = expertsData.experts.length;
-                }
-
-                // Get network nodes
-                const nodesResponse = await fetch(`${API_CONFIG.baseURL}/p2p/nodes`);
-                if (nodesResponse.ok) {
-                    const nodesData = await nodesResponse.json();
-                    document.getElementById('network-nodes').textContent = nodesData.nodes.length;
-                }
-
-                // Mock data for demo (replace with real endpoints when available)
-                document.getElementById('total-requests').textContent = '1,247';
-                document.getElementById('network-health').textContent = '99.8%';
-            } catch (error) {
-                console.log('Status loading failed (expected in development)');
-                // Show demo data
-                document.getElementById('active-experts').textContent = '8';
-                document.getElementById('network-nodes').textContent = '3';
-                document.getElementById('total-requests').textContent = '1,247';
-                document.getElementById('network-health').textContent = '99.8%';
-            }
-        }
 
         async function provisionNodeKeyAndShow() {
             const bodyEl = document.getElementById('joinBody');
@@ -405,6 +710,12 @@
             } finally {
                 btn.disabled = false; btn.textContent = 'Generate Node Key';
             }
+        }
+        
+        // Helper function to update theme icon
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            icon.textContent = theme === 'light' ? '🌙' : '☀️';
         }
     </script>
 </body>

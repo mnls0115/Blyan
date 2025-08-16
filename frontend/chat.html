@@ -6,996 +6,735 @@
     <title>AI Chat - Blyan</title>
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="common-header-themed.css">
+    <link rel="stylesheet" href="page-template.css">
     <script src="language.js"></script>
+    <script src="wallet.js"></script>
+    <script src="theme.js"></script>
     <style>
-        .chat-container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            height: calc(100vh - 120px);
-            display: flex;
-            flex-direction: column;
+        /* Theme variables */
+        :root {
+            --color-primary: #1E3A8A;
+            --color-primary-light: #2E4EAE;
+            --color-primary-dark: #152C66;
+            --color-secondary: #06B6D4;
+            --color-secondary-light: #22D3EE;
+            --color-secondary-dark: #0891B2;
+            --color-background: #FFFFFF;
+            --color-surface: #F9FAFB;
+            --color-elevated: #FFFFFF;
+            --color-text-primary: #111827;
+            --color-text-secondary: #374151;
+            --color-text-disabled: #9CA3AF;
+            --color-divider: #E5E7EB;
+            --color-action-hover: rgba(30, 58, 138, 0.08);
+            --color-action-selected: rgba(6, 182, 212, 0.12);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.12);
         }
-        /* Layout with sidebar */
+        
+        [data-theme="dark"] {
+            --color-primary: #22D3EE;
+            --color-primary-light: #67E8F9;
+            --color-primary-dark: #06B6D4;
+            --color-secondary: #2E4EAE;
+            --color-secondary-light: #4361C2;
+            --color-secondary-dark: #1E3A8A;
+            --color-background: #111827;
+            --color-surface: #1F2937;
+            --color-elevated: #0F172A;
+            --color-text-primary: #F9FAFB;
+            --color-text-secondary: #D1D5DB;
+            --color-text-disabled: #4B5563;
+            --color-divider: #374151;
+            --color-action-hover: rgba(6, 182, 212, 0.12);
+            --color-action-selected: rgba(6, 182, 212, 0.16);
+            --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+            --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.4);
+            --shadow-xl: 0 16px 32px rgba(0, 0, 0, 0.5);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--color-text-primary);
+            background-color: var(--color-background);
+            transition: background-color 0.3s ease, color 0.3s ease;
+            margin: 0;
+        }
+
+        /* Chat Layout with Sidebar */
         .chat-layout {
             display: flex;
-            gap: 16px;
-            max-width: 1200px;
+            height: calc(100vh - 80px);
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 16px;
-            min-height: calc(100vh - 100px);
+            gap: 0;
         }
+
+        /* Chat History Sidebar */
         .chat-sidebar {
             width: 280px;
-            background: #0f172a;
-            color: #e2e8f0;
-            border-radius: 12px;
-            padding: 12px;
+            background: linear-gradient(145deg, var(--color-surface), var(--color-elevated));
+            border-right: 1px solid var(--color-divider);
             display: flex;
             flex-direction: column;
+            padding: 20px;
+            position: relative;
         }
+        
+        .chat-sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+        }
+
         .sidebar-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
+            margin-bottom: 24px;
         }
+
+        .sidebar-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 16px;
+        }
+
         .new-chat-btn {
-            background: #22c55e;
-            color: #0b1220;
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
+            color: var(--color-background);
             border: none;
             border-radius: 8px;
-            padding: 8px 10px;
-            cursor: pointer;
             font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
         }
-        .session-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            overflow-y: auto;
+
+        .new-chat-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .new-chat-btn:hover::before {
+            left: 100%;
+        }
+
+        .new-chat-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .chat-history {
             flex: 1;
+            overflow-y: auto;
         }
-        .session-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            padding: 10px 12px;
-            margin-bottom: 6px;
-            background: #111827;
-            border: 1px solid #1f2937;
+
+        .chat-history-item {
+            padding: 12px;
+            margin-bottom: 8px;
             border-radius: 8px;
             cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
         }
-        .session-item.active {
-            background: #1f2937;
-            border-color: #334155;
+
+        .chat-history-item:hover {
+            background: var(--color-action-hover);
+            border-color: var(--color-divider);
         }
-        .session-title {
-            color: #e5e7eb;
-            font-size: 14px;
+
+        .chat-history-item.active {
+            background: var(--color-action-selected);
+            border-color: var(--color-primary);
+        }
+
+        .chat-history-title {
+            font-weight: 500;
+            color: var(--color-text-primary);
+            margin-bottom: 4px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .chat-history-preview {
+            font-size: 0.875rem;
+            color: var(--color-text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chat-history-time {
+            font-size: 0.75rem;
+            color: var(--color-text-disabled);
+            margin-top: 4px;
+        }
+
+        /* Main Chat Area */
+        .chat-main {
             flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--color-background);
         }
-        .session-actions button {
-            background: transparent;
-            color: #9ca3af;
-            border: none;
-            cursor: pointer;
-        }
+
         .chat-header {
-            background: white;
-            padding: 20px;
-            border-radius: 12px 12px 0 0;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        .chat-window {
-            flex: 1;
-            background: white;
-            padding: 20px;
-            overflow-y: auto;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        .chat-input-area {
-            background: white;
-            padding: 20px;
-            border-radius: 0 0 12px 12px;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--color-divider);
+            background: linear-gradient(135deg, var(--color-elevated), var(--color-surface));
+            position: relative;
         }
         
-        .message {
-            margin-bottom: 20px;
-            padding: 15px;
-            border-radius: 12px;
-            max-width: 80%;
-            word-wrap: break-word;
+        .chat-header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
         }
-        .message.user {
-            background: var(--primary-color);
-            color: white;
-            margin-left: auto;
-            text-align: right;
+
+        .chat-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
         }
-        .message.ai {
-            background: #f8f9fa;
-            color: var(--text-color);
-            border: 1px solid #e9ecef;
+
+        .chat-subtitle {
+            font-size: 0.875rem;
+            color: var(--color-text-secondary);
+            margin-top: 4px;
         }
-        .message-sender {
-            font-weight: bold;
-            margin-bottom: 5px;
-            font-size: 0.9em;
-        }
-        .chat-form {
+
+        .chat-messages {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
             display: flex;
-            gap: 10px;
+            flex-direction: column;
+            gap: 16px;
         }
+
+        .message {
+            max-width: 70%;
+            padding: 16px 20px;
+            border-radius: 16px;
+            line-height: 1.5;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: var(--color-primary);
+            color: var(--color-background);
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+            background: var(--color-surface);
+            color: var(--color-text-primary);
+            border: 1px solid var(--color-divider);
+        }
+
+        .chat-input-area {
+            padding: 20px 24px;
+            border-top: 1px solid var(--color-divider);
+            background: var(--color-elevated);
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
         .chat-input {
             flex: 1;
-            padding: 15px;
-            border: 2px solid #e9ecef;
-            border-radius: 25px;
-            font-size: 16px;
-            outline: none;
+            min-height: 48px;
+            max-height: 120px;
+            padding: 12px 16px;
+            border: 1px solid var(--color-divider);
+            border-radius: 24px;
+            background: var(--color-background);
+            color: var(--color-text-primary);
+            font-size: 1rem;
+            resize: none;
+            transition: border-color 0.3s ease;
         }
+
         .chat-input:focus {
-            border-color: var(--primary-color);
+            outline: none;
+            border-color: var(--color-primary);
         }
-        .send-button {
-            padding: 15px 25px;
-            background: var(--primary-color);
-            color: white;
+
+        .send-btn {
+            width: 48px;
+            height: 48px;
+            background: var(--color-primary);
+            color: var(--color-background);
             border: none;
-            border-radius: 25px;
+            border-radius: 50%;
             cursor: pointer;
-            font-size: 16px;
-            transition: background 0.3s ease;
-        }
-        .send-button:hover:not(:disabled) {
-            background: var(--primary-hover);
-        }
-        .send-button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        .typing-indicator {
-            display: none;
-            color: var(--text-muted);
-            font-style: italic;
-            padding: 10px 0;
-        }
-        
-        /* Streaming UI styles */
-        .streaming-metrics {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 10px 0;
-            display: none;
-        }
-        .streaming-metrics.active {
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
         }
-        .metric {
-            text-align: center;
+
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: var(--shadow-md);
         }
-        .metric-value {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: var(--primary-color);
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
         }
-        .metric-label {
-            font-size: 0.75rem;
-            color: #6b7280;
-            text-transform: uppercase;
-        }
-        .cancel-stream-btn {
-            background: #ef4444;
-            color: white;
-            border: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            cursor: pointer;
-            display: none;
-            margin-left: 10px;
-        }
-        .cancel-stream-btn:hover {
-            background: #dc2626;
-        }
-        .usage-indicator {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 12px;
-            margin: 10px 0;
-            font-size: 0.9em;
-        }
-        .usage-indicator.free-tier {
-            border-color: #10b981;
-            background: #ecfdf5;
-        }
-        .usage-indicator.paid-tier {
-            border-color: #3b82f6;
-            background: #eff6ff;
-        }
-        .usage-indicator.low-balance {
-            border-color: #f59e0b;
-            background: #fffbeb;
-        }
-        .usage-bar {
-            background: #e5e7eb;
-            height: 4px;
-            border-radius: 2px;
-            overflow: hidden;
-            margin: 8px 0 4px 0;
-        }
-        .usage-fill {
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             height: 100%;
-            background: linear-gradient(90deg, #10b981, #059669);
-            transition: width 0.3s ease;
+            text-align: center;
+            padding: 40px;
         }
-        .usage-fill.low {
-            background: linear-gradient(90deg, #f59e0b, #d97706);
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 16px;
         }
-        .usage-fill.critical {
-            background: linear-gradient(90deg, #ef4444, #dc2626);
+
+        .empty-state-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 8px;
+        }
+
+        .empty-state-text {
+            color: var(--color-text-secondary);
+            margin-bottom: 24px;
+        }
+
+        /* Theme toggle */
+        .theme-toggle {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: var(--color-background);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: var(--shadow-lg);
+            transition: all 0.3s ease;
+            z-index: 100;
         }
         
-        /* Mobile responsiveness for 360-414px */
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-xl);
+        }
+
+        /* Responsive */
         @media (max-width: 768px) {
             .chat-layout {
                 flex-direction: column;
-                padding: 8px;
+                height: auto;
             }
             
             .chat-sidebar {
                 width: 100%;
-                height: auto;
-                margin-bottom: 12px;
-                order: -1;
+                max-height: 200px;
+                border-right: none;
+                border-bottom: 1px solid var(--color-divider);
             }
             
-            .session-list {
-                max-height: 120px;
-                overflow-y: auto;
-            }
-            
-            .chat-container {
-                height: calc(100vh - 200px);
-                min-height: 400px;
-            }
-            
-            .chat-input {
-                font-size: 16px; /* Prevents zoom on iOS */
-                padding: 12px;
-            }
-            
-            .streaming-metrics {
-                flex-direction: column;
-                gap: 8px;
-                padding: 10px;
-            }
-            
-            .streaming-metrics .metric {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                width: 100%;
-            }
-            
-            .usage-indicator {
-                margin: 8px 0;
-                padding: 8px;
-            }
-        }
-        
-        @media (max-width: 414px) {
-            .chat-layout {
-                padding: 4px;
-            }
-            
-            .chat-form {
-                flex-direction: column;
-                gap: 8px;
-            }
-            
-            .chat-input {
-                width: 100%;
-                margin-bottom: 8px;
-            }
-            
-            .send-button {
-                width: 100%;
-                padding: 12px;
-            }
-            
-            .message {
-                max-width: 95%;
-                padding: 10px;
+            .chat-main {
+                height: calc(100vh - 280px);
             }
         }
     </style>
 </head>
 <body>
     <div id="header-container"></div>
-
+    
     <div class="chat-layout">
-        <aside class="chat-sidebar">
+        <!-- Chat History Sidebar -->
+        <div class="chat-sidebar">
             <div class="sidebar-header">
-                <div style="font-weight:700;">💬 <span data-i18n="chats">Chats</span></div>
-                <button class="new-chat-btn" id="new-chat-btn" data-i18n="newChat">New</button>
+                <h2 class="sidebar-title" data-i18n="chats">Chat History</h2>
+                <button class="new-chat-btn" onclick="startNewChat()" data-i18n="newChat">
+                    + New Chat
+                </button>
             </div>
-            <ul class="session-list" id="session-list"></ul>
-        </aside>
+            <div class="chat-history" id="chatHistory">
+                <!-- Chat history will be loaded dynamically -->
+            </div>
+        </div>
 
-        <div class="chat-container" style="flex:1;">
+        <!-- Main Chat Area -->
+        <div class="chat-main">
             <div class="chat-header">
-                <h1>🤖 <span data-i18n="aiChat">AI Chat</span></h1>
-                <p data-i18n="chatWithDistributed">Chat with our decentralized AI network</p>
+                <div class="chat-title" data-i18n="aiAssistant">Blyan AI Assistant</div>
+                <div class="chat-subtitle" data-i18n="chatWithDistributed">Powered by decentralized intelligence</div>
             </div>
-            
-            <div class="chat-window" id="chat-window">
-                <div class="message ai">
-                    <div class="message-sender" data-i18n="aiAssistant">AI Assistant</div>
-                    <div data-i18n="aiWelcomeMessage">Hello! I'm powered by the Blyan decentralized network. Ask me anything!</div>
-                </div>
-            </div>
-            
-            <div class="typing-indicator" id="typing-indicator">
-                <span data-i18n="aiThinking">AI is thinking...</span>
-                <button id="cancelStreamBtn" class="cancel-stream-btn" onclick="cancelStream()">Cancel</button>
-            </div>
-            
-            <!-- Usage Indicator -->
-            <div id="usageIndicator" class="usage-indicator" style="display: none;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span id="usageText">Checking usage...</span>
-                    <span id="usageCount" style="font-weight: 600;"></span>
-                </div>
-                <div class="usage-bar">
-                    <div id="usageFill" class="usage-fill" style="width: 100%;"></div>
-                </div>
-                <div id="usageDetail" style="font-size: 0.8em; color: #6b7280; margin-top: 4px;"></div>
-            </div>
-            
-            <div class="streaming-metrics" id="streamingMetrics">
-                <div class="metric">
-                    <div class="metric-value" id="tokenCount">0</div>
-                    <div class="metric-label">Tokens</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-value" id="tokenSpeed">0</div>
-                    <div class="metric-label">Tokens/sec</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-value" id="currentCost">0.000</div>
-                    <div class="metric-label">BLY Cost</div>
-                </div>
-                <div class="metric">
-                    <input type="range" id="maxTokens" min="50" max="500" value="200" 
-                           style="width: 60px; margin: 0;" onchange="updateTokenDisplay()">
-                    <div class="metric-label">Max Tokens</div>
-                    <div id="tokenDisplay" style="font-size: 0.8em; color: #6b7280;">200</div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🤖</div>
+                    <div class="empty-state-title" data-i18n="welcomeToBlyanchat">Welcome to Blyan AI</div>
+                    <div class="empty-state-text" data-i18n="welcomeChatDesc">
+                        Start a conversation with our decentralized AI assistant. 
+                        Your queries will be processed by our global network of expert nodes.
+                    </div>
                 </div>
             </div>
-            
+
             <div class="chat-input-area">
-                <form class="chat-form" id="chat-form">
-                    <input 
-                        type="text" 
-                        id="chat-input" 
+                <div class="chat-input-container">
+                    <textarea 
                         class="chat-input" 
-                        placeholder="Type your message..."
+                        id="chatInput"
                         data-i18n-placeholder="typeYourMessage"
-                        autocomplete="off"
-                        required
-                    >
-                    <button type="submit" class="send-button" id="send-button" data-i18n="send">Send</button>
-                </form>
+                        placeholder="Type your message here..."
+                        rows="1"
+                    ></textarea>
+                    <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                        ➤
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <span id="themeIcon">🌙</span>
+    </button>
 
     <script src="config.js"></script>
     <script src="common-header.js"></script>
-    <script src="wallet.js"></script>
     <script>
-        // Global session persistence
-        const SESSIONS_KEY = 'blyan-chat-sessions-v1';
-        const SESSION_PREFIX = 'blyan-chat-session-';
-        let currentSessionId = null;
-        let chatHistory = [];
-        
-        // Streaming variables
-        let eventSource = null;
-        let currentStreamId = null;
-        let currentMessageElement = null;
-        let accumulatedTokens = '';
-        let streamErrorCount = 0;
-        
-        document.addEventListener('DOMContentLoaded', () => {
+        let conversationId = null;
+        let isTyping = false;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize theme
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+            
             // Create header
             document.getElementById('header-container').innerHTML = createAIBlockHeader('chat');
             
-            const chatForm = document.getElementById('chat-form');
-            const chatInput = document.getElementById('chat-input');
-            const chatWindow = document.getElementById('chat-window');
-            const sendButton = document.getElementById('send-button');
-            const typingIndicator = document.getElementById('typing-indicator');
-            
-            // Session UI
-            const sessionListEl = document.getElementById('session-list');
-            const newChatBtn = document.getElementById('new-chat-btn');
-            newChatBtn.addEventListener('click', () => createNewSession());
-            
-            // Load user usage information
-            loadUserUsage();
-            
-            // Update header usage indicator
-            updateHeaderUsage();
-
-            // Load or create initial session
-            ensureDefaultSession();
-            renderSessionList();
-            loadSession(currentSessionId);
-
-            chatForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const message = chatInput.value.trim();
-                if (!message) return;
-
-                // Add user message and start streaming immediately
-                addMessage('user', message);
-                chatInput.value = '';
-                await startStreaming(message);
+            // Theme toggle functionality
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(newTheme);
             });
 
-            function addMessage(sender, content, saveToHistory = true) {
-                const messageDiv = document.createElement('div');
-                messageDiv.className = `message ${sender}`;
-                
-                const senderDiv = document.createElement('div');
-                senderDiv.className = 'message-sender';
-                senderDiv.textContent = sender === 'user' ? 'You' : 'AI Assistant';
-                
-                const contentDiv = document.createElement('div');
-                contentDiv.textContent = content;
-                
-                messageDiv.appendChild(senderDiv);
-                messageDiv.appendChild(contentDiv);
-                
-                chatWindow.appendChild(messageDiv);
-                chatWindow.scrollTop = chatWindow.scrollHeight;
-                
-                // Save to persistent history
-                if (saveToHistory) {
-                    const message = { sender, content, timestamp: Date.now() };
-                    chatHistory.push(message);
-                    saveSession(currentSessionId, chatHistory);
-                    // If first user message, set session title
-                    const sessions = getSessions();
-                    const idx = sessions.findIndex(s => s.id === currentSessionId);
-                    if (idx >= 0 && !sessions[idx].title) {
-                        sessions[idx].title = content.slice(0, 40);
-                        sessions[idx].updatedAt = Date.now();
-                        saveSessions(sessions);
-                        renderSessionList();
-                    }
-                }
-            }
+            // Auto-resize textarea
+            const chatInput = document.getElementById('chatInput');
+            chatInput.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            });
 
-            // Expose for global helpers defined outside this closure
-            window.addChatMessage = addMessage;
-            window.showTypingIndicator = showTyping;
-            
-            function ensureDefaultSession() {
-                const sessions = getSessions();
-                if (!sessions.length) {
-                    const id = genId();
-                    const newSession = { id, title: '', createdAt: Date.now(), updatedAt: Date.now() };
-                    saveSessions([newSession]);
-                    saveSession(id, []);
-                    currentSessionId = id;
-                } else {
-                    currentSessionId = sessions[0].id;
+            // Enter key to send (Shift+Enter for new line)
+            chatInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
                 }
-            }
+            });
 
-            function genId() {
-                return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-            }
+            // Load chat history
+            await loadChatHistory();
 
-            function getSessions() {
-                try { return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]'); } catch { return []; }
+            // Check for message parameter in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const message = urlParams.get('message');
+            if (message) {
+                chatInput.value = message;
+                sendMessage();
             }
-            function saveSessions(sessions) {
-                localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-            }
-            function loadSession(id) {
-                try {
-                    const saved = localStorage.getItem(SESSION_PREFIX + id);
-                    chatHistory = saved ? JSON.parse(saved) : [];
-                    // Clear window except welcome
-                    const existing = chatWindow.querySelectorAll('.message');
-                    existing.forEach((msg, index) => { if (index > 0) msg.remove(); });
-                    chatHistory.forEach(m => addMessage(m.sender, m.content, false));
-                    currentSessionId = id;
-                    highlightActiveSession();
-                } catch (e) { console.error('loadSession failed', e); }
-            }
-            function saveSession(id, messages) {
-                try {
-                    const trimmed = messages.length > 200 ? messages.slice(-200) : messages;
-                    localStorage.setItem(SESSION_PREFIX + id, JSON.stringify(trimmed));
-                    const sessions = getSessions();
-                    const idx = sessions.findIndex(s => s.id === id);
-                    if (idx >= 0) { sessions[idx].updatedAt = Date.now(); saveSessions(sessions); }
-                } catch (e) { console.error('saveSession failed', e); }
-            }
-            function renderSessionList() {
-                const sessions = getSessions().sort((a,b) => (b.updatedAt||0)-(a.updatedAt||0));
-                sessionListEl.innerHTML = '';
-                sessions.forEach(s => {
-                    const li = document.createElement('li');
-                    li.className = 'session-item' + (s.id === currentSessionId ? ' active' : '');
-                    li.innerHTML = `
-                        <div class="session-title" title="${(s.title||'New chat')}">${(s.title||'New chat')}</div>
-                        <div class="session-actions">
-                            <button title="Rename" data-act="rename">✏️</button>
-                            <button title="Delete" data-act="delete">🗑️</button>
-                        </div>`;
-                    li.addEventListener('click', (e) => {
-                        const act = (e.target && e.target.dataset && e.target.dataset.act) || '';
-                        if (act === 'delete') { e.stopPropagation(); return deleteSession(s.id); }
-                        if (act === 'rename') { e.stopPropagation(); return renameSession(s.id); }
-                        loadSession(s.id);
-                    });
-                    sessionListEl.appendChild(li);
-                });
-            }
-            function highlightActiveSession() {
-                const nodes = sessionListEl.querySelectorAll('.session-item');
-                nodes.forEach(n => n.classList.remove('active'));
-                const sessions = getSessions();
-                const idx = sessions.findIndex(s => s.id === currentSessionId);
-                if (idx >= 0 && sessionListEl.children[idx]) sessionListEl.children[idx].classList.add('active');
-            }
-            function createNewSession() {
-                const id = genId();
-                const sessions = [{ id, title: '', createdAt: Date.now(), updatedAt: Date.now() }, ...getSessions()];
-                saveSessions(sessions);
-                saveSession(id, []);
-                currentSessionId = id;
-                renderSessionList();
-                loadSession(id);
-            }
-            function deleteSession(id) {
-                if (!confirm('Delete this chat?')) return;
-                const sessions = getSessions().filter(s => s.id !== id);
-                saveSessions(sessions);
-                localStorage.removeItem(SESSION_PREFIX + id);
-                if (currentSessionId === id) {
-                    if (sessions.length) { currentSessionId = sessions[0].id; } else { ensureDefaultSession(); }
-                    loadSession(currentSessionId);
-                }
-                renderSessionList();
-            }
-            function renameSession(id) {
-                const sessions = getSessions();
-                const s = sessions.find(x => x.id === id);
-                const title = prompt('Rename chat', s && s.title ? s.title : '');
-                if (title !== null) {
-                    s.title = title.trim();
-                    s.updatedAt = Date.now();
-                    saveSessions(sessions);
-                    renderSessionList();
-                }
-            }
-
-            function showTyping(show) {
-                typingIndicator.style.display = show ? 'block' : 'none';
-                sendButton.disabled = show;
-                
-                // Show/hide cancel button during streaming
-                const cancelBtn = document.getElementById('cancelStreamBtn');
-                if (cancelBtn) {
-                    cancelBtn.style.display = show ? 'inline-block' : 'none';
-                }
-                
-                if (show) {
-                    chatWindow.scrollTop = chatWindow.scrollHeight;
-                }
-            }
-
-            // Auto-focus input
-            chatInput.focus();
         });
+        
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('themeIcon');
+            icon.textContent = theme === 'light' ? '🌙' : '☀️';
+        }
 
-        // Streaming chat functions
-        async function startStreaming(message) {
-            showTyping(true);
+        function startNewChat() {
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🤖</div>
+                    <div class="empty-state-title" data-i18n="newConversation">${t('newConversation') || 'New Conversation'}</div>
+                    <div class="empty-state-text" data-i18n="startFreshConversation">
+                        ${t('startFreshConversation') || 'Start a fresh conversation with Blyan AI.'}
+                    </div>
+                </div>
+            `;
+            conversationId = null;
             
-            // Show streaming metrics panel
-            const metricsPanel = document.getElementById('streamingMetrics');
-            metricsPanel.classList.add('active');
+            // Update active history item
+            document.querySelectorAll('.chat-history-item').forEach(item => {
+                item.classList.remove('active');
+            });
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
             
-            // Create AI message element for streaming
-            currentMessageElement = addStreamingMessage('', 'ai');
-            accumulatedTokens = '';
+            if (!message || isTyping) return;
+            
+            // Clear empty state and add user message
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages.querySelector('.empty-state')) {
+                chatMessages.innerHTML = '';
+            }
+            
+            addMessage(message, 'user');
+            input.value = '';
+            input.style.height = 'auto';
+            
+            // Show typing indicator
+            isTyping = true;
+            updateSendButton();
+            addTypingIndicator();
             
             try {
-                const maxTokens = document.getElementById('maxTokens')?.value || 200;
-                const params = new URLSearchParams({
-                    prompt: message,
-                    max_new_tokens: maxTokens
+                const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(localStorage.getItem('apiKey') && {
+                            'Authorization': `Bearer ${localStorage.getItem('apiKey')}`
+                        })
+                    },
+                    body: JSON.stringify({
+                        prompt: message,
+                        conversation_id: conversationId,
+                        use_moe: true
+                    })
                 });
                 
-                // Add user headers for authentication
-                const headers = getUserHeaders();
-                const headerParams = new URLSearchParams();
-                Object.entries(headers).forEach(([key, value]) => {
-                    headerParams.append(key, value);
-                });
-                
-                eventSource = new EventSource(`${API_CONFIG.baseURL}/chat/stream?${params}&${headerParams}`);
-                
-                eventSource.addEventListener('stream_start', (event) => {
-                    const data = JSON.parse(event.data);
-                    currentStreamId = data.stream_id;
-                });
-                
-                eventSource.addEventListener('token', (event) => {
-                    const data = JSON.parse(event.data);
-                    handleStreamToken(data);
-                });
-                
-                eventSource.addEventListener('stream_end', (event) => {
-                    const data = JSON.parse(event.data);
-                    handleStreamEnd(data);
-                });
-                
-                eventSource.addEventListener('error', (event) => {
-                    handleStreamError(event);
-                });
-                
-                // Handle EventSource connection errors (CORS, network, etc)
-                eventSource.onerror = (event) => {
-                    console.error('EventSource connection error:', event);
-                    streamErrorCount++;
-                    
-                    if (streamErrorCount <= 2) {
-                        // Retry streaming up to 2 times
-                        setTimeout(() => {
-                            cleanupStream();
-                            startStreaming(message);
-                        }, 1000);
-                    } else {
-                        // After 2 failures, show error and reset
-                        handleStreamError({ error: 'Connection failed after retries' });
-                        streamErrorCount = 0;
-                    }
-                };
-                
-            } catch (error) {
-                console.error('Streaming error:', error);
-                if (currentMessageElement) {
-                    currentMessageElement.textContent = 'Error: Failed to start streaming';
-                }
-                cleanupStream();
-            }
-        }
-
-        function getUserAddress() {
-            return localStorage.getItem('userAddress') || '0x' + Math.random().toString(16).substr(2, 40);
-        }
-
-        function getUserHeaders() {
-            const userAddress = getUserAddress();
-            const headers = { 'X-User-Address': userAddress };
-            // Optional API key for protected endpoints (stored once in localStorage)
-            const apiKey = localStorage.getItem('apiKey');
-            if (apiKey) headers['X-API-Key'] = apiKey;
-            return headers;
-        }
-
-        function showError(message) {
-            // Add error message directly to chat
-            addMessage('ai', `❌ ${message}`);
-        }
-
-        function addStreamingMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender} streaming`;
-            
-            const senderDiv = document.createElement('div');
-            senderDiv.className = 'message-sender';
-            senderDiv.textContent = sender === 'user' ? 'You' : 'AI Assistant';
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.textContent = text;
-            
-            messageDiv.appendChild(senderDiv);
-            messageDiv.appendChild(contentDiv);
-            
-            const chatWindow = document.getElementById('chat-window');
-            chatWindow.appendChild(messageDiv);
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-            
-            return contentDiv;
-        }
-        
-        function handleStreamToken(data) {
-            if (data.token && currentMessageElement) {
-                accumulatedTokens += data.token;
-                currentMessageElement.textContent = accumulatedTokens;
-                
-                // Update metrics
-                updateStreamingMetrics(
-                    data.token_number || 0,
-                    data.tokens_per_second || 0,
-                    data.cumulative_cost || 0
-                );
-            }
-        }
-        
-        function handleStreamEnd(data) {
-            if (currentMessageElement) {
-                currentMessageElement.parentElement.classList.remove('streaming');
-                
-                // Save to history
-                const message = { sender: 'ai', content: accumulatedTokens, timestamp: Date.now() };
-                chatHistory.push(message);
-                saveSession(currentSessionId, chatHistory);
-            }
-            
-            // Update usage after chat completion
-            updateUsageAfterChat(data.cumulative_cost || 0);
-            
-            cleanupStream();
-        }
-        
-        function handleStreamError(error) {
-            console.error('Stream error:', error);
-            if (currentMessageElement) {
-                currentMessageElement.textContent = 'Error: Failed to generate response';
-                currentMessageElement.parentElement.classList.remove('streaming');
-            }
-            cleanupStream();
-        }
-        
-        function cleanupStream() {
-            showTyping(false);
-            currentStreamId = null;
-            currentMessageElement = null;
-            accumulatedTokens = '';
-            
-            // Hide streaming metrics panel after delay
-            setTimeout(() => {
-                const metricsPanel = document.getElementById('streamingMetrics');
-                metricsPanel.classList.remove('active');
-                // Reset metrics
-                updateStreamingMetrics(0, 0, 0);
-            }, 2000);
-            
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
-            }
-        }
-        
-        function updateStreamingMetrics(tokens, speed, cost) {
-            document.getElementById('tokenCount').textContent = tokens || 0;
-            document.getElementById('tokenSpeed').textContent = speed ? speed.toFixed(1) : '0';
-            document.getElementById('currentCost').textContent = cost ? parseFloat(cost).toFixed(4) : '0.0000';
-        }
-        
-        function updateTokenDisplay() {
-            const slider = document.getElementById('maxTokens');
-            const display = document.getElementById('tokenDisplay');
-            if (slider && display) {
-                display.textContent = slider.value;
-            }
-        }
-        
-        async function cancelStream() {
-            if (currentStreamId && eventSource) {
-                try {
-                    await fetch(`${API_CONFIG.baseURL}/chat/stream/cancel`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...getUserHeaders()
-                        },
-                        body: JSON.stringify({ stream_id: currentStreamId })
-                    });
-                } catch (e) {
-                    console.warn('Stream cancel failed:', e);
-                }
-                cleanupStream();
-            }
-        }
-
-        // Usage tracking functions
-        async function loadUserUsage() {
-            const indicator = document.getElementById('usageIndicator');
-            const usageText = document.getElementById('usageText');
-            const usageCount = document.getElementById('usageCount');
-            const usageFill = document.getElementById('usageFill');
-            const usageDetail = document.getElementById('usageDetail');
-            
-            if (!indicator) return;
-            
-            try {
-                const userAddress = getUserAddress();
-                const response = await fetch(`${API_CONFIG.baseURL}/leaderboard/me/summary?address=${userAddress}`);
+                removeTypingIndicator();
                 
                 if (response.ok) {
                     const data = await response.json();
-                    updateUsageDisplay(data);
-                    indicator.style.display = 'block';
-                } else if (response.status === 404) {
-                    // New user - show free tier
-                    updateUsageDisplay({
-                        free_requests_remaining: 5,
-                        free_requests_total: 5,
-                        balance: 0,
-                        is_new_user: true
-                    });
-                    indicator.style.display = 'block';
+                    addMessage(data.response, 'assistant');
+                    conversationId = data.conversation_id;
                 } else {
-                    console.warn('Failed to load user usage:', response.status);
+                    addMessage(t('errorEncountered') || 'Sorry, I encountered an error. Please try again.', 'assistant');
                 }
             } catch (error) {
-                console.error('Error loading user usage:', error);
-                // Don't show indicator if we can't load data
+                removeTypingIndicator();
+                addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');
+            } finally {
+                isTyping = false;
+                updateSendButton();
             }
         }
-        
-        function updateUsageDisplay(data) {
-            const indicator = document.getElementById('usageIndicator');
-            const usageText = document.getElementById('usageText');
-            const usageCount = document.getElementById('usageCount');
-            const usageFill = document.getElementById('usageFill');
-            const usageDetail = document.getElementById('usageDetail');
-            
-            if (!indicator) return;
-            
-            const freeRemaining = data.free_requests_remaining || 0;
-            const freeTotal = data.free_requests_total || 5;
-            const balance = parseFloat(data.balance || 0);
-            const isNewUser = data.is_new_user || false;
-            
-            // Reset classes
-            indicator.className = 'usage-indicator';
-            usageFill.className = 'usage-fill';
-            
-            if (freeRemaining > 0) {
-                // Free tier user with remaining requests
-                indicator.classList.add('free-tier');
-                usageText.textContent = isNewUser ? '🎁 Welcome! Free requests' : '🆓 Free tier';
-                usageCount.textContent = `${freeRemaining}/${freeTotal}`;
-                
-                const percentage = (freeRemaining / freeTotal) * 100;
-                usageFill.style.width = `${percentage}%`;
-                
-                if (percentage <= 20) {
-                    usageFill.classList.add('critical');
-                    usageDetail.textContent = '⚠️ Almost out of free requests. Consider adding BLY tokens.';
-                } else if (percentage <= 50) {
-                    usageFill.classList.add('low');
-                    usageDetail.textContent = `${freeRemaining} free chats remaining this cycle.`;
-                } else {
-                    usageDetail.textContent = `${freeRemaining} free chats remaining this cycle.`;
-                }
-                
-            } else if (balance > 0) {
-                // Paid user with BLY balance
-                indicator.classList.add('paid-tier');
-                usageText.textContent = '💰 BLY Balance';
-                usageCount.textContent = `${balance.toFixed(4)} BLY`;
-                
-                // Estimate chat capacity based on average cost (~0.0010 BLY per chat)
-                const avgChatCost = 0.0010;
-                const estimatedChats = Math.floor(balance / avgChatCost);
-                
-                if (balance < 0.010) {
-                    indicator.classList.remove('paid-tier');
-                    indicator.classList.add('low-balance');
-                    usageFill.classList.add('critical');
-                    usageFill.style.width = '15%';
-                    usageDetail.textContent = '⚠️ Low balance! Add more BLY tokens to continue chatting.';
-                } else if (balance < 0.050) {
-                    usageFill.classList.add('low');
-                    usageFill.style.width = '40%';
-                    usageDetail.textContent = `~${estimatedChats} chats remaining (avg cost: ${avgChatCost.toFixed(4)} BLY).`;
-                } else {
-                    usageFill.style.width = '100%';
-                    usageDetail.textContent = `~${estimatedChats} chats available (avg cost: ${avgChatCost.toFixed(4)} BLY).`;
-                }
-                
-            } else {
-                // No free requests and no balance
-                indicator.classList.add('low-balance');
-                usageText.textContent = '❌ No credits';
-                usageCount.textContent = '0 remaining';
-                usageFill.classList.add('critical');
-                usageFill.style.width = '0%';
-                usageDetail.textContent = '💡 Add BLY tokens or contribute computing power to earn free requests.';
-            }
-        }
-        
-        function updateUsageAfterChat(cost) {
-            // Update usage display after a chat is sent
-            setTimeout(() => {
-                loadUserUsage();
-                updateHeaderUsage();
-            }, 1000); // Reload after 1 second
-        }
-        
-        // Global function to update header usage indicator
-        async function updateHeaderUsage() {
-            const headerIndicator = document.getElementById('header-usage-indicator');
-            const headerText = document.getElementById('header-usage-text');
-            
-            if (!headerIndicator || !headerText) return;
-            
-            try {
-                const userAddress = getUserAddress();
-                const response = await fetch(`${API_CONFIG.baseURL}/leaderboard/me/summary?address=${userAddress}`);
-                
-                let data;
-                if (response.ok) {
-                    data = await response.json();
-                } else if (response.status === 404) {
-                    // New user
-                    data = { free_requests_remaining: 5, balance: 0, is_new_user: true };
-                } else {
-                    return; // Don't show on error
-                }
-                
-                const freeRemaining = data.free_requests_remaining || 0;
-                const balance = parseFloat(data.balance || 0);
-                
-                // Reset classes
-                headerIndicator.className = 'header-usage-badge';
-                
-                if (freeRemaining > 0) {
-                    headerIndicator.classList.add('free-tier');
-                    headerText.textContent = `🆓 ${freeRemaining} free`;
-                } else if (balance > 0) {
-                    if (balance < 0.010) {
-                        headerIndicator.classList.add('low-balance');
-                        headerText.textContent = `⚠️ ${balance.toFixed(4)} BLY`;
-                    } else {
-                        headerIndicator.classList.add('paid-tier');
-                        headerText.textContent = `💰 ${balance.toFixed(4)} BLY`;
-                    }
-                } else {
-                    headerIndicator.classList.add('low-balance');
-                    headerText.textContent = '❌ No credits';
-                }
-                
-                headerIndicator.style.display = 'block';
-                
-            } catch (error) {
-                console.error('Error updating header usage:', error);
-            }
-        }
-        
-        // Make function globally available
-        window.updateHeaderUsage = updateHeaderUsage;
 
-        // Auto-generate user address for demo
-        if (!localStorage.getItem('userAddress')) {
-            localStorage.setItem('userAddress', '0x' + Math.random().toString(16).substr(2, 40));
+        function addMessage(content, sender) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}`;
+            messageDiv.textContent = content;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addTypingIndicator() {
+            const chatMessages = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message assistant typing-indicator';
+            typingDiv.innerHTML = '<span>●</span><span>●</span><span>●</span>';
+            typingDiv.id = 'typing-indicator';
+            chatMessages.appendChild(typingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // Add CSS for typing animation
+            const style = document.createElement('style');
+            style.textContent = `
+                .typing-indicator span {
+                    animation: typing 1.4s infinite;
+                    animation-fill-mode: both;
+                }
+                .typing-indicator span:nth-child(2) {
+                    animation-delay: 0.2s;
+                }
+                .typing-indicator span:nth-child(3) {
+                    animation-delay: 0.4s;
+                }
+                @keyframes typing {
+                    0%, 60%, 100% { opacity: 0.3; }
+                    30% { opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typing-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        function updateSendButton() {
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = isTyping;
+            sendBtn.textContent = isTyping ? '⏳' : '➤';
+        }
+
+        async function loadChatHistory() {
+            try {
+                const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/chat/history`, {
+                    headers: {
+                        ...(localStorage.getItem('apiKey') && {
+                            'Authorization': `Bearer ${localStorage.getItem('apiKey')}`
+                        })
+                    }
+                });
+                
+                if (response.ok) {
+                    const conversations = await response.json();
+                    displayChatHistory(conversations);
+                } else {
+                    console.log('No chat history available or user not authenticated');
+                }
+            } catch (error) {
+                console.error('Error loading chat history:', error);
+            }
+        }
+
+        function displayChatHistory(conversations) {
+            const chatHistory = document.getElementById('chatHistory');
+            
+            if (!conversations || conversations.length === 0) {
+                chatHistory.innerHTML = `<div style="padding: 16px; text-align: center; color: var(--color-text-secondary);" data-i18n="noPreviousConversations">${t('noPreviousConversations') || 'No previous conversations'}</div>`;
+                return;
+            }
+
+            chatHistory.innerHTML = conversations.map((conv, index) => {
+                const title = conv.title || `Conversation ${index + 1}`;
+                const preview = conv.last_message || 'No messages yet';
+                const timeAgo = formatTimeAgo(conv.updated_at || conv.created_at);
+                const isActive = index === 0 ? 'active' : '';
+                
+                return `
+                    <div class="chat-history-item ${isActive}" onclick="loadConversation('${conv.id}')">
+                        <div class="chat-history-title">${escapeHtml(title)}</div>
+                        <div class="chat-history-preview">${escapeHtml(preview)}</div>
+                        <div class="chat-history-time">${timeAgo}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatTimeAgo(timestamp) {
+            const now = new Date();
+            const time = new Date(timestamp);
+            const diffMs = now - time;
+            const diffMins = Math.floor(diffMs / (1000 * 60));
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            return `${diffDays}d ago`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function loadConversation(conversationId) {
+            try {
+                const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/chat/conversation/${conversationId}`, {
+                    headers: {
+                        ...(localStorage.getItem('apiKey') && {
+                            'Authorization': `Bearer ${localStorage.getItem('apiKey')}`
+                        })
+                    }
+                });
+                
+                if (response.ok) {
+                    const conversation = await response.json();
+                    displayConversation(conversation);
+                    conversationId = conversationId;
+                    
+                    // Update active state
+                    document.querySelectorAll('.chat-history-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    event.target.closest('.chat-history-item').classList.add('active');
+                }
+            } catch (error) {
+                console.error('Error loading conversation:', error);
+            }
+        }
+
+        function displayConversation(conversation) {
+            const chatMessages = document.getElementById('chatMessages');
+            
+            if (!conversation.messages || conversation.messages.length === 0) {
+                chatMessages.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🤖</div>
+                        <div class="empty-state-title" data-i18n="continueConversation">${t('continueConversation') || 'Continue Conversation'}</div>
+                        <div class="empty-state-text" data-i18n="continueYourConversation">
+                            ${t('continueYourConversation') || 'Continue your conversation with Blyan AI.'}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            chatMessages.innerHTML = '';
+            conversation.messages.forEach(msg => {
+                addMessage(msg.content, msg.role === 'user' ? 'user' : 'assistant');
+            });
         }
     </script>
 </body>
