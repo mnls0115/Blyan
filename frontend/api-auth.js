@@ -267,7 +267,9 @@ class APIAuthManagerV2 {
         }
 
         if (!this.hasValidApiKey()) {
-            throw new AuthenticationError('No valid API key to refresh', 'no_key');
+            // Don't throw error for free tier users, just return silently
+            console.log('[Auth] No API key to refresh (free tier)');
+            return Promise.resolve();
         }
 
         console.log('[Auth] Refreshing API key');
@@ -362,19 +364,9 @@ class APIAuthManagerV2 {
         const requiresAuth = this.shouldUseAuthentication(url, options);
         
         if (requiresAuth && !this.hasValidApiKey()) {
-            // For free tier, proceed without auth
-            if (this.getUserRole() === 'free_tier') {
-                console.log('[Auth] Free tier request - no authentication');
-                return this._performRequest(url, options, null);
-            }
-            
-            // Try to register a basic key
-            try {
-                await this.registerApiKey('basic');
-            } catch (error) {
-                console.log('[Auth] Could not obtain API key, proceeding as free tier');
-                return this._performRequest(url, options, null);
-            }
+            // For free tier, proceed without auth - don't try to register
+            console.log('[Auth] Free tier request - no authentication');
+            return this._performRequest(url, options, null);
         }
 
         // Check if refresh is needed
