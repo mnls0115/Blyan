@@ -61,7 +61,7 @@ from backend.security.abuse_prevention import get_abuse_prevention_system, Reque
 from backend.core.transaction_manager import get_transaction_manager
 from api.chat_atomic import get_atomic_chat_handler, AtomicChatRequest, AtomicChatResponse
 from api.streaming import get_streaming_handler, get_websocket_handler
-from backend.security.api_auth import security_middleware, api_key_manager, APIKeyGenerator, get_api_key_info
+# V1 API auth removed - using V2 JWT-based system
 from backend.core.free_tier import get_free_tier_manager
 from backend.security.monitoring import record_security_event, record_api_response_time, get_security_dashboard, get_system_health
 from backend.optimization.performance_dashboard import get_dashboard
@@ -420,7 +420,7 @@ async def monitoring_middleware(request: Request, call_next):
         raise
 
 # Add security middleware with enhanced protection
-app.middleware("http")(security_middleware)
+# V1 security middleware removed - V2 handles auth per endpoint
 
 # Add rate limiting middleware
 from backend.security.rate_limiting import RateLimitMiddleware
@@ -3160,91 +3160,16 @@ async def get_rate_limit_system_stats():
         raise HTTPException(status_code=500, detail=f"Failed to get system stats: {str(e)}")
 
 
-@app.post("/auth/register_api_key")
-async def register_api_key(request: APIKeyRequest):
-    """Register a new API key."""
-    try:
-        # Create API key based on type
-        if request.key_type == "basic":
-            api_key = APIKeyGenerator.create_basic_user_key(request.name)
-        elif request.key_type == "contributor":
-            api_key = APIKeyGenerator.create_contributor_key(request.name)
-        elif request.key_type == "node_operator":
-            api_key = APIKeyGenerator.create_node_operator_key(request.name)
-        elif request.key_type == "admin":
-            api_key = APIKeyGenerator.create_admin_key(request.name)
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid key type: {request.key_type}. Use: basic, contributor, node_operator, admin"
-            )
-        
-        return {
-            "success": True,
-            "api_key": api_key,
-            "key_type": request.key_type,
-            "name": request.name,
-            "message": "⚠️ Save this key securely - it won't be shown again!",
-            "usage_instructions": {
-                "header_format": f"X-API-Key: {api_key}",
-                "bearer_format": f"Authorization: Bearer {api_key}",
-                "test_endpoint": "/auth/api_key_info"
-            }
-        }
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create API key: {str(e)}")
+# V1 register_api_key endpoint removed - use /auth/v2/register
 
 
-@app.get("/auth/api_key_info")
-async def get_api_key_info_endpoint(http_request: Request):
-    """Get information about the current API key."""
-    try:
-        key_info = get_api_key_info(http_request)
-        if not key_info:
-            raise HTTPException(status_code=401, detail="No valid API key found")
-        
-        return {
-            "key_id": key_info.key_id,
-            "name": key_info.name,
-            "permissions": list(key_info.permissions),
-            "rate_limit_tier": key_info.rate_limit_tier,
-            "created_at": key_info.created_at,
-            "last_used": key_info.last_used,
-            "usage_count": key_info.usage_count,
-            "is_active": key_info.is_active,
-            "expires_at": key_info.expires_at
-        }
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get API key info: {str(e)}")
+# V1 api_key_info endpoint removed - use /auth/v2/validate
 
 
-@app.get("/auth/list_api_keys")
-async def list_api_keys():
-    """List all API keys (admin only)."""
-    try:
-        return {
-            "keys": api_key_manager.list_keys(),
-            "total_keys": len(api_key_manager.keys_db),
-            "active_keys": sum(1 for k in api_key_manager.keys_db.values() if k.is_active)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list API keys: {str(e)}")
+# V1 list_api_keys endpoint removed - admin functions in V2
 
 
-@app.delete("/auth/revoke_api_key/{key_id}")
-async def revoke_api_key(key_id: str):
-    """Revoke an API key (admin only)."""
-    try:
-        success = api_key_manager.revoke_key(key_id)
-        if success:
-            return {"success": True, "message": f"API key {key_id} revoked successfully"}
-        else:
-            raise HTTPException(status_code=404, detail=f"API key {key_id} not found")
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to revoke API key: {str(e)}")
+# V1 revoke_api_key endpoint removed - use /auth/v2/revoke
 
 
 # ============================================================================
