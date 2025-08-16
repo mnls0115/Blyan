@@ -471,9 +471,9 @@
         <span id="themeIcon">🌙</span>
     </button>
 
-    <script src="config.js?v=2"></script>
-    <script src="api-auth.js?v=2"></script>
-    <script src="common-header.js?v=2"></script>
+    <script src="config.js?v=3"></script>
+    <script src="api-auth.js?v=3"></script>
+    <script src="common-header.js?v=3"></script>
     <script>
         let conversationId = null;
         let isTyping = false;
@@ -591,7 +591,11 @@
                 if (response.ok) {
                     const data = await response.json();
                     addMessage(data.response, 'assistant');
-                    conversationId = data.conversation_id;
+                    conversationId = data.conversation_id || conversationId || `local-${Date.now()}`;
+                    
+                    // Save to local storage for free tier users
+                    saveLocalChatHistory(conversationId, message, true);
+                    saveLocalChatHistory(conversationId, data.response, false);
                     
                     // 성공적인 채팅 시 사용량 증가
                     incrementUsedChats();
@@ -686,10 +690,10 @@
         }
 
         async function loadChatHistory() {
-            // Free tier users don't have persistent chat history
+            // Free tier users use local storage for chat history
             if (!apiAuth.hasValidApiKey()) {
-                console.log('Free tier user - no persistent chat history');
-                displayChatHistory([]);
+                console.log('Free tier user - loading local chat history');
+                loadLocalChatHistory();
                 return;
             }
             
@@ -706,6 +710,95 @@
             } catch (error) {
                 console.error('Error loading chat history:', error);
                 displayChatHistory([]);
+            }
+        }
+
+        // Local storage management for free tier users
+        function loadLocalChatHistory() {
+            try {
+                const localHistory = localStorage.getItem('blyan_chat_history');
+                const conversations = localHistory ? JSON.parse(localHistory) : [];
+                displayChatHistory(conversations);
+            } catch (error) {
+                console.error('Error loading local chat history:', error);
+                displayChatHistory([]);
+            }
+        }
+
+        function saveLocalChatHistory(conversationId, message, isUser = true) {
+            if (apiAuth.hasValidApiKey()) return; // Only for free tier
+            
+            try {
+                const localHistory = localStorage.getItem('blyan_chat_history');
+                let conversations = localHistory ? JSON.parse(localHistory) : [];
+                
+                // Find or create conversation
+                let conversation = conversations.find(c => c.id === conversationId);
+                if (!conversation) {
+                    conversation = {
+                        id: conversationId,
+                        title: message.substring(0, 50) + (message.length > 50 ? '...' : ''),
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                        messages: []
+                    };
+                    conversations.unshift(conversation);
+                }
+                
+                // Add message
+                conversation.messages.push({
+                    role: isUser ? 'user' : 'assistant',
+                    content: message,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Update last message and timestamp
+                conversation.last_message = message.substring(0, 100) + (message.length > 100 ? '...' : '');
+                conversation.updated_at = new Date().toISOString();
+                
+                // Keep only last 20 conversations
+                conversations = conversations.slice(0, 20);
+                
+                // Save to localStorage (max 5MB limit)
+                try {
+                    localStorage.setItem('blyan_chat_history', JSON.stringify(conversations));
+                } catch (e) {
+                    // If storage is full, remove oldest conversations
+                    if (e.name === 'QuotaExceededError') {
+                        conversations = conversations.slice(0, 10);
+                        localStorage.setItem('blyan_chat_history', JSON.stringify(conversations));
+                    }
+                }
+                
+                // Update display
+                displayChatHistory(conversations);
+            } catch (error) {
+                console.error('Error saving local chat history:', error);
+            }
+        }
+
+        function loadLocalConversation(conversationId) {
+            try {
+                const localHistory = localStorage.getItem('blyan_chat_history');
+                if (!localHistory) return;
+                
+                const conversations = JSON.parse(localHistory);
+                const conversation = conversations.find(c => c.id === conversationId);
+                
+                if (conversation && conversation.messages) {
+                    // Clear current chat
+                    document.getElementById('chatMessages').innerHTML = '';
+                    
+                    // Load messages
+                    conversation.messages.forEach(msg => {
+                        addMessage(msg.content, msg.role === 'user' ? 'user' : 'assistant', false);
+                    });
+                    
+                    // Set current conversation ID
+                    window.conversationId = conversationId;
+                }
+            } catch (error) {
+                console.error('Error loading local conversation:', error);
             }
         }
 
@@ -753,9 +846,24 @@
             return div.innerHTML;
         }
 
-        async function loadConversation(conversationId) {
+        async function loadConversation(convId) {
+            // Check if it's a local conversation (free tier)
+            if (!apiAuth.hasValidApiKey() || convId.startsWith('local-')) {
+                loadLocalConversation(convId);
+                
+                // Update active state
+                document.querySelectorAll('.chat-history-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                const activeItem = document.querySelector(`[onclick*="${convId}"]`);
+                if (activeItem) {
+                    activeItem.closest('.chat-history-item').classList.add('active');
+                }
+                return;
+            }
+            
             try {
-                const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/chat/conversation/${conversationId}`, {
+                const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/chat/conversation/${convId}`, {
                     headers: {
                         ...(localStorage.getItem('apiKey') && {
                             'Authorization': `Bearer ${localStorage.getItem('apiKey')}`
@@ -766,13 +874,16 @@
                 if (response.ok) {
                     const conversation = await response.json();
                     displayConversation(conversation);
-                    conversationId = conversationId;
+                    window.conversationId = convId;
                     
                     // Update active state
                     document.querySelectorAll('.chat-history-item').forEach(item => {
                         item.classList.remove('active');
                     });
-                    event.target.closest('.chat-history-item').classList.add('active');
+                    const activeItem = document.querySelector(`[onclick*="${convId}"]`);
+                    if (activeItem) {
+                        activeItem.closest('.chat-history-item').classList.add('active');
+                    }
                 }
             } catch (error) {
                 console.error('Error loading conversation:', error);
