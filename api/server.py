@@ -3247,6 +3247,68 @@ async def revoke_api_key(key_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to revoke API key: {str(e)}")
 
 
+# ============================================================================
+# V2 API KEY ENDPOINTS - Production Grade JWT-based System
+# ============================================================================
+
+# Import the new V2 system (conditionally if available)
+try:
+    from backend.auth.api_key_system import (
+        APIKeyManager as APIKeyManagerV2,
+        RegisterAPIKeyRequest,
+        RegisterAPIKeyResponse,
+        RefreshAPIKeyRequest,
+        get_current_api_key,
+        get_optional_api_key,
+        APIKeyPayload
+    )
+    
+    # Initialize V2 manager
+    api_key_manager_v2 = APIKeyManagerV2()
+    
+    @app.post("/auth/v2/register", response_model=RegisterAPIKeyResponse)
+    async def register_api_key_v2(
+        request: RegisterAPIKeyRequest,
+        current_key: Optional[APIKeyPayload] = Depends(get_optional_api_key)
+    ):
+        """Register a new API key using V2 JWT-based system."""
+        from backend.auth.api_key_system import APIKeyRole
+        requester_role = APIKeyRole.from_string(current_key.role) if current_key else None
+        return await api_key_manager_v2.register_api_key(requester_role, request)
+    
+    @app.post("/auth/v2/refresh", response_model=RegisterAPIKeyResponse)
+    async def refresh_api_key_v2(request: RefreshAPIKeyRequest):
+        """Refresh an existing API key if within refresh window."""
+        return await api_key_manager_v2.refresh_api_key(request.current_key)
+    
+    @app.get("/auth/v2/validate")
+    async def validate_api_key_v2(api_key: APIKeyPayload = Depends(get_current_api_key)):
+        """Validate current API key and return its info."""
+        return {
+            "valid": True,
+            "key_id": api_key.sub,
+            "role": api_key.role,
+            "scopes": api_key.scopes,
+            "expires_at": datetime.datetime.fromtimestamp(api_key.exp).isoformat(),
+            "metadata": api_key.metadata
+        }
+    
+    @app.post("/auth/v2/revoke")
+    async def revoke_api_key_v2(
+        api_key: str,
+        _: APIKeyPayload = Depends(get_current_api_key)
+    ):
+        """Revoke an API key immediately."""
+        await api_key_manager_v2.revoke_api_key(api_key)
+        return {"success": True, "message": "API key revoked successfully"}
+    
+    print("✅ V2 API Key System endpoints loaded (JWT-based)")
+    
+except ImportError as e:
+    print(f"⚠️  V2 API Key System not available: {e}")
+    # V2 endpoints will not be registered if the module is not available
+
+
 @app.get("/genesis/hash")
 async def get_genesis_hash():
     """Get Genesis Pact hash for node verification."""

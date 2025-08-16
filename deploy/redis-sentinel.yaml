@@ -1,0 +1,265 @@
+# Redis Sentinel Configuration for High Availability
+# ==================================================
+# 
+# This configuration provides automatic failover for Redis
+# ensuring the API key system remains available during failures.
+
+version: '3.8'
+
+services:
+  # Primary Redis Instance
+  redis-master:
+    image: redis:7-alpine
+    container_name: redis-master
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-master-data:/data
+      - ./redis-master.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - redis-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Replica 1
+  redis-replica-1:
+    image: redis:7-alpine
+    container_name: redis-replica-1
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-replica-1-data:/data
+      - ./redis-replica.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf --replicaof redis-master 6379
+    networks:
+      - redis-net
+    depends_on:
+      - redis-master
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Replica 2
+  redis-replica-2:
+    image: redis:7-alpine
+    container_name: redis-replica-2
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis-replica-2-data:/data
+      - ./redis-replica.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf --replicaof redis-master 6379
+    networks:
+      - redis-net
+    depends_on:
+      - redis-master
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Sentinel 1
+  redis-sentinel-1:
+    image: redis:7-alpine
+    container_name: redis-sentinel-1
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./sentinel-1.conf:/usr/local/etc/redis/sentinel.conf
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    networks:
+      - redis-net
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+  # Sentinel 2
+  redis-sentinel-2:
+    image: redis:7-alpine
+    container_name: redis-sentinel-2
+    ports:
+      - "26380:26379"
+    volumes:
+      - ./sentinel-2.conf:/usr/local/etc/redis/sentinel.conf
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    networks:
+      - redis-net
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+  # Sentinel 3
+  redis-sentinel-3:
+    image: redis:7-alpine
+    container_name: redis-sentinel-3
+    ports:
+      - "26381:26379"
+    volumes:
+      - ./sentinel-3.conf:/usr/local/etc/redis/sentinel.conf
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    networks:
+      - redis-net
+    depends_on:
+      - redis-master
+      - redis-replica-1
+      - redis-replica-2
+
+  # HAProxy for connection routing
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: redis-haproxy
+    ports:
+      - "6390:6379"  # Application connects here
+      - "8404:8404"  # Stats page
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    networks:
+      - redis-net
+    depends_on:
+      - redis-sentinel-1
+      - redis-sentinel-2
+      - redis-sentinel-3
+
+networks:
+  redis-net:
+    driver: bridge
+
+volumes:
+  redis-master-data:
+  redis-replica-1-data:
+  redis-replica-2-data:
+
+---
+# redis-master.conf
+################################
+port 6379
+bind 0.0.0.0
+protected-mode no
+tcp-backlog 511
+timeout 0
+tcp-keepalive 300
+
+# Persistence
+dir /data
+dbfilename dump.rdb
+appendonly yes
+appendfilename "appendonly.aof"
+appendfsync everysec
+no-appendfsync-on-rewrite no
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+
+# Memory management
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+
+# Security
+requirepass StrongPasswordHere123!
+masterauth StrongPasswordHere123!
+
+# Logging
+loglevel notice
+logfile ""
+
+# Performance
+rdbcompression yes
+rdbchecksum yes
+stop-writes-on-bgsave-error yes
+
+---
+# redis-replica.conf
+################################
+port 6379
+bind 0.0.0.0
+protected-mode no
+
+# Replication
+replicaof redis-master 6379
+masterauth StrongPasswordHere123!
+requirepass StrongPasswordHere123!
+replica-read-only yes
+replica-serve-stale-data yes
+
+# Persistence
+dir /data
+dbfilename dump.rdb
+appendonly yes
+
+# Memory
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+
+---
+# sentinel-1.conf (sentinel-2.conf and sentinel-3.conf similar)
+################################
+port 26379
+bind 0.0.0.0
+protected-mode no
+
+# Monitor master
+sentinel monitor mymaster redis-master 6379 2
+sentinel auth-pass mymaster StrongPasswordHere123!
+sentinel down-after-milliseconds mymaster 5000
+sentinel parallel-syncs mymaster 1
+sentinel failover-timeout mymaster 10000
+
+# Notification scripts (optional)
+# sentinel notification-script mymaster /scripts/notify.sh
+# sentinel client-reconfig-script mymaster /scripts/reconfig.sh
+
+# Logging
+loglevel notice
+logfile ""
+
+sentinel announce-ip redis-sentinel-1
+sentinel announce-port 26379
+
+---
+# haproxy.cfg
+################################
+global
+    maxconn 4096
+    log stdout local0
+    
+defaults
+    mode tcp
+    timeout connect 5s
+    timeout client 30s
+    timeout server 30s
+    option tcplog
+
+# Stats page
+stats enable
+stats uri /stats
+stats refresh 30s
+
+# Redis frontend
+frontend redis_frontend
+    bind *:6379
+    default_backend redis_backend
+
+# Redis backend with health checks
+backend redis_backend
+    option tcp-check
+    tcp-check send AUTH\ StrongPasswordHere123!\r\n
+    tcp-check expect string +OK
+    tcp-check send PING\r\n
+    tcp-check expect string +PONG
+    tcp-check send QUIT\r\n
+    tcp-check expect string +OK
+    
+    # Primary (with higher weight)
+    server redis-master redis-master:6379 check inter 2s fall 3 rise 2 weight 100
+    
+    # Replicas (lower weight, used for reads)
+    server redis-replica-1 redis-replica-1:6379 check inter 2s fall 3 rise 2 weight 50
+    server redis-replica-2 redis-replica-2:6379 check inter 2s fall 3 rise 2 weight 50
