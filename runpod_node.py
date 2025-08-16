@@ -7,6 +7,13 @@ Runs as a P2P node that connects to DigitalOcean main server
 import os
 import sys
 import asyncio
+
+# Load .env file if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv is optional
 import aiohttp
 from pathlib import Path
 import torch

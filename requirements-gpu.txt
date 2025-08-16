@@ -1,0 +1,37 @@
+# GPU Node Requirements
+# Install with: pip install -r requirements-gpu.txt
+
+# Core dependencies (from requirements.txt)
+fastapi
+uvicorn
+redis>=4.5.0
+psutil
+requests
+tiktoken
+transformers
+huggingface-hub
+safetensors
+accelerate
+numpy
+schedule
+pydantic
+python-multipart
+sse-starlette
+websockets
+aiofiles
+ecdsa
+eth-account
+web3
+asyncpg
+cryptography
+
+# GPU-specific dependencies
+torch  # Install with CUDA support: pip install torch --index-url https://download.pytorch.org/whl/cu121
+torchvision
+torchaudio
+bitsandbytes  # For 8-bit quantization
+nvidia-ml-py3  # For pynvml (GPU monitoring)
+aiohttp  # For async HTTP in runpod_node.py
+
+# Optional but recommended
+python-dotenv  # For .env file support

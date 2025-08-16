@@ -80,7 +80,7 @@ docker run --gpus all --rm -it \
 # Check logs
 docker logs -f blyan-node | grep -E "✅|📦|ERROR"
 
-# Test local health
+# Test local health (endpoint is / not /health)
 curl -s http://localhost:8001/ | jq .
 
 # Verify registration with main server
@@ -109,14 +109,16 @@ python3 -m venv .venv && source .venv/bin/activate
 python -m pip install --upgrade pip
 ```
 
-### 3. Install CUDA PyTorch
+### 3. Install Dependencies
 ```bash
-# For CUDA 12.1 (adjust for your CUDA version)
-pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
-  torch torchvision torchaudio
+# Install GPU requirements (includes PyTorch placeholder)
+pip install -r requirements-gpu.txt
 
-# Install dependencies including bitsandbytes
-pip install -r requirements.txt bitsandbytes nvidia-ml-py3
+# Install CUDA-enabled PyTorch (choose based on your CUDA version)
+# For CUDA 12.1:
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# For CUDA 11.8:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
 ### 4. Configure Environment
@@ -141,8 +143,8 @@ python runpod_node.py
 - `backend/model/arch.py` - Model wrapper
 - `backend/model/__init__.py`
 - `backend/__init__.py`
-- `requirements.txt`
-- `.env` - Configuration
+- `requirements-gpu.txt` - GPU node dependencies
+- `.env` - Configuration (optional, can use environment variables directly)
 
 ## Common Issues & Solutions
 
@@ -220,6 +222,19 @@ docker restart blyan-node
 - [ ] Inference test successful
 - [ ] Monitoring/alerting configured
 - [ ] Backup/recovery plan in place
+
+## Important Notes
+
+### Environment Variables
+- **`.env` file support**: Added via python-dotenv (optional)
+- **Direct environment**: Can use `export VAR=value` or Docker `--env-file`
+- **BLOCKCHAIN_ONLY**: Defaults to `true` in code, MUST set to `false` for real model serving
+
+### Endpoint Differences
+- GPU node health: `GET /` (not `/health`)
+- Inference: `POST /inference`
+- Expert-specific: `POST /expert/{expert_name}/infer`
+- Metrics: `GET /metrics`
 
 ## Monitoring Commands
 
