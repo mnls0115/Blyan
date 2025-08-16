@@ -402,15 +402,19 @@
             <div class="requirements">
                 <div class="requirement-item">
                     <div class="status-indicator status-checking" id="gpu-check">⏳</div>
-                    <span id="gpu-status">GPU: Checking graphics card...</span>
+                    <span id="gpu-status">GPU: NVIDIA with ≥40GB VRAM for 20B model (8-bit quantized)</span>
                 </div>
                 <div class="requirement-item">
                     <div class="status-indicator status-checking" id="api-check">⏳</div>
                     <span id="api-status">API: Testing connection to Blyan network...</span>
                 </div>
                 <div class="requirement-item">
-                    <div class="status-indicator status-checking" id="browser-check">⏳</div>
-                    <span id="browser-status">Browser: Checking compatibility...</span>
+                    <div class="status-indicator status-good">✓</div>
+                    <span>Port: 8001 must be accessible (configure firewall/NAT)</span>
+                </div>
+                <div class="requirement-item">
+                    <div class="status-indicator status-good">✓</div>
+                    <span>Disk: ≥25-40GB free space for model weights</span>
                 </div>
             </div>
             
@@ -715,20 +719,32 @@
                         const nodeId = effectiveNodeId();
                         const donor = document.getElementById('donor-mode-checkbox')?.checked;
                         const donorLine = donor ? `\n  -e DONOR_MODE=true \\\n` : '';
-                        const tty = interactive ? '--rm -it' : '-d --name blyan-node';
-                        return `docker run --gpus all ${tty} \\\n  -e BLYAN_API_KEY=${apiKey} \\\n  -e MAIN_SERVER_URL=${location.origin}/api \\\n  -e NODE_ID=${nodeId} \\\n${donorLine}  ghcr.io/blyan-network/expert-node:latest`;
+                        const tty = interactive ? '--rm -it' : '-d --name blyan-node --restart unless-stopped';
+                        // Get public IP - user needs to set this!
+                        const publicIp = '$(curl -s https://checkip.amazonaws.com)';
+                        return `docker run --gpus all ${tty} \\\n  -p 8001:8001 \\\n  -e BLYAN_API_KEY=${apiKey} \\\n  -e MAIN_SERVER_URL=${location.origin}/api \\\n  -e NODE_ID=${nodeId} \\\n  -e NODE_PORT=8001 \\\n  -e RUNPOD_PUBLIC_IP=${publicIp} \\\n  -e BLOCKCHAIN_ONLY=false \\\n  -e MODEL_QUANTIZATION=8bit \\\n${donorLine}  ghcr.io/blyan-network/expert-node:latest`;
                     }
                     
                     function buildPython() {
                         const nodeId = effectiveNodeId();
                         const donor = document.getElementById('donor-mode-checkbox')?.checked;
                         const donorLine = donor ? `\nexport DONOR_MODE=true` : '';
-                        return `# Set environment variables
+                        return `# Clone and setup
+git clone https://github.com/blyan-network/dnai.git && cd dnai
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-gpu.txt
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# Set environment variables
 export BLYAN_API_KEY=${apiKey}
 export MAIN_SERVER_URL=${location.origin}/api
-export NODE_ID=${nodeId}${donorLine}
+export NODE_ID=${nodeId}
+export NODE_PORT=8001
+export RUNPOD_PUBLIC_IP=$(curl -s https://checkip.amazonaws.com)
+export BLOCKCHAIN_ONLY=false
+export MODEL_QUANTIZATION=8bit${donorLine}
 
-# Run the node (requires repo clone)
+# Run the node
 python runpod_node.py`;
                     }
                     
