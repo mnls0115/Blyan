@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat - Blyan</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
+    <link rel="icon" type="image/png" href="../logo/Blyan logo.png">
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="common-header-themed.css">
@@ -471,6 +471,7 @@
     </button>
 
     <script src="config.js"></script>
+    <script src="api-auth.js"></script>
     <script src="common-header.js"></script>
     <script>
         let conversationId = null;
@@ -573,14 +574,8 @@
             addTypingIndicator();
             
             try {
-                const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/chat`, {
+                const response = await apiAuth.makeAuthenticatedRequest(`${API_CONFIG?.baseURL || '/api'}/chat`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(localStorage.getItem('apiKey') && {
-                            'Authorization': `Bearer ${localStorage.getItem('apiKey')}`
-                        })
-                    },
                     body: JSON.stringify({
                         prompt: message,
                         conversation_id: conversationId,
@@ -601,12 +596,29 @@
                     // Update usage count and refresh chat history
                     await updateChatUsage();
                     await loadChatHistory();
+                } else if (response.status >= 400 && response.status < 500) {
+                    // Client errors (4xx)
+                    const errorData = await response.json().catch(() => ({}));
+                    const errorMessage = errorData.detail || errorData.message || 'Request failed';
+                    addMessage(t('requestFailed') || `Request failed: ${errorMessage}`, 'assistant');
                 } else {
-                    addMessage(t('errorEncountered') || 'Sorry, I encountered an error. Please try again.', 'assistant');
+                    // Server errors (5xx)
+                    addMessage(t('serverError') || 'Server error. Please try again later.', 'assistant');
                 }
             } catch (error) {
                 removeTypingIndicator();
-                addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');
+                
+                if (error instanceof AuthenticationError) {
+                    // Show authentication error with refresh option
+                    addMessage(
+                        `${error.message} ${t('refreshToRetry') || 'Please refresh the page to continue.'}`, 
+                        'assistant'
+                    );
+                    showAuthenticationError(error.message);
+                } else {
+                    // Network or other errors
+                    addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');
+                }
             } finally {
                 isTyping = false;
                 updateSendButton();
@@ -667,32 +679,21 @@
 
         async function loadChatHistory() {
             try {
-                // Only attempt to load chat history if we have an API key
-                const apiKey = localStorage.getItem('apiKey');
-                if (!apiKey) {
-                    displayChatHistory([]);
-                    return;
-                }
-
-                const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/chat/history`, {
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`
-                    }
-                });
+                const response = await apiAuth.makeAuthenticatedRequest(`${API_CONFIG?.baseURL || '/api'}/chat/history`);
                 
                 if (response.ok) {
                     const conversations = await response.json();
                     displayChatHistory(conversations);
-                } else if (response.status === 403) {
-                    console.log('API key invalid or expired');
-                    displayChatHistory([]);
                 } else {
-                    console.log('No chat history available or user not authenticated');
+                    console.log('No chat history available');
                     displayChatHistory([]);
                 }
             } catch (error) {
                 console.error('Error loading chat history:', error);
-                displayChatHistory([]);
+                if (!(error instanceof AuthenticationError)) {
+                    displayChatHistory([]);
+                }
+                // For auth errors, let the user see the empty state but don't log additional errors
             }
         }
 
@@ -838,6 +839,62 @@
         function incrementUsedChats() {
             const usedChats = parseInt(localStorage.getItem('usedFreeChats') || '0');
             localStorage.setItem('usedFreeChats', (usedChats + 1).toString());
+        }
+
+        // Authentication error UI handling
+        function showAuthenticationError(message) {
+            // Show a non-intrusive notification about authentication issues
+            const notification = document.createElement('div');
+            notification.className = 'auth-error-notification';
+            notification.innerHTML = `
+                <div style="
+                    position: fixed;
+                    top: 80px;
+                    right: 20px;
+                    background: linear-gradient(135deg, #f87171, #ef4444);
+                    color: white;
+                    padding: 16px 20px;
+                    border-radius: 12px;
+                    box-shadow: var(--shadow-lg);
+                    z-index: 1000;
+                    max-width: 350px;
+                    animation: slideIn 0.3s ease-out;
+                ">
+                    <div style="font-weight: 600; margin-bottom: 8px;">
+                        ${t('sessionExpired') || 'Session Expired'}
+                    </div>
+                    <div style="font-size: 0.9rem; margin-bottom: 12px;">
+                        ${message}
+                    </div>
+                    <button onclick="this.closest('.auth-error-notification').remove(); location.reload();" 
+                            style="
+                                background: rgba(255,255,255,0.2);
+                                border: 1px solid rgba(255,255,255,0.3);
+                                color: white;
+                                padding: 8px 16px;
+                                border-radius: 6px;
+                                cursor: pointer;
+                                font-size: 0.9rem;
+                            ">
+                        ${t('refreshPage') || 'Refresh Page'}
+                    </button>
+                </div>
+                <style>
+                    @keyframes slideIn {
+                        from { transform: translateX(100%); opacity: 0; }
+                        to { transform: translateX(0); opacity: 1; }
+                    }
+                </style>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto-remove after 10 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 10000);
         }
     </script>
 </body>

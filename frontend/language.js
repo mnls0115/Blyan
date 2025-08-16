@@ -66,6 +66,11 @@ const translations = {
         // Chat errors and messages
         connectionError: 'Connection error. Please check your network and try again.',
         errorEncountered: 'Sorry, I encountered an error. Please try again.',
+        requestFailed: 'Request failed',
+        serverError: 'Server error. Please try again later.',
+        refreshToRetry: 'Please refresh the page to continue.',
+        sessionExpired: 'Session Expired',
+        refreshPage: 'Refresh Page',
         newConversation: 'New Conversation',
         continueConversation: 'Continue Conversation',
         startFreshConversation: 'Start a fresh conversation with Blyan AI.',
@@ -163,6 +168,11 @@ const translations = {
         // Chat errors and messages
         connectionError: '연결 오류가 발생했습니다. 네트워크를 확인하고 다시 시도해주세요.',
         errorEncountered: '죄송합니다. 오류가 발생했습니다. 다시 시도해주세요.',
+        requestFailed: '요청 실패',
+        serverError: '서버 오류입니다. 나중에 다시 시도해주세요.',
+        refreshToRetry: '계속하려면 페이지를 새로고침해주세요.',
+        sessionExpired: '세션 만료',
+        refreshPage: '페이지 새로고침',
         newConversation: '새로운 대화',
         continueConversation: '대화 계속하기',
         startFreshConversation: 'Blyan AI와 새로운 대화를 시작하세요.',

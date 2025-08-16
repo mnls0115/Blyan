@@ -16,7 +16,8 @@ function createAIBlockHeader(currentPage = '') {
         <header class="Blyan-header">
             <div class="Blyan-nav">
                 <div class="Blyan-title">
-                    🤖 Blyan
+                    <img src="../logo/Blyan logo.png" alt="Blyan" style="height: 32px; width: auto; vertical-align: middle; margin-right: 8px;" />
+                    Blyan
                 </div>
                 <nav class="nav-tabs">
                     ${Object.entries(pages).map(([key, page]) => `
