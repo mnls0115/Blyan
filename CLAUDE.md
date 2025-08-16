@@ -2,6 +2,29 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🔐 CRITICAL SECURITY REMINDERS
+
+### Main Node (Service Node) Security
+1. **The Digital Ocean server (165.227.221.225 / blyan.com) is the MAIN NODE (service node)**
+2. **Main nodes DO NOT need API keys** - They bypass authentication
+3. **NEVER upload these secrets to Git or anywhere else:**
+   - `BLYAN_MAIN_NODE_SECRET` - Only exists on the Digital Ocean server
+   - `BLYAN_MAIN_NODE_TOKEN` - Only exists on the Digital Ocean server
+   - These must be unique values generated with `secrets.token_hex(32)`
+4. **The .env file on the server contains sensitive data and should NEVER be copied to local development**
+5. **GPU nodes are different** - They connect TO the main node and may need authentication
+
+### Key Generation Security
+- Secrets are generated using Python's `secrets.token_hex(32)` which is cryptographically secure
+- This generates 64 hex characters from 32 bytes of random data (2^256 possibilities)
+- The probability of collision is essentially zero
+- NEVER manually copy/paste these values - always generate new ones
+
+### Authentication Architecture
+- Main node (Digital Ocean server) = Service provider, doesn't need API keys
+- GPU nodes = Service consumers, connect to main node, may need authentication
+- Health endpoint (`/health`) bypasses all authentication for monitoring
+
 ## Project Overview
 
 Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system that hosts evolving AI models using DAG (Directed Acyclic Graph) structure. Each expert is stored as an independent block, enabling selective inference, partial mining, and distributed computing. The system has evolved into a **self-learning, evolving AI organism** rather than static data storage.
