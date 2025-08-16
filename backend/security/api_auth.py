@@ -271,13 +271,17 @@ class ProductionSecurityMiddleware:
     
     async def __call__(self, request: Request, call_next):
         """Main middleware function with enhanced security."""
+        # 0. Bypass authentication for health endpoint
+        endpoint = request.url.path
+        if endpoint == "/health":
+            return await call_next(request)
+        
         # 1. HTTPS enforcement in production
         if self.environment == "production" and request.url.scheme != "https":
             https_url = str(request.url).replace("http://", "https://", 1)
             return RedirectResponse(url=https_url, status_code=301)
         
         # 2. Check if endpoint requires authentication
-        endpoint = request.url.path
         requires_auth = not any(
             endpoint == public or (public.endswith("*") and endpoint.startswith(public.rstrip("*")))
             for public in self.public_endpoints
@@ -355,6 +359,7 @@ class ProductionSecurityMiddleware:
             response.headers[header] = value
         
         # 6. Log request with masked API key
+        api_key = locals().get('api_key', None)  # Get api_key if it was defined
         if api_key:
             masked_key = api_key[:8] + "..." + api_key[-4:] if len(api_key) > 12 else "***"
             logger.info(f"Request: {request.method} {endpoint} [key: {masked_key}] [status: {response.status_code}]")
