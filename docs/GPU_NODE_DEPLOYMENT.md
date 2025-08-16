@@ -34,7 +34,7 @@ RUNPOD_PUBLIC_IP=your.public.ip.here      # Use: curl -s https://checkip.amazona
 
 # REQUIRED for actual model serving
 BLOCKCHAIN_ONLY=false                     # Must be false to load model
-MODEL_QUANTIZATION=8bit                   # 20B model requires 8bit
+# MODEL_QUANTIZATION=8bit                 # WARNING: Only for inference nodes, breaks learning!
 
 # OPTIONAL
 DONOR_MODE=false                          # true = help free-tier, no rewards

@@ -402,7 +402,7 @@
             <div class="requirements">
                 <div class="requirement-item">
                     <div class="status-indicator status-checking" id="gpu-check">⏳</div>
-                    <span id="gpu-status">GPU: NVIDIA with ≥40GB VRAM for 20B model (8-bit quantized)</span>
+                    <span id="gpu-status">GPU: NVIDIA A100 80GB or H100 for 20B model learning</span>
                 </div>
                 <div class="requirement-item">
                     <div class="status-indicator status-checking" id="api-check">⏳</div>
@@ -722,7 +722,7 @@
                         const tty = interactive ? '--rm -it' : '-d --name blyan-node --restart unless-stopped';
                         // Get public IP - user needs to set this!
                         const publicIp = '$(curl -s https://checkip.amazonaws.com)';
-                        return `docker run --gpus all ${tty} \\\n  -p 8001:8001 \\\n  -e BLYAN_API_KEY=${apiKey} \\\n  -e MAIN_SERVER_URL=${location.origin}/api \\\n  -e NODE_ID=${nodeId} \\\n  -e NODE_PORT=8001 \\\n  -e RUNPOD_PUBLIC_IP=${publicIp} \\\n  -e BLOCKCHAIN_ONLY=false \\\n  -e MODEL_QUANTIZATION=8bit \\\n${donorLine}  ghcr.io/blyan-network/expert-node:latest`;
+                        return `docker run --gpus all ${tty} \\\n  -p 8001:8001 \\\n  -e BLYAN_API_KEY=${apiKey} \\\n  -e MAIN_SERVER_URL=${location.origin}/api \\\n  -e NODE_ID=${nodeId} \\\n  -e NODE_PORT=8001 \\\n  -e RUNPOD_PUBLIC_IP=${publicIp} \\\n  -e BLOCKCHAIN_ONLY=false \\\n${donorLine}  ghcr.io/blyan-network/expert-node:latest`;
                     }
                     
                     function buildPython() {
@@ -741,8 +741,7 @@ export MAIN_SERVER_URL=${location.origin}/api
 export NODE_ID=${nodeId}
 export NODE_PORT=8001
 export RUNPOD_PUBLIC_IP=$(curl -s https://checkip.amazonaws.com)
-export BLOCKCHAIN_ONLY=false
-export MODEL_QUANTIZATION=8bit${donorLine}
+export BLOCKCHAIN_ONLY=false${donorLine}
 
 # Run the node
 python runpod_node.py`;
