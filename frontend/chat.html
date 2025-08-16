@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat - Blyan</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="common-header-themed.css">
@@ -666,22 +667,32 @@
 
         async function loadChatHistory() {
             try {
+                // Only attempt to load chat history if we have an API key
+                const apiKey = localStorage.getItem('apiKey');
+                if (!apiKey) {
+                    displayChatHistory([]);
+                    return;
+                }
+
                 const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/chat/history`, {
                     headers: {
-                        ...(localStorage.getItem('apiKey') && {
-                            'Authorization': `Bearer ${localStorage.getItem('apiKey')}`
-                        })
+                        'Authorization': `Bearer ${apiKey}`
                     }
                 });
                 
                 if (response.ok) {
                     const conversations = await response.json();
                     displayChatHistory(conversations);
+                } else if (response.status === 403) {
+                    console.log('API key invalid or expired');
+                    displayChatHistory([]);
                 } else {
                     console.log('No chat history available or user not authenticated');
+                    displayChatHistory([]);
                 }
             } catch (error) {
                 console.error('Error loading chat history:', error);
+                displayChatHistory([]);
             }
         }
 

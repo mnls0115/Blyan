@@ -389,12 +389,10 @@ const cssVariables = {
   },
 };
 
-// Export everything
-export {
-  lightTheme,
-  darkTheme,
-  cssVariables,
-  createBlyanTheme,
-  brandColors,
-  neutralColors,
-};
+// Make functions globally available
+window.lightTheme = lightTheme;
+window.darkTheme = darkTheme;
+window.cssVariables = cssVariables;
+window.createBlyanTheme = createBlyanTheme;
+window.brandColors = brandColors;
+window.neutralColors = neutralColors;

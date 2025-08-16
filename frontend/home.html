@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blyan - Decentralized AI Network</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤖</text></svg>">
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="common-header-themed.css">
@@ -638,11 +639,7 @@
                 updateThemeIcon(newTheme);
             });
 
-            // Wire Join button
-            const openJoin = () => {
-                document.getElementById('joinModal').style.display = 'flex';
-            };
-            document.getElementById('join-now-btn').addEventListener('click', openJoin);
+            // Wire Join button - removed unused join-now-btn reference
             document.getElementById('joinClose').addEventListener('click', () => {
                 document.getElementById('joinModal').style.display = 'none';
             });
