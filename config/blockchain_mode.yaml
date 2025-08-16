@@ -1,0 +1,91 @@
+# Blockchain Mode Configuration
+# This ensures the system operates in true decentralized mode
+
+# Enable blockchain-only mode (no local model fallback)
+blockchain_only: true
+
+# Seed nodes for initial chain synchronization
+seed_nodes:
+  - host: "runpod-gpu-1.example.com"
+    port: 8001
+    type: "gpu_node"
+    capabilities:
+      - "model_hosting"
+      - "expert_serving"
+      - "chain_sync"
+  
+  - host: "165.227.221.225"  # DigitalOcean service node
+    port: 8000
+    type: "service_node"
+    capabilities:
+      - "api_gateway"
+      - "chain_sync"
+      - "request_routing"
+
+# Chain synchronization settings
+chain_sync:
+  # How new nodes get the blockchain
+  sync_mode: "pull"  # pull from seed nodes
+  
+  # Chains to sync
+  chains:
+    - "A"  # Meta chain (model specifications)
+    - "B"  # Parameter chain (expert weights)
+    - "D"  # Dataset chain
+  
+  # Max chunk size for chain transfer (MB)
+  chunk_size_mb: 100
+  
+  # Retry settings
+  max_retries: 3
+  retry_delay_seconds: 5
+
+# Expert hosting strategy
+expert_hosting:
+  # RunPod nodes host experts
+  runpod_role: "expert_provider"
+  
+  # Service nodes route requests
+  service_role: "request_router"
+  
+  # Minimum experts needed to start
+  min_experts_required: 1
+  
+  # Expert replication factor
+  replication_factor: 2
+
+# Node roles
+node_roles:
+  runpod:
+    - store_experts: true      # Store expert weights
+    - serve_inference: true    # Serve inference requests
+    - mine_blocks: true        # Can mine new blocks
+    - sync_provider: true      # Provide chain to new nodes
+  
+  service:
+    - store_experts: false     # Don't store experts locally
+    - serve_inference: false   # Don't run inference
+    - mine_blocks: false       # Don't mine
+    - sync_provider: true      # Can share chain data
+    - api_gateway: true        # Provide API access
+    - request_router: true     # Route to expert nodes
+
+# Error messages for missing experts
+error_messages:
+  no_experts: |
+    ⚠️ No experts available in blockchain.
+    
+    To add experts:
+    1. Download model on GPU node (RunPod)
+    2. Extract experts: python scripts/extract_individual_experts.py
+    3. Upload to blockchain: python miner/upload_moe_parameters.py
+    
+    This ensures true decentralization!
+  
+  sync_in_progress: |
+    🔄 Blockchain synchronization in progress...
+    Please wait while downloading expert blocks from seed nodes.
+  
+  insufficient_experts: |
+    ⚠️ Only {available}/{required} experts available.
+    System needs more experts for optimal performance.

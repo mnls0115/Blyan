@@ -58,6 +58,15 @@ class ModelWrapper:
         self.model = None
         self.allow_mock_fallback = allow_mock_fallback
         
+        # Check if we're in blockchain-only mode
+        blockchain_only = os.getenv('BLOCKCHAIN_ONLY', 'true').lower() == 'true'
+        
+        if blockchain_only:
+            print("🔗 Blockchain-only mode: Skipping local model loading")
+            print("   Models must be loaded from blockchain expert blocks")
+            # Don't try to load any local models
+            return
+        
         # Determine if we need quantization for large models
         is_large_model = "20b" in model_name.lower() or "neox-20b" in model_name.lower()
         # Allow disabling auto quantization via env
@@ -68,8 +77,8 @@ class ModelWrapper:
             load_in_8bit = True
         
         try:
-            # Check if it's a local model path
-            local_path = f"./models/{model_name}"
+            # Check if it's a local model path (only in non-blockchain mode)
+            local_path = f"./models/{model_name}" if not blockchain_only else None
             
             # Prepare loading kwargs
             load_kwargs = {}
@@ -119,7 +128,7 @@ class ModelWrapper:
             if force_download_env and force_download_env.lower() not in {"0", "false", "no", "off"}:
                 force_download = True
             
-            if os.path.exists(local_path):
+            if local_path and os.path.exists(local_path):
                 print(f"🔍 Loading local model from {local_path}")
                 # Try fast tokenizer, then fall back to slow
                 try:

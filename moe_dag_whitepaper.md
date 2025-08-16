@@ -2,6 +2,16 @@
 
 ## 1. Concept & Motivation
 
+### 🚀 Production Model: GPT OSS 20B
+
+Blyan Network now runs on **GPT OSS 20B**, a state-of-the-art open-source model with:
+- **20 billion parameters** distributed across experts
+- **24 layers** with **16 experts per layer** = 384 total expert blocks
+- **~52MB per expert** - perfectly sized for consumer GPUs (RTX 3090)
+- **Top-2 routing** for optimal performance/efficiency balance
+
+## 1.1 Original Concept & Motivation
+
 * **Trustworthy AI** – Embeds model behaviour rules, code, and weights immutably on a blockchain so anyone can audit what the model will do.
 * **MoE DAG DNA** – Uses a Directed Acyclic Graph (DAG) structure where each Expert is an independent block with dependency relationships, creating the AI's evolutionary *DNA*: reproducible, verifiable, and individually upgradable through consensus.
 * **Proof-of-Learning Mining** – New parameter blocks are accepted only if they demonstrably improve model quality on a public validation set, blending *quality-gated PoL* with a light PoW for spam resistance.

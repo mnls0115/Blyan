@@ -1,0 +1,165 @@
+# Blyan Network Node Configuration
+
+# Node identity
+node:
+  id: "${NODE_ID}"  # Auto-generated if not set
+  role: "FULL"      # SEED, FULL, or LIGHT
+  data_dir: "./data"
+
+# Network configuration
+network:
+  listen_addr: "0.0.0.0:4321"
+  external_addr: ""  # Auto-detected if empty
+  max_peers: 64
+  max_peers_per_ip: 3
+
+# Chain configuration
+chain:
+  network: "mainnet"  # mainnet, testnet, devnet
+  genesis_hash: ""    # Auto-fetch if empty
+  
+# Bootstrap nodes
+bootstrap:
+  nodes:
+    - "seed1.blyan.com:4321"
+    - "seed2.blyan.com:4321"
+    - "165.227.221.225:4321"
+  
+  # DHT bootstrap
+  dht:
+    enabled: true
+    bootstrap_nodes:
+      - "dht.blyan.com:4322"
+
+# P2P configuration
+p2p:
+  # Protocol settings
+  protocol_version: "1.0"
+  handshake_timeout: 10
+  
+  # Sync settings
+  sync:
+    headers_batch_size: 100
+    blocks_batch_size: 32
+    parallel_downloads: 4
+    
+  # Gossip settings
+  gossip:
+    fanout: 8
+    max_hops: 4
+    cache_size: 10000
+    
+  # Rate limits
+  rate_limits:
+    requests_per_minute: 120
+    bytes_per_second: 4000000  # 4MB/s
+    
+  # Connection limits
+  connection:
+    dial_timeout: 5
+    max_pending: 50
+    idle_timeout: 900  # 15 minutes
+
+# Security configuration
+security:
+  # Key management
+  key_file: "${DATA_DIR}/node.key"
+  
+  # Ban settings
+  ban:
+    score_threshold: 0
+    ban_duration: 3600  # 1 hour default
+    
+  # DoS protection
+  dos:
+    max_message_size: 10485760  # 10MB
+    min_time_between_messages: 10  # milliseconds
+
+# Consensus settings
+consensus:
+  # Fork handling
+  max_reorg_depth: 100
+  finality_depth: 10
+  
+  # Block validation
+  max_block_time_drift: 600  # 10 minutes
+  min_block_time: 1         # 1 second
+
+# Storage configuration
+storage:
+  # Database
+  db_path: "${DATA_DIR}/blockchain.db"
+  cache_size: 1073741824  # 1GB
+  
+  # Pruning
+  pruning:
+    enabled: false
+    keep_blocks: 100000
+
+# API configuration
+api:
+  enabled: true
+  listen_addr: "127.0.0.1:8080"
+  
+  # CORS settings
+  cors:
+    enabled: true
+    allowed_origins:
+      - "*"
+
+# Metrics configuration
+metrics:
+  enabled: true
+  listen_addr: "127.0.0.1:9090"
+  
+  # Prometheus settings
+  prometheus:
+    enabled: true
+    path: "/metrics"
+
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARN, ERROR
+  format: "json"  # json or text
+  
+  # Output destinations
+  outputs:
+    - type: "console"
+      level: "INFO"
+    - type: "file"
+      path: "${DATA_DIR}/logs/node.log"
+      level: "DEBUG"
+      max_size: 104857600  # 100MB
+      max_backups: 10
+
+# Feature flags
+features:
+  # Experimental features
+  experimental:
+    fast_sync: true
+    parallel_validation: true
+    
+  # Developer features  
+  developer:
+    mock_mining: false
+    skip_pow: true
+    
+# Environment-specific overrides
+environments:
+  development:
+    network:
+      max_peers: 10
+    logging:
+      level: "DEBUG"
+    features:
+      developer:
+        mock_mining: true
+        
+  production:
+    network:
+      max_peers: 256
+    security:
+      ban:
+        ban_duration: 86400  # 24 hours
+    logging:
+      level: "WARN"

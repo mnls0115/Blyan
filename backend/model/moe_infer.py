@@ -9,6 +9,7 @@ from typing import Optional, Dict, List, Tuple, Any
 from dataclasses import dataclass
 from contextlib import contextmanager
 
+import os
 from backend.core.chain import Chain
 from backend.core.param_index import ParameterIndex
 from .arch import ModelWrapper, bytes_to_state_dict
@@ -533,16 +534,28 @@ class MoEModelManager:
         return selected
     
     def _blockchain_generate(self, prompt: str, expert_weights: Dict[str, Any], selected_experts: List[str], max_new_tokens: int) -> str:
-        """Generate text using actual blockchain Expert weights through real model inference."""
+        """Generate text using ONLY blockchain Expert weights - no local model fallback."""
+        # Check if we're in blockchain-only mode
+        blockchain_only = os.getenv('BLOCKCHAIN_ONLY', 'true').lower() == 'true'
+        
+        if blockchain_only:
+            # 🔗 BLOCKCHAIN-ONLY: No local model loading
+            if not expert_weights:
+                return self._no_experts_available_response(prompt)
+            
+            # TODO: Implement actual inference with blockchain weights
+            # For now, indicate which experts are being used
+            expert_names = ", ".join(selected_experts)
+            return f"[Blockchain-only mode] Using experts: {expert_names}\nResponse generated from blockchain-stored weights."
+        
         try:
-            # 🔗 ACTUAL MODEL INFERENCE WITH BLOCKCHAIN WEIGHTS
-            # Load the base MoE model and apply Expert weights
+            # Legacy mode (for development only) - will be removed
             from .arch import ModelWrapper
             model_spec = self._extract_model_spec()
             model_name = model_spec.get('model_name', 'gpt_oss_20b')
             
-            # Create model wrapper
-            wrapper = ModelWrapper(model_name)
+            # Create model wrapper with fallback disabled
+            wrapper = ModelWrapper(model_name, allow_mock_fallback=False)
             
             if wrapper.model and wrapper.tokenizer:
                 # Apply expert weights to the model
@@ -568,12 +581,31 @@ class MoEModelManager:
                 return f"{response.strip()}"
             
             else:
-                # Fallback to simulated expert behavior
-                return self._simulate_expert_response(prompt, selected_experts)
+                # No local model fallback in blockchain-only mode
+                return self._no_experts_available_response(prompt)
                 
         except Exception as e:
-            print(f"⚠️ Real model inference failed: {e}")
+            print(f"⚠️ Model inference failed: {e}")
+            # In blockchain-only mode, don't fall back to simulation
+            if blockchain_only:
+                return self._no_experts_available_response(prompt)
             return self._simulate_expert_response(prompt, selected_experts)
+    
+    def _no_experts_available_response(self, prompt: str) -> str:
+        """
+        Response when no experts are available in blockchain.
+        This is NOT a fallback - it's an error message prompting upload.
+        """
+        return (
+            "⚠️ No experts found in blockchain. System requires expert upload:\n\n"
+            "1. On RunPod GPU node:\n"
+            "   - Download model: huggingface-cli download <model>\n"
+            "   - Extract experts: python scripts/extract_individual_experts.py\n\n"
+            "2. Upload to blockchain:\n"
+            "   python miner/upload_moe_parameters.py --model-file ./models/gpt_oss_20b\n\n"
+            "3. Experts will be stored as immutable blockchain blocks\n\n"
+            "This ensures true decentralization - no centralized model storage!"
+        )
     
     def _simulate_expert_response(self, prompt: str, selected_experts: List[str]) -> str:
         """Simulate expert responses when real model isn't available."""

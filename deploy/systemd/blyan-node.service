@@ -1,0 +1,54 @@
+[Unit]
+Description=Blyan Network P2P Node
+Documentation=https://github.com/mnls0115/Blyan
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blyan
+Group=blyan
+WorkingDirectory=/opt/blyan
+
+# Environment
+Environment="NODE_ENV=production"
+Environment="NODE_ID=%i"
+Environment="LOG_LEVEL=INFO"
+Environment="PYTHONPATH=/opt/blyan"
+
+# Increase limits for production
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/blyan/data
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=600
+StartLimitBurst=5
+
+# Main process
+ExecStartPre=/opt/blyan/.venv/bin/python -m backend.p2p.node_runner --config /opt/blyan/config/node.yaml --dry-run
+ExecStart=/opt/blyan/.venv/bin/python -m backend.p2p.node_runner --config /opt/blyan/config/node.yaml --node-id %i
+ExecReload=/bin/kill -USR1 $MAINPID
+ExecStop=/bin/kill -TERM $MAINPID
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=blyan-node-%i
+
+# Health check
+HealthCheckInterval=30s
+HealthCheckTimeout=5s
+HealthCheckStartPeriod=60s
+HealthCheckRetries=3
+
+[Install]
+WantedBy=multi-user.target

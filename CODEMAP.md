@@ -1,9 +1,15 @@
 # CODEMAP.md - Blyan Network Codebase Map
 
+## 🆕 Recent Updates (2025-01-15)
+- **Model Migration**: `tiny_mistral_moe` → `gpt_oss_20b` (20B parameters)
+- **Two-Chain Architecture**: Added PoS+BFT transaction chain separate from PoL chain
+- **Production Deployment**: DigitalOcean (165.227.221.225) + RunPod GPU nodes
+
 ## Directory Overview
 
 | Directory | Purpose | Key Entry Files |
-|-----------|---------|-----------------|
+|-----------|---------|-----------------|  
+| `blockchain/` | Two-chain architecture (NEW) | `tx_chain/`, `pol_chain/`, `relayer/` |
 | `api/` | Top-level REST API server | `server.py` (main), `chat_atomic.py`, `streaming.py` |
 | `backend/` | Core subsystems | See subsystem index below |
 | `frontend/` | Web UI (vanilla JS) | `index.html`, `chat.html`, `explorer.html` |
@@ -55,6 +61,22 @@
 | **Node Auth** | `config/node_auth.json` | `backend/api/node_auth.py` |
 | **gRPC Protos** | `proto/*.proto` | Pipeline parallel, edge aggregation |
 | **Genesis Block** | See `CLAUDE.md` init instructions | Meta-chain setup |
+
+## Two-Chain Architecture (NEW)
+
+### Transaction Chain (PoS+BFT)
+- `blockchain/tx_chain/consensus.py` - Tendermint-style BFT
+- `blockchain/tx_chain/token.py` - BLY token with claim/transfer
+- `blockchain/tx_chain/fees.py` - EIP-1559 fee mechanism
+
+### PoL Chain  
+- `blockchain/pol_chain/rewards.py` - Reward receipt generation
+- Epoch-based finalization with Merkle roots
+
+### Cross-Chain Bridge
+- `blockchain/relayer/bridge.py` - Bidirectional anchoring
+- PoL epochs → Tx chain for token claims
+- Tx headers → PoL chain for consistency
 
 ## Key Workflows
 
