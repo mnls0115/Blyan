@@ -599,8 +599,16 @@
                     // Update usage count and refresh chat history
                     await updateChatUsage();
                     await loadChatHistory();
+                } else if (response.status === 403) {
+                    // Free tier limit reached or authentication required
+                    const usedChats = parseInt(localStorage.getItem('usedFreeChats') || '0');
+                    if (usedChats >= 5) {
+                        addMessage(t('freeTierLimitReached') || 'You have reached the free tier limit of 5 messages. Please connect a wallet to continue.', 'assistant');
+                    } else {
+                        addMessage(t('authenticationRequired') || 'Authentication required. Please try again later.', 'assistant');
+                    }
                 } else if (response.status >= 400 && response.status < 500) {
-                    // Client errors (4xx)
+                    // Other client errors (4xx)
                     const errorData = await response.json().catch(() => ({}));
                     const errorMessage = errorData.detail || errorData.message || 'Request failed';
                     addMessage(t('requestFailed') || `Request failed: ${errorMessage}`, 'assistant');
@@ -612,12 +620,9 @@
                 removeTypingIndicator();
                 
                 if (error instanceof AuthenticationError) {
-                    // Show authentication error with refresh option
-                    addMessage(
-                        `${error.message} ${t('refreshToRetry') || 'Please refresh the page to continue.'}`, 
-                        'assistant'
-                    );
-                    showAuthenticationError(error.message);
+                    // For free tier users, this is expected - just show a simple message
+                    console.log('Free tier user - authentication not required');
+                    addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');
                 } else {
                     // Network or other errors
                     addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');

@@ -182,23 +182,10 @@ class APIAuthManager {
             
             // Handle 401/403 errors (authentication issues)
             if (response.status === 401 || response.status === 403) {
-                if (retryCount < this.maxRetries) {
-                    console.log(`Authentication error (${response.status}), attempting to refresh API key...`);
-                    
-                    // Clear current key and refresh
-                    this.clearApiKey();
-                    await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-                    
-                    try {
-                        await this.refreshApiKey();
-                        return this.makeAuthenticatedRequest(url, options, retryCount + 1);
-                    } catch (refreshError) {
-                        console.error('Failed to refresh API key:', refreshError);
-                        throw new AuthenticationError('Session expired. Please refresh the page to continue.');
-                    }
-                } else {
-                    throw new AuthenticationError('Authentication failed after multiple attempts. Please refresh the page.');
-                }
+                // For free tier users, don't try to refresh API key
+                // Just return the response and let the app handle it
+                console.log('Authentication error for request, but proceeding as free tier user');
+                return response;
             }
 
             // Update last used timestamp
