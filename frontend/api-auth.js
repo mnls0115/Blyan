@@ -215,7 +215,7 @@ class APIAuthManagerV2 {
         };
 
         try {
-            const response = await fetch(`${this.config.baseURL}/auth/v2/register`, {
+            const response = await fetch(`/auth/v2/register`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -284,7 +284,7 @@ class APIAuthManagerV2 {
 
     async _performRefresh() {
         try {
-            const response = await fetch(`${this.config.baseURL}/auth/v2/refresh`, {
+            const response = await fetch(`/auth/v2/refresh`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -617,7 +617,7 @@ class APIAuthManagerV2 {
         // Validate with backend
         try {
             const response = await this._performRequest(
-                `${this.config.baseURL}/auth/v2/validate`,
+                `/auth/v2/validate`,
                 { method: 'GET' },
                 apiKey
             );
