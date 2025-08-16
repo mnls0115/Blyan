@@ -677,7 +677,7 @@
             btn.disabled = true; btn.textContent = 'Provisioning…';
             try {
                 // Request node_operator API key
-                const resp = await fetch(`/auth/v2/register`, {
+                const resp = await fetch(`${API_CONFIG?.baseURL || '/api'}/auth/v2/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: `web-node-${Date.now()}`, key_type: 'node_operator' })
