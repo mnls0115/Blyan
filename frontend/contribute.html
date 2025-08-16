@@ -495,7 +495,7 @@
             btn.textContent = t('provisioning') || 'Provisioning…';
             try {
                 // Request node_operator API key using fetch directly (don't need auth for registration)
-                const resp = await fetch(`${API_CONFIG?.baseURL || '/api'}/auth/register_api_key`, {
+                const resp = await fetch(`/auth/v2/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: `web-node-${Date.now()}`, key_type: 'node_operator' })
@@ -507,7 +507,14 @@
                 const data = await resp.json();
                 const apiKey = data.api_key;
                 // Store using the API auth manager for better management
-                apiAuth.storeApiKey(apiKey, { type: 'node_operator', source: 'manual_generation' });
+                if (apiAuth && apiAuth.storeCredentials) {
+                    apiAuth.storeCredentials(apiKey, { 
+                        role: 'node_operator',
+                        keyId: data.key_id,
+                        expiresAt: data.expires_at,
+                        metadata: { source: 'manual_generation' }
+                    });
+                }
 
                 const dockerCmd = `docker run --gpus all --rm -it \\\n  -e BLYAN_API_KEY=${apiKey} \\\n  -e MAIN_SERVER_URL=${location.origin}/api \\\n  ghcr.io/blyan-network/expert-node:latest`;
                 box.textContent = dockerCmd;
