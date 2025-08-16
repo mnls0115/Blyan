@@ -25,6 +25,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - GPU nodes = Service consumers, connect to main node, may need authentication
 - Health endpoint (`/health`) bypasses all authentication for monitoring
 
+### Node Types & Deployment
+- **Main Node (Service Node)**: Digital Ocean server (165.227.221.225 / blyan.com)
+  - Runs the main API and blockchain
+  - Does NOT need API keys
+  - Uses `api/server.py` as entrypoint
+- **GPU Nodes**: Distributed compute providers
+  - Need `BLYAN_API_KEY` to register with main node
+  - Must set `BLOCKCHAIN_ONLY=false` to actually serve models
+  - Use `runpod_node.py` as entrypoint
+  - Require public IP/DNS and port forwarding
+  - See [GPU Node Deployment Guide](docs/GPU_NODE_DEPLOYMENT.md) for setup
+
 ## Project Overview
 
 Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system that hosts evolving AI models using DAG (Directed Acyclic Graph) structure. Each expert is stored as an independent block, enabling selective inference, partial mining, and distributed computing. The system has evolved into a **self-learning, evolving AI organism** rather than static data storage.

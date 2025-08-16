@@ -26,25 +26,34 @@ We built Blyan because the future of AI is too important to leave in the hands o
 - Verify every computation step
 - No registration required
 
-## 🔗 Connect Your Node
+## 🔗 Connect Your GPU Node
 
 Join the network and earn rewards by contributing compute power to run **GPT OSS 20B model**:
 
-```python
-from client.blyan_client import BlyanNode, NodeRunner
+### Quick Start (Docker)
+```bash
+# 1. Create secure config
+sudo install -d -m 755 /etc/blyan
+sudo tee /etc/blyan/blyan-node.env >/dev/null <<'EOF'
+BLYAN_API_KEY=your_api_key_here       # Get from network admin
+MAIN_SERVER_URL=https://blyan.com/api
+NODE_ID=gpu-$(hostname -s)
+NODE_PORT=8001
+RUNPOD_PUBLIC_IP=$(curl -s https://checkip.amazonaws.com)
+BLOCKCHAIN_ONLY=false
+MODEL_QUANTIZATION=8bit
+EOF
+sudo chmod 600 /etc/blyan/blyan-node.env
 
-# Connect your GPU to the Blyan network
-node = BlyanNode(
-    node_id="your-gpu-node", 
-    host="your-ip-here",
-    port=8001,
-    available_experts=["layer0.expert0", "layer1.expert1"]
-)
-
-# Start earning rewards for AI inference
-runner = NodeRunner(node, api_url="http://api.blyan.com")
-await runner.run()  # Ctrl+C to stop
+# 2. Run GPU node
+docker run --gpus all -d --name blyan-node \
+  -p 8001:8001 \
+  --restart unless-stopped \
+  --env-file /etc/blyan/blyan-node.env \
+  ghcr.io/blyan-network/expert-node:latest
 ```
+
+📖 **[Full GPU Node Deployment Guide](docs/GPU_NODE_DEPLOYMENT.md)** - Complete setup with Python alternative, troubleshooting, and production tips
 
 **💰 Network Economics**: 
 - **Base Model**: GPT OSS 20B distributed across expert nodes
