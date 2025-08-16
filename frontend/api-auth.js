@@ -104,7 +104,7 @@ class APIAuthManager {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     name: `chat-session-${Date.now()}`, 
-                    key_type: 'chat_user' 
+                    key_type: 'basic'  // Changed from 'chat_user' to 'basic'
                 })
             });
 
@@ -117,7 +117,7 @@ class APIAuthManager {
             
             // Store the new key
             this.storeApiKey(newApiKey, {
-                type: 'chat_user',
+                type: 'basic',
                 source: 'auto_refresh'
             });
 
@@ -145,13 +145,24 @@ class APIAuthManager {
      * Make an authenticated API request with automatic retry and key refresh
      */
     async makeAuthenticatedRequest(url, options = {}, retryCount = 0) {
-        // Ensure we have an API key
+        // For free tier users, allow requests without API key
+        // The backend should handle free tier limits
         if (!this.hasValidApiKey()) {
-            try {
-                await this.refreshApiKey();
-            } catch (error) {
-                throw new Error('Unable to obtain API key for authentication');
-            }
+            // Don't try to refresh key for free users
+            // Just make the request without authentication
+            console.log('No API key available, proceeding as free tier user');
+            
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            const requestOptions = {
+                ...options,
+                headers
+            };
+            
+            return fetch(url, requestOptions);
         }
 
         // Prepare headers with authentication

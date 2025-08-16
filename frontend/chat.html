@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat - Blyan</title>
-    <link rel="icon" type="image/png" href="../logo/Blyan logo.png">
+    <link rel="icon" type="image/png" href="/logo/Blyan%20logo.png">
+    <link rel="shortcut icon" type="image/png" href="/logo/Blyan%20logo.png">
     <link rel="stylesheet" href="components.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="common-header-themed.css">
     <link rel="stylesheet" href="page-template.css">
     <script src="language.js"></script>
     <script src="wallet.js"></script>
-    <script src="theme.js"></script>
+    <script src="theme.js?v=2"></script>
     <style>
         /* Theme variables */
         :root {
@@ -574,12 +575,14 @@
             addTypingIndicator();
             
             try {
+                // Use makeAuthenticatedRequest which now handles free tier users
                 const response = await apiAuth.makeAuthenticatedRequest(`${API_CONFIG?.baseURL || '/api'}/chat`, {
                     method: 'POST',
                     body: JSON.stringify({
                         prompt: message,
                         conversation_id: conversationId,
-                        use_moe: true
+                        use_moe: true,
+                        free_tier: !apiAuth.hasValidApiKey()  // Indicate free tier usage
                     })
                 });
                 
@@ -678,6 +681,13 @@
         }
 
         async function loadChatHistory() {
+            // Free tier users don't have persistent chat history
+            if (!apiAuth.hasValidApiKey()) {
+                console.log('Free tier user - no persistent chat history');
+                displayChatHistory([]);
+                return;
+            }
+            
             try {
                 const response = await apiAuth.makeAuthenticatedRequest(`${API_CONFIG?.baseURL || '/api'}/chat/history`);
                 
@@ -690,10 +700,7 @@
                 }
             } catch (error) {
                 console.error('Error loading chat history:', error);
-                if (!(error instanceof AuthenticationError)) {
-                    displayChatHistory([]);
-                }
-                // For auth errors, let the user see the empty state but don't log additional errors
+                displayChatHistory([]);
             }
         }
 
