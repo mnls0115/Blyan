@@ -147,6 +147,22 @@ meta_chain = Chain(root_dir, "A", skip_pol=skip_pol)
 param_chain = Chain(root_dir, "B", skip_pol=skip_pol)  # parameter chain for experts
 dataset_chain = DatasetChain(root_dir, "D")  # Dataset governance chain
 # Parameter index
+
+# Initialize new server components (if not in minimal mode)
+server_components = {}
+if not MINIMAL_MODE:
+    try:
+        from api.server_integration import initialize_server_components
+        server_components = initialize_server_components(app, {
+            'model_manager': None,  # Will be set later
+            'distributed_coordinator': None,  # Will be set later
+            'ledger_client': None,  # Will be set later
+            'streaming_handler': None  # Will be set later
+        })
+        logger.info("✅ Server infrastructure components initialized")
+    except Exception as e:
+        logger.warning(f"⚠️ Server infrastructure not initialized: {e}")
+        server_components = {}
 param_index = ParameterIndex(root_dir / "param_index.json")
 
 # Token ledger (simple JSON file)
@@ -1079,6 +1095,18 @@ async def chat(req: ChatRequest, http_request: Request = None):
     import time
     start_time = time.time()
     
+    # Prepare request for middleware
+    request_dict = req.dict()
+    request_dict['request_id'] = str(time.time())
+    request_dict['start_time'] = start_time
+    
+    # Apply chain bridge middleware if available
+    if server_components and 'chain_bridge' in server_components:
+        try:
+            request_dict = await server_components['chain_bridge'].pre_inference(request_dict)
+        except Exception as e:
+            logger.warning(f"Chain bridge pre-inference failed: {e}")
+    
     # Enhanced request validation with cost verification
     user_address = None
     if http_request:
@@ -1183,7 +1211,7 @@ async def chat(req: ChatRequest, http_request: Request = None):
                 # Prefer donor nodes for free-tier requests
                 limits_info = {}
                 try:
-                    from backend.core.free_tier import get_free_tier_manager
+                    # get_free_tier_manager already imported at top
                     if http_request:
                         user_addr = http_request.headers.get("X-User-Address")
                         if user_addr:
@@ -2407,7 +2435,7 @@ async def stream_chat_sse(
     use_moe: bool = True
 ):
     """Stream chat response using Server-Sent Events."""
-    from api.streaming import get_streaming_handler
+    # get_streaming_handler already imported at top
     from sse_starlette.sse import EventSourceResponse
     
     # Get user address from header
@@ -2434,42 +2462,8 @@ async def stream_chat_sse(
     
     return EventSourceResponse(generate())
 
-@app.websocket("/ws/chat")
-async def websocket_chat(websocket, token: str = None):
-    """WebSocket endpoint for streaming chat."""
-    from api.streaming import get_websocket_handler
-    
-    # Use token as user address (simplified auth)
-    user_address = token or "anonymous"
-    
-    websocket_handler = get_websocket_handler()
-    await websocket_handler.handle_websocket(websocket, user_address)
-
-@app.post("/chat/stream/cancel")
-async def cancel_stream(stream_id: str):
-    """Cancel an active streaming session."""
-    from api.streaming import get_streaming_handler
-    
-    streaming_handler = get_streaming_handler()
-    success = await streaming_handler.cancel_stream(stream_id)
-    
-    if not success:
-        raise HTTPException(status_code=404, detail="Stream not found")
-    
-    return {"message": "Stream cancelled", "stream_id": stream_id}
-
-@app.get("/chat/stream/active")
-async def get_active_streams():
-    """Get information about active streaming sessions."""
-    from api.streaming import get_streaming_handler
-    
-    streaming_handler = get_streaming_handler()
-    active_streams = streaming_handler.get_active_streams()
-    
-    return {
-        "active_count": len(active_streams),
-        "streams": active_streams
-    }
+# Duplicate WebSocket endpoint removed - already defined above at line 1389
+# Duplicate streaming endpoints removed - already defined above at lines 1370-1385
 
 @app.get("/security/integrity_status")
 async def get_integrity_status():
@@ -3485,7 +3479,7 @@ async def get_snapshot_details(snapshot_id: str):
             "snapshot": snapshot,
             "rollback_available": snapshot["age_hours"] <= 24,  # 24 hour limit
             "estimated_rollback_time_minutes": 10,  # 10 minute guarantee
-            "data_loss_warning": f"Rolling back will lose all data created after {datetime.fromtimestamp(snapshot['timestamp']).isoformat()}"
+            "data_loss_warning": f"Rolling back will lose all data created after {datetime.datetime.fromtimestamp(snapshot['timestamp']).isoformat()}"
         }
     except HTTPException:
         raise
