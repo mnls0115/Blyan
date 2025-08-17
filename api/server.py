@@ -353,6 +353,14 @@ try:
 except ImportError as e:
     print(f"⚠️  Metrics exporter not available: {e}")
 
+# Add API Key V2 authentication system
+try:
+    from backend.api.auth_v2 import router as auth_v2_router
+    app.include_router(auth_v2_router)
+    print("✅ API Key V2 authentication mounted at /api/auth/v2")
+except ImportError as e:
+    print(f"⚠️  API Key V2 system not available: {e}")
+
 # Helper for fast JSON responses (non-consensus data only)
 def fast_json_response(data: Dict, status_code: int = 200) -> Response:
     """
