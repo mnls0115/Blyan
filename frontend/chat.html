@@ -394,24 +394,99 @@
         @media (max-width: 768px) {
             .chat-layout {
                 flex-direction: column;
-                height: auto;
+                height: 100vh;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                padding-top: 80px; /* Account for header */
             }
             
+            /* Hide sidebar on mobile */
             .chat-sidebar {
-                width: 100%;
-                max-height: 200px;
-                border-right: none;
-                border-bottom: 1px solid var(--color-divider);
+                display: none;
+            }
+            
+            /* Hide chat header on mobile */
+            .chat-header {
+                display: none;
             }
             
             .chat-main {
-                height: calc(100vh - 280px);
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            
+            .chat-messages {
+                flex: 1;
+                overflow-y: auto;
+                padding: 16px;
+                padding-bottom: 8px; /* Reduce bottom padding */
+            }
+            
+            .chat-input-area {
+                padding: 12px 16px 16px 16px;
+                position: sticky;
+                bottom: 0;
+                background: var(--color-elevated);
+                border-top: 1px solid var(--color-divider);
+                /* Ensure input area is always visible */
+                flex-shrink: 0;
+            }
+            
+            .chat-input {
+                min-height: 44px; /* Slightly smaller on mobile */
+            }
+            
+            .send-btn {
+                width: 44px;
+                height: 44px;
+            }
+            
+            /* Hide floating theme toggle on mobile */
+            .theme-toggle {
+                display: none;
+            }
+        }
+
+        /* Header theme toggle for mobile */
+        .header-theme-toggle {
+            display: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: var(--color-primary);
+            color: var(--color-background);
+            border: none;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.3s ease;
+        }
+        
+        .header-theme-toggle:hover {
+            transform: scale(1.05);
+            background: var(--color-primary-light);
+        }
+        
+        @media (max-width: 768px) {
+            .header-theme-toggle {
+                display: flex;
             }
         }
     </style>
 </head>
 <body>
     <div id="header-container"></div>
+    
+    <!-- Mobile theme toggle button (will be moved to header via JavaScript) -->
+    <button class="header-theme-toggle" id="headerThemeToggle" aria-label="Toggle theme">
+        <span id="headerThemeIcon">🌙</span>
+    </button>
     
     <div class="chat-layout">
         <!-- Chat History Sidebar -->
@@ -487,8 +562,31 @@
             // Create header
             document.getElementById('header-container').innerHTML = createAIBlockHeader('chat');
             
-            // Theme toggle functionality
+            // Move mobile theme toggle to header on mobile
+            const headerThemeToggle = document.getElementById('headerThemeToggle');
+            const headerContainer = document.getElementById('header-container');
+            if (headerContainer && headerThemeToggle) {
+                // Find the header nav section and append the theme toggle
+                const headerNav = headerContainer.querySelector('.header-nav, .nav-section, .header-right');
+                if (headerNav) {
+                    headerNav.appendChild(headerThemeToggle);
+                } else {
+                    // Fallback: append to header container
+                    headerContainer.appendChild(headerThemeToggle);
+                }
+            }
+            
+            // Theme toggle functionality for desktop FAB
             document.getElementById('themeToggle').addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(newTheme);
+            });
+            
+            // Theme toggle functionality for mobile header button
+            headerThemeToggle.addEventListener('click', () => {
                 const currentTheme = document.documentElement.getAttribute('data-theme');
                 const newTheme = currentTheme === 'light' ? 'dark' : 'light';
                 document.documentElement.setAttribute('data-theme', newTheme);
@@ -528,7 +626,11 @@
         
         function updateThemeIcon(theme) {
             const icon = document.getElementById('themeIcon');
-            icon.textContent = theme === 'light' ? '🌙' : '☀️';
+            const headerIcon = document.getElementById('headerThemeIcon');
+            const newIcon = theme === 'light' ? '🌙' : '☀️';
+            
+            if (icon) icon.textContent = newIcon;
+            if (headerIcon) headerIcon.textContent = newIcon;
         }
 
         async function startNewChat() {

@@ -361,6 +361,14 @@ try:
 except ImportError as e:
     print(f"⚠️  API Key V2 system not available: {e}")
 
+# Add P2P enrollment system (JOIN_CODE for secure node enrollment)
+try:
+    from api.routes.p2p_enrollment import router as enrollment_router
+    app.include_router(enrollment_router)
+    print("✅ P2P enrollment system mounted at /api/p2p")
+except ImportError as e:
+    print(f"⚠️  P2P enrollment system not available: {e}")
+
 # Helper for fast JSON responses (non-consensus data only)
 def fast_json_response(data: Dict, status_code: int = 200) -> Response:
     """
