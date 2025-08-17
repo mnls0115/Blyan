@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **GPU Nodes**: Distributed compute providers
   - Need `BLYAN_API_KEY` to register with main node
   - Must set `BLOCKCHAIN_ONLY=false` to actually serve models
-  - Use `runpod_node.py` as entrypoint
+  - Use `run_blyan_node.py` as entrypoint
   - Require public IP/DNS and port forwarding
   - See [GPU Node Deployment Guide](docs/GPU_NODE_DEPLOYMENT.md) for setup
 

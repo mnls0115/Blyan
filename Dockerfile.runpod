@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Blyan 코드 복사
 COPY backend/ ./backend/
-COPY runpod_node.py .
+COPY run_blyan_node.py .
 COPY runpod_setup.sh .
 
 # 실행 권한 설정

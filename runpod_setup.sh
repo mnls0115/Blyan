@@ -64,4 +64,4 @@ pip install -q --upgrade \
 echo ""
 echo "🚀 Starting Blyan GPU Node..."
 echo "================================="
-python -u runpod_node.py
+python -u run_blyan_node.py

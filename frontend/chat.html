@@ -690,30 +690,12 @@
         }
 
         async function loadChatHistory() {
-            // Free tier users use local storage for chat history
-            if (!apiAuth.hasValidApiKey()) {
-                console.log('Free tier user - loading local chat history');
-                loadLocalChatHistory();
-                return;
-            }
-            
-            try {
-                const response = await apiAuth.makeAuthenticatedRequest(`${API_CONFIG?.baseURL || '/api'}/chat/history`);
-                
-                if (response.ok) {
-                    const conversations = await response.json();
-                    displayChatHistory(conversations);
-                } else {
-                    console.log('No chat history available');
-                    displayChatHistory([]);
-                }
-            } catch (error) {
-                console.error('Error loading chat history:', error);
-                displayChatHistory([]);
-            }
+            // Use local storage for chat history
+            // Server-side chat history endpoint will be added in future update
+            loadLocalChatHistory();
         }
 
-        // Local storage management for free tier users
+        // Local storage management for chat history
         function loadLocalChatHistory() {
             try {
                 const localHistory = localStorage.getItem('blyan_chat_history');
@@ -726,7 +708,7 @@
         }
 
         function saveLocalChatHistory(conversationId, message, isUser = true) {
-            if (apiAuth.hasValidApiKey()) return; // Only for free tier
+            // Save to local storage for all users
             
             try {
                 const localHistory = localStorage.getItem('blyan_chat_history');
