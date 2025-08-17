@@ -1,0 +1,108 @@
+# Server configuration for inference infrastructure
+
+server:
+  # Continuous batching configuration
+  batching:
+    max_batch_tokens: 2048
+    max_batch_size: 32
+    prefill_decode_ratio: 0.3  # 30% for prefill, 70% for decode
+    eviction_policy: oldest_first  # oldest_first, lowest_priority, longest_running
+    timeout_seconds: 60
+    
+  # KV cache configuration
+  kv_cache:
+    max_kv_tokens: 8192
+    max_memory_gb: 8.0
+    admission_policy: versioned_only  # always, size_threshold, no_system_prompt, versioned_only
+    eviction_policy: LRU  # LRU, LFU, largest
+    prefix_cache_enabled: true
+    fingerprint_length: 64
+    cache_dtype: float16
+    
+  # Streaming configuration
+  streaming:
+    max_concurrent_streams: 100
+    stream_timeout_seconds: 300
+    cleanup_delay_seconds: 60
+    enable_sse: true
+    enable_cancellation: true
+    
+  # OOM fallback configuration
+  oom_fallback:
+    enabled: true
+    max_attempts: 4
+    sequence:
+      - split_batch
+      - shrink_kv
+      - lower_precision
+      - reject_request
+    precision_fallback:
+      - fp32
+      - bf16
+      - fp16
+      - int8
+      
+  # Accounting and billing
+  accounting:
+    batch_threshold_bly: 0.5  # Process payments when user owes > 0.5 BLY
+    bly_usd_rate: 0.10
+    pricing:
+      default:
+        prompt_per_1k: 0.001
+        completion_per_1k: 0.003
+      gpt_oss_20b:
+        prompt_per_1k: 0.001
+        completion_per_1k: 0.003
+      gpt_oss_120b:
+        prompt_per_1k: 0.005
+        completion_per_1k: 0.015
+    receipt_ttl_days: 30
+    
+  # Expert cache configuration
+  expert_cache:
+    max_memory_gb: 16.0
+    prefetch_queue_size: 10
+    prewarm_on_startup:
+      - layer0.expert0
+      - layer0.expert1
+      - layer1.expert0
+    cache_ttl_seconds: 600
+    
+  # Model versioning
+  versioning:
+    default_model: gpt_oss_20b
+    default_version: v1.0.0
+    enforce_hash_validation: true
+    allow_version_fallback: true
+    cache_ttl_seconds: 300
+    
+  # Metrics export
+  metrics:
+    enabled: true
+    export_interval_seconds: 10
+    prometheus_port: 9090
+    prefix: blyan_server_
+    include_histograms: true
+    
+  # Chain bridge configuration  
+  chain_bridge:
+    enabled: true
+    sign_receipts: true
+    include_merkle_root: true
+    receipt_log_path: data/receipts/inference_receipts.jsonl
+    model_resolver_cache_ttl: 300
+    
+# P2P integration
+p2p:
+  sticky_sessions: true
+  session_ttl_seconds: 300
+  prefer_local_experts: true
+  hot_cache_replication_factor: 3
+  
+# Security
+security:
+  max_request_size_mb: 10
+  rate_limit_per_ip: 100  # requests per minute
+  require_authentication: false  # Set to true in production
+  allowed_origins:
+    - "*"  # Change in production
