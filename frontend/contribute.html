@@ -1107,15 +1107,48 @@
         
         function startExpiryCountdown(expiresAt) {
             const resultDiv = document.getElementById('joinCodeResult');
-            const expiryTime = new Date(expiresAt).getTime();
+            
+            // If expiresAt is not provided or invalid, assume 30 minutes from now
+            let expiryTime;
+            if (!expiresAt) {
+                // No expiry provided, use 30 minutes from now
+                expiryTime = new Date().getTime() + (30 * 60 * 1000);
+            } else if (typeof expiresAt === 'number' && expiresAt < 10000000000) {
+                // Unix timestamp in seconds, convert to milliseconds
+                expiryTime = expiresAt * 1000;
+            } else {
+                // Parse as date string or milliseconds
+                expiryTime = new Date(expiresAt).getTime();
+            }
+            
+            // Validate the expiry time
+            const now = new Date().getTime();
+            if (isNaN(expiryTime) || expiryTime <= now) {
+                // If invalid or already expired, assume 30 minutes from now
+                console.warn('Invalid or expired time, using 30 minutes from now');
+                expiryTime = now + (30 * 60 * 1000);
+            }
             
             const countdownInterval = setInterval(() => {
-                const now = new Date().getTime();
-                const timeLeft = expiryTime - now;
+                const currentTime = new Date().getTime();
+                const timeLeft = expiryTime - currentTime;
                 
                 if (timeLeft <= 0) {
                     clearInterval(countdownInterval);
-                    resultDiv.innerHTML += '<br><span style="color: #ef4444;">⚠️ This code has expired. Please request a new one.</span>';
+                    
+                    // Remove any existing expiry message first
+                    const existingExpiry = resultDiv.querySelector('.expiry-message');
+                    if (existingExpiry) {
+                        existingExpiry.remove();
+                    }
+                    
+                    // Add expiry message
+                    const expiryMsg = document.createElement('div');
+                    expiryMsg.className = 'expiry-message';
+                    expiryMsg.style.color = '#ef4444';
+                    expiryMsg.style.marginTop = '12px';
+                    expiryMsg.innerHTML = '⚠️ This code has expired. Please request a new one.';
+                    resultDiv.appendChild(expiryMsg);
                     
                     // Show the request button again
                     const btn = document.getElementById('joinCodeBtn');
@@ -1137,9 +1170,14 @@
                         timerSpan.id = 'joinCodeTimer';
                         timerSpan.style.marginLeft = '10px';
                         timerSpan.style.color = 'var(--color-text-secondary)';
-                        resultDiv.querySelector('small').appendChild(timerSpan);
+                        const smallElement = resultDiv.querySelector('small');
+                        if (smallElement) {
+                            smallElement.appendChild(timerSpan);
+                        }
                     }
-                    timerSpan.textContent = ` (${minutes}:${seconds.toString().padStart(2, '0')} remaining)`;
+                    if (timerSpan) {
+                        timerSpan.textContent = ` (${minutes}:${seconds.toString().padStart(2, '0')} remaining)`;
+                    }
                 }
             }, 1000);
         }
