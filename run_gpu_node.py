@@ -100,7 +100,13 @@ class BilyanGPUNode:
                     # Now get the actual genesis block from chain A
                     response = await client.get(f"{MAIN_NODE_URL}/chain/A/blocks")
                     if response.status_code == 200:
-                        blocks = response.json()
+                        data = response.json()
+                        # Handle both list and dict responses
+                        if isinstance(data, dict) and 'blocks' in data:
+                            blocks = data['blocks']
+                        else:
+                            blocks = data
+                        
                         if blocks and len(blocks) > 0:
                             # Find genesis block (usually first)
                             for block in blocks:
@@ -187,7 +193,12 @@ class BilyanGPUNode:
                     try:
                         response = await client.get(f"{MAIN_NODE_URL}/chain/{chain_id}/blocks")
                         if response.status_code == 200:
-                            blocks = response.json()
+                            data = response.json()
+                            # Handle both list and dict responses
+                            if isinstance(data, dict) and 'blocks' in data:
+                                blocks = data['blocks']
+                            else:
+                                blocks = data
                             logger.info(f"Received {len(blocks)} blocks for chain {chain_id}")
                             
                             # Add blocks to local chain
