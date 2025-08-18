@@ -346,6 +346,12 @@
             padding-top: 20px;
             animation: slideDown 0.3s ease-out;
         }
+        
+        /* Join code states */
+        .is-expired {
+            opacity: 0.5;
+            text-decoration: line-through;
+        }
 
         @keyframes slideDown {
             from {
@@ -1072,7 +1078,8 @@
                     const data = await response.json();
                     
                     // Display the join code
-                    codeDisplay.textContent = data.join_code;
+                    codeDisplay.textContent = data.join_code || '–';
+                    codeDisplay.classList.remove('is-expired');
                     resultDiv.style.display = 'block';
                     
                     // Hide the request button since code is single-use
@@ -1082,8 +1089,9 @@
                     sessionStorage.setItem('blyan_join_code', data.join_code);
                     sessionStorage.setItem('blyan_join_code_expires', data.expires_at);
                     
-                    // Show expiry countdown
-                    startExpiryCountdown(data.expires_at);
+                    // Show expiry countdown with new system
+                    const exp = parseExpiry(data.expires_at);
+                    renderCountdown(exp);
                     
                 } else if (response.status === 429) {
                     // Rate limited
@@ -1105,81 +1113,88 @@
             }
         }
         
-        function startExpiryCountdown(expiresAt) {
-            const resultDiv = document.getElementById('joinCodeResult');
+        // Utility function for timestamp parsing
+        function parseExpiry(ts) {
+            if (!ts) return Date.now() + 30 * 60 * 1000;
+            if (typeof ts === 'number') {
+                return ts < 1e12 ? ts * 1000 : ts;
+            }
+            const t = Date.parse(ts);
+            return isNaN(t) ? (Date.now() + 30 * 60 * 1000) : t;
+        }
+        
+        // Global countdown interval to clear previous ones
+        let countdownInterval = null;
+        
+        function renderCountdown(expMs) {
+            const statusEl = document.getElementById('joinCodeResult');
+            const badgeEl = document.getElementById('joinCodeDisplay');
             
-            // If expiresAt is not provided or invalid, assume 30 minutes from now
-            let expiryTime;
-            if (!expiresAt) {
-                // No expiry provided, use 30 minutes from now
-                expiryTime = new Date().getTime() + (30 * 60 * 1000);
-            } else if (typeof expiresAt === 'number' && expiresAt < 10000000000) {
-                // Unix timestamp in seconds, convert to milliseconds
-                expiryTime = expiresAt * 1000;
-            } else {
-                // Parse as date string or milliseconds
-                expiryTime = new Date(expiresAt).getTime();
+            // Clear previous interval
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
             }
             
-            // Validate the expiry time
-            const now = new Date().getTime();
-            if (isNaN(expiryTime) || expiryTime <= now) {
-                // If invalid or already expired, assume 30 minutes from now
-                console.warn('Invalid or expired time, using 30 minutes from now');
-                expiryTime = now + (30 * 60 * 1000);
+            // Remove existing expiry messages
+            const existingExpiry = statusEl.querySelector('.expiry-message');
+            if (existingExpiry) {
+                existingExpiry.remove();
             }
             
-            const countdownInterval = setInterval(() => {
-                const currentTime = new Date().getTime();
-                const timeLeft = expiryTime - currentTime;
-                
-                if (timeLeft <= 0) {
-                    clearInterval(countdownInterval);
-                    
-                    // Remove any existing expiry message first
-                    const existingExpiry = resultDiv.querySelector('.expiry-message');
-                    if (existingExpiry) {
-                        existingExpiry.remove();
-                    }
-                    
-                    // Add expiry message
+            const tick = () => {
+                const left = expMs - Date.now();
+                if (left <= 0) {
+                    // Show expired message
                     const expiryMsg = document.createElement('div');
                     expiryMsg.className = 'expiry-message';
                     expiryMsg.style.color = '#ef4444';
                     expiryMsg.style.marginTop = '12px';
                     expiryMsg.innerHTML = '⚠️ This code has expired. Please request a new one.';
-                    resultDiv.appendChild(expiryMsg);
+                    statusEl.appendChild(expiryMsg);
                     
-                    // Show the request button again
+                    if (badgeEl) badgeEl.classList.add('is-expired');
+                    
+                    // Show request button again
                     const btn = document.getElementById('joinCodeBtn');
-                    btn.style.display = 'inline-block';
-                    btn.textContent = 'Request New Code';
-                    btn.disabled = false;
-                    
-                    // Clear session storage
-                    sessionStorage.removeItem('blyan_join_code');
-                    sessionStorage.removeItem('blyan_join_code_expires');
-                } else {
-                    const minutes = Math.floor(timeLeft / 60000);
-                    const seconds = Math.floor((timeLeft % 60000) / 1000);
-                    
-                    // Update the timer display if it exists
-                    let timerSpan = document.getElementById('joinCodeTimer');
-                    if (!timerSpan) {
-                        timerSpan = document.createElement('span');
-                        timerSpan.id = 'joinCodeTimer';
-                        timerSpan.style.marginLeft = '10px';
-                        timerSpan.style.color = 'var(--color-text-secondary)';
-                        const smallElement = resultDiv.querySelector('small');
-                        if (smallElement) {
-                            smallElement.appendChild(timerSpan);
-                        }
+                    if (btn) {
+                        btn.style.display = 'inline-block';
+                        btn.textContent = 'Request New Code';
+                        btn.disabled = false;
                     }
-                    if (timerSpan) {
-                        timerSpan.textContent = ` (${minutes}:${seconds.toString().padStart(2, '0')} remaining)`;
+                    
+                    clearInterval(countdownInterval);
+                    return;
+                }
+                
+                const m = Math.floor(left / 60000);
+                const s = Math.floor((left % 60000) / 1000);
+                
+                // Update timer in the small element
+                let timerSpan = document.getElementById('joinCodeTimer');
+                if (!timerSpan) {
+                    timerSpan = document.createElement('span');
+                    timerSpan.id = 'joinCodeTimer';
+                    timerSpan.style.marginLeft = '10px';
+                    timerSpan.style.color = 'var(--color-text-secondary)';
+                    timerSpan.setAttribute('aria-live', 'polite');
+                    const smallElement = statusEl.querySelector('small');
+                    if (smallElement) {
+                        smallElement.appendChild(timerSpan);
                     }
                 }
-            }, 1000);
+                
+                if (timerSpan) {
+                    timerSpan.textContent = ` (${m}m ${s}s remaining)`;
+                }
+            };
+            
+            countdownInterval = setInterval(tick, 1000);
+            tick(); // Run immediately
+        }
+        
+        function startExpiryCountdown(expiresAt) {
+            const exp = parseExpiry(expiresAt);
+            renderCountdown(exp);
         }
         
         // Check if there's an existing join code in session on page load
