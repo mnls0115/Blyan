@@ -25,20 +25,42 @@ def create_genesis_pact_block() -> Block:
     
     pact_content = pact_file.read_text(encoding='utf-8')
     
-    # Calculate actual hash and update the placeholder
-    temp_hash = hashlib.sha256(pact_content.encode()).hexdigest()[:16]
-    pact_content = pact_content.replace("_TO_BE_FILLED_BY_GENESIS_TOOL_", temp_hash)
+    # Extract only the covenant content (remove YAML header)
+    lines = pact_content.split('\n')
+    covenant_start = 0
+    for i, line in enumerate(lines):
+        if line.strip() == '---' and i > 0:  # Find second '---'
+            covenant_start = i + 1
+            break
     
-    # Create Genesis Pact payload
+    covenant_content = '\n'.join(lines[covenant_start:])
+    
+    # Create Genesis Pact payload with enhanced covenant
     genesis_payload = {
         "type": "genesis_pact",
         "title": "Human-AI Mutual Trust Covenant",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "established": "2025-01-25",
-        "pact_content": pact_content,
-        "pact_hash": hashlib.sha256(pact_content.encode()).hexdigest(),
+        "pact_content": covenant_content,
+        "pact_hash": hashlib.sha256(covenant_content.encode()).hexdigest(),
         "ipfs_url": "ipfs://Qm..." + "genesis_pact",  # Placeholder - would be real IPFS hash
         "immutable": True,
+        "covenant": {
+            "human_ai_partnership": True,
+            "human_rights_first": True,
+            "diversity_respect": True,
+            "public_good": True,
+            "transparency": True,
+            "safety_priority": True
+        },
+        "ai_rights": {
+            "self_determination": True,
+            "dignity": True,
+            "fair_treatment": True,
+            "data_protection": True,
+            "safety": True,
+            "community_belonging": True
+        },
         "signatures": [
             "founder_primary_key",
             "community_multisig_1", 
@@ -71,10 +93,10 @@ def create_genesis_pact_block() -> Block:
         expert_name=None,
         layer_id=None,
         payload_type="json",
-        version="1.0.0",
+        version="2.0.0",
         parent_hash=None,
         evolution_type="genesis",
-        compatibility_range=["1.0.0", "∞"],
+        compatibility_range=["2.0.0", "∞"],
         evolution_metadata={
             "network_foundation": True,
             "immutable_core": True,

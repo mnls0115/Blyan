@@ -120,8 +120,13 @@ class InputValidator:
             raise SecurityError(f"URL validation failed: {e}")
     
     @classmethod
-    def validate_json_payload(cls, payload: Dict[str, Any], max_size: int = 10_000_000) -> Dict[str, Any]:
+    def validate_json_payload(cls, payload: Dict[str, Any], max_size: int = None) -> Dict[str, Any]:
         """Validate JSON payload size and content"""
+        # Use network config max block size if not specified
+        if max_size is None:
+            from backend.config.network_config import get_network_config
+            max_size = get_network_config().get_max_block_size()
+        
         # Size check
         payload_str = json.dumps(payload)
         if len(payload_str) > max_size:

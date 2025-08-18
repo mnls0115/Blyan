@@ -13,6 +13,8 @@ from pathlib import Path
 from fastapi import HTTPException
 from fastapi.requests import Request
 
+from backend.config.network_config import get_network_config
+
 @dataclass
 class UserStats:
     """User reputation and usage statistics."""
@@ -73,15 +75,16 @@ class PoLBasedRateLimiter:
     def __init__(self, storage_dir: Path = None):
         self.storage_dir = storage_dir or Path("./data/rate_limiting")
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self.config = get_network_config()
         
         self.user_quotas = {
             "newbie": {
-                "uploads_per_day": 20,
+                "uploads_per_day": self.config.quota.newbie_daily,
                 "inference_per_hour": 100,
-                "promotion_threshold": 3  # 3 successes to become trusted
+                "promotion_threshold": self.config.quota.promotion_threshold
             },
             "trusted": {
-                "uploads_per_day": 200,
+                "uploads_per_day": self.config.quota.trusted_daily,
                 "inference_per_hour": 1000,
                 "promotion_threshold": 10  # 10 successes to become expert
             },

@@ -11,6 +11,8 @@ from enum import Enum
 import threading
 from collections import defaultdict
 
+from backend.config.network_config import get_network_config
+
 class QuarantineLevel(Enum):
     """Quarantine severity levels."""
     MONITORING = "monitoring"
@@ -48,6 +50,7 @@ class QuarantineManager:
         
         self.quarantined_nodes: Dict[str, QuarantineEntry] = {}
         self.suspicious_activities: List[SuspiciousActivity] = []
+        self.config = get_network_config()
         self.trust_scores: Dict[str, float] = defaultdict(lambda: 0.5)  # Default trust score
         
         self.quarantine_thresholds = {
@@ -256,6 +259,10 @@ class QuarantineManager:
     
     def _check_auto_quarantine(self, node_id: str) -> bool:
         """Check if node should be auto-quarantined based on trust score."""
+        # Check if auto-quarantine is enabled in config
+        if not self.config.should_auto_quarantine():
+            return False
+            
         trust_score = self.trust_scores[node_id]
         
         # Skip if already quarantined

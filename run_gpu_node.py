@@ -9,8 +9,9 @@ import asyncio
 import logging
 import json
 import time
+import hashlib
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -37,6 +38,7 @@ class BilyanGPUNode:
         self.model_manager = None
         self.gpu_available = False
         self.gpu_info = {}
+        self.genesis_hash = None
         
         # Ensure data directory exists
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -82,6 +84,40 @@ class BilyanGPUNode:
         except:
             return False
     
+    async def fetch_genesis_from_main(self) -> Optional[Dict]:
+        """Fetch genesis block from main node."""
+        try:
+            import httpx
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # First get genesis hash
+                response = await client.get(f"{MAIN_NODE_URL}/genesis/hash")
+                if response.status_code == 200:
+                    genesis_info = response.json()
+                    self.genesis_hash = genesis_info.get('genesis_hash')
+                    logger.info(f"Got genesis hash: {self.genesis_hash[:16]}...")
+                    
+                    # Now get the actual genesis block from chain A
+                    response = await client.get(f"{MAIN_NODE_URL}/chain/A/blocks")
+                    if response.status_code == 200:
+                        blocks = response.json()
+                        if blocks and len(blocks) > 0:
+                            # Find genesis block (usually first)
+                            for block in blocks:
+                                if block.get('header', {}).get('block_type') == 'genesis_pact':
+                                    logger.info("Found genesis pact block")
+                                    return block
+                            # If no genesis_pact found, use first block
+                            logger.info("Using first block as genesis")
+                            return blocks[0]
+                else:
+                    logger.warning(f"Could not fetch genesis hash: {response.status_code}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to fetch genesis: {e}")
+        
+        return None
+    
     def initialize_chains(self) -> bool:
         """Initialize or sync blockchain chains."""
         try:
@@ -108,9 +144,9 @@ class BilyanGPUNode:
                 blocks = chain.get_all_blocks()
                 logger.info(f"Chain {chain_id}: {len(blocks)} blocks")
             
-            # If no blocks, try to sync from main node
-            if not chains_exist:
-                asyncio.create_task(self.sync_from_peers())
+            # If chain A is empty, we need genesis first
+            if not chains_exist or len(self.chains['A'].get_all_blocks()) == 0:
+                logger.info("Chain A is empty, will fetch genesis during sync")
             
             return True
             
@@ -124,6 +160,27 @@ class BilyanGPUNode:
             import httpx
             logger.info(f"Attempting to sync from main node: {MAIN_NODE_URL}")
             
+            # First ensure we have genesis
+            genesis_block = await self.fetch_genesis_from_main()
+            if genesis_block and len(self.chains['A'].get_all_blocks()) == 0:
+                logger.info("Adding genesis block to chain A")
+                try:
+                    # Add genesis block first
+                    from backend.core.block import Block, BlockHeader
+                    header_dict = genesis_block.get('header', {})
+                    header = BlockHeader(**header_dict)
+                    payload = genesis_block.get('payload', b'')
+                    if isinstance(payload, str):
+                        payload = payload.encode('utf-8')
+                    elif isinstance(payload, dict):
+                        payload = json.dumps(payload).encode('utf-8')
+                    
+                    block = Block(header=header, payload=payload)
+                    self.chains['A'].storage.save_block(block)
+                    logger.info("Genesis block added successfully")
+                except Exception as e:
+                    logger.warning(f"Could not add genesis block directly: {e}")
+            
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Try to get chain data from main node
                 for chain_id in ['A', 'B', 'D']:
@@ -134,12 +191,37 @@ class BilyanGPUNode:
                             logger.info(f"Received {len(blocks)} blocks for chain {chain_id}")
                             
                             # Add blocks to local chain
-                            for block in blocks:
+                            added_count = 0
+                            for block_dict in blocks:
                                 try:
-                                    if self.chains[chain_id].is_valid_new_block(block):
-                                        self.chains[chain_id].add_block_from_dict(block)
-                                except:
-                                    pass  # Skip invalid blocks
+                                    # For chain A, check if it's genesis and we already have it
+                                    if chain_id == 'A' and block_dict.get('header', {}).get('index') == 0:
+                                        if len(self.chains[chain_id].get_all_blocks()) > 0:
+                                            continue  # Skip if we already have genesis
+                                    
+                                    # Try to add block
+                                    if hasattr(self.chains[chain_id], 'add_block_from_dict'):
+                                        self.chains[chain_id].add_block_from_dict(block_dict)
+                                        added_count += 1
+                                    else:
+                                        # Manual block creation
+                                        from backend.core.block import Block, BlockHeader
+                                        header = BlockHeader(**block_dict.get('header', {}))
+                                        payload = block_dict.get('payload', b'')
+                                        if isinstance(payload, str):
+                                            payload = payload.encode('utf-8')
+                                        elif isinstance(payload, dict):
+                                            payload = json.dumps(payload).encode('utf-8')
+                                        block = Block(header=header, payload=payload)
+                                        self.chains[chain_id].storage.save_block(block)
+                                        added_count += 1
+                                except Exception as e:
+                                    logger.debug(f"Could not add block: {e}")
+                            
+                            if added_count > 0:
+                                logger.info(f"Added {added_count} blocks to chain {chain_id}")
+                        elif response.status_code == 404 and chain_id == 'D':
+                            logger.info(f"Chain {chain_id} not available on main node (expected for dataset chain)")
                         else:
                             logger.warning(f"Could not sync chain {chain_id}: {response.status_code}")
                     except Exception as e:
@@ -175,12 +257,17 @@ class BilyanGPUNode:
             )
             
             # Check for available experts
-            experts = self.model_manager.list_available_experts()
+            experts = []
+            if hasattr(self.model_manager, '_get_available_experts_for_layer'):
+                # Try to get experts for different layers
+                for layer_id in range(24):  # Assuming 24 layers
+                    layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
+                    experts.extend(layer_experts)
+            
             if experts:
-                logger.info(f"Loaded {len(experts)} experts from blockchain")
+                logger.info(f"Found {len(experts)} experts from blockchain")
             else:
-                logger.info("No experts in blockchain - need to download model")
-                asyncio.create_task(self.download_and_extract_model())
+                logger.info("No experts in blockchain - model download may be needed")
             
             return True
             
@@ -347,15 +434,24 @@ class BilyanGPUNode:
                 except:
                     public_ip = "unknown"
                 
+                # Get available experts for registration
+                available_experts = []
+                if self.model_manager and hasattr(self.model_manager, '_get_available_experts_for_layer'):
+                    for layer_id in range(24):
+                        layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
+                        available_experts.extend(layer_experts)
+                
                 # Register
                 data = {
                     "node_id": self.node_id,
                     "host": public_ip,
                     "port": self.port,
+                    "available_experts": available_experts,  # This field is required
                     "node_type": "gpu",
                     "gpu_info": self.gpu_info,
                     "chains": list(self.chains.keys()),
-                    "model_ready": self.model_manager is not None
+                    "model_ready": self.model_manager is not None,
+                    "genesis_hash": self.genesis_hash  # Include genesis hash for verification
                 }
                 
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data)
@@ -381,14 +477,17 @@ class BilyanGPUNode:
             logger.error("Failed to initialize chains")
             return
         
-        # 3. Initialize model manager
+        # 3. Sync from peers (including genesis)
+        await self.sync_from_peers()
+        
+        # 4. Initialize model manager
         if not self.initialize_model_manager():
             logger.warning("Running without model manager")
         
-        # 4. Start server
+        # 5. Start server
         await self.start_server()
         
-        # 5. Keep running
+        # 6. Keep running
         logger.info("Node ready for requests")
         while True:
             await asyncio.sleep(60)
