@@ -84,6 +84,32 @@ class BilyanGPUNode:
         except:
             return False
     
+    def _create_local_genesis(self):
+        """Create a local genesis block for offline testing."""
+        try:
+            spec = {
+                "model_name": MODEL_NAME,
+                "architecture": "mixture-of-experts",
+                "num_layers": 24,
+                "num_experts": 16,
+                "routing_strategy": "top2",
+                "created_by": "gpu_node_local",
+                "timestamp": time.time()
+            }
+            payload = json.dumps(spec).encode()
+            
+            # Add genesis to chain A
+            self.chains['A'].add_block(payload, block_type='genesis_pact')
+            logger.info("✅ Local genesis block created")
+            
+            # Store the hash for reference
+            blocks = self.chains['A'].get_all_blocks()
+            if blocks:
+                self.genesis_hash = blocks[0]['hash']
+                logger.info(f"Genesis hash: {self.genesis_hash[:16]}...")
+        except Exception as e:
+            logger.error(f"Failed to create local genesis: {e}")
+    
     async def fetch_genesis_from_main(self) -> Optional[Dict]:
         """Fetch genesis block from main node."""
         try:
@@ -138,9 +164,13 @@ class BilyanGPUNode:
                 blocks = chain.get_all_blocks()
                 logger.info(f"Chain {chain_id}: {len(blocks)} blocks")
             
-            # If chain A is empty, we need genesis first
+            # If chain A is empty, we can create a local genesis for testing
             if not chains_exist or len(self.chains['A'].get_all_blocks()) == 0:
-                logger.info("Chain A is empty, will fetch genesis during sync")
+                if os.getenv("CREATE_LOCAL_GENESIS", "false").lower() == "true":
+                    logger.info("Creating local genesis block for testing...")
+                    self._create_local_genesis()
+                else:
+                    logger.info("Chain A is empty, will fetch genesis during sync")
             
             return True
             
@@ -153,6 +183,18 @@ class BilyanGPUNode:
         try:
             import httpx
             logger.info(f"Attempting to sync from main node: {MAIN_NODE_URL}")
+            
+            # Check if main node is reachable
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(f"{MAIN_NODE_URL}/health")
+                    if response.status_code != 200:
+                        logger.warning(f"Main node unhealthy: {response.status_code}")
+                        return False
+            except Exception as e:
+                logger.warning(f"Main node unreachable: {e}")
+                logger.info("💡 Running in offline mode - will retry sync periodically")
+                return False
             
             # First ensure we have genesis
             genesis_block = await self.fetch_genesis_from_main()
@@ -235,11 +277,16 @@ class BilyanGPUNode:
                             logger.warning(f"Could not sync chain {chain_id}: {response.status_code}")
                     except Exception as e:
                         logger.warning(f"Sync error for chain {chain_id}: {e}")
+            
+            logger.info("✅ Blockchain sync completed")
+            return True
                         
         except ImportError:
             logger.warning("httpx not installed - skipping sync")
+            return False
         except Exception as e:
             logger.error(f"Sync failed: {e}")
+            return False
     
     def initialize_model_manager(self) -> bool:
         """Initialize model manager for inference."""
@@ -479,6 +526,29 @@ class BilyanGPUNode:
         except Exception as e:
             logger.info(f"Could not register: {e}")
     
+    async def periodic_sync(self):
+        """Periodically attempt to sync with main node."""
+        retry_interval = 30  # Start with 30 seconds
+        max_interval = 300  # Max 5 minutes
+        
+        while True:
+            await asyncio.sleep(retry_interval)
+            
+            if not self.genesis_hash:
+                logger.info("Attempting to sync blockchain...")
+                success = await self.sync_from_peers()
+                
+                if success:
+                    logger.info("✅ Sync successful!")
+                    retry_interval = 30  # Reset interval
+                    
+                    # Try to register if we haven't
+                    await self.register_with_main()
+                else:
+                    # Exponential backoff
+                    retry_interval = min(retry_interval * 2, max_interval)
+                    logger.debug(f"Next sync attempt in {retry_interval} seconds")
+    
     async def run(self):
         """Main run loop."""
         logger.info("=" * 60)
@@ -493,8 +563,8 @@ class BilyanGPUNode:
             logger.error("Failed to initialize chains")
             return
         
-        # 3. Sync from peers (including genesis)
-        await self.sync_from_peers()
+        # 3. Initial sync attempt (non-blocking)
+        sync_success = await self.sync_from_peers()
         
         # 4. Initialize model manager
         if not self.initialize_model_manager():
@@ -503,11 +573,22 @@ class BilyanGPUNode:
         # 5. Start server
         await self.start_server()
         
-        # 6. Keep running
-        logger.info("Node ready for requests")
+        # 6. Start periodic sync if initial sync failed
+        if not sync_success:
+            asyncio.create_task(self.periodic_sync())
+        
+        # 7. Keep running
+        logger.info("✅ Node ready for requests")
+        logger.info(f"🌐 API available at http://0.0.0.0:{self.port}")
+        
+        if not sync_success:
+            logger.info("📡 Running in offline mode - will sync when main node becomes available")
+        
         while True:
             await asyncio.sleep(60)
-            logger.debug(f"Node {self.node_id} running...")
+            # Periodic health check
+            if hasattr(self, 'model_manager') and self.model_manager:
+                logger.debug(f"Node {self.node_id} healthy - GPU: {self.gpu_available}")
 
 async def main():
     """Entry point."""
