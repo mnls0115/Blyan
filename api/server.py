@@ -2026,10 +2026,11 @@ def is_valid_node_ip(host: str) -> bool:
 @app.post("/p2p/register", response_model=NodeRegistrationResponse)
 async def register_expert_node(req: RegisterNodeRequest):
     """Register a new expert node for distributed inference."""
+    global distributed_coordinator
+    
     if not distributed_coordinator:
         # Try to initialize it on-demand if it wasn't initialized at startup
         try:
-            global distributed_coordinator
             from backend.p2p.distributed_inference import DistributedInferenceCoordinator
             distributed_coordinator = DistributedInferenceCoordinator(usage_tracker, param_index)
             print("✅ P2P coordinator initialized on-demand")
