@@ -81,6 +81,23 @@
             margin: 0 auto;
             gap: 0;
         }
+        
+        /* Desktop Sidebar - Only visible on desktop */
+        .chat-sidebar {
+            width: 300px;
+            background: var(--color-surface);
+            border-right: 1px solid var(--color-divider);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow: hidden;
+        }
+        
+        @media (max-width: 768px) {
+            .chat-sidebar {
+                display: none; /* Hide on mobile */
+            }
+        }
 
 
         .new-chat-btn {
@@ -688,6 +705,13 @@
     </aside>
     
     <div class="chat-layout">
+        <!-- Desktop Sidebar -->
+        <aside class="chat-sidebar" id="desktopSidebar">
+            <button class="new-chat-btn" onclick="startNewChat()">+ New Chat</button>
+            <div class="chat-history" id="desktopChatHistory">
+                <!-- Chat history items will be populated here -->
+            </div>
+        </aside>
 
         <!-- Main Chat Area -->
         <div class="chat-main">
@@ -825,33 +849,8 @@
         
         // Populate drawer with chat history
         function populateDrawerContent() {
-            const drawerList = document.getElementById('drawerChatList');
-            
-            if (!drawerList) return;
-            
-            // Load from local storage and populate drawer
-            try {
-                const localHistory = localStorage.getItem('blyan_chat_history');
-                const conversations = localHistory ? JSON.parse(localHistory) : [];
-                
-                drawerList.innerHTML = conversations.map((conv, index) => {
-                    const title = conv.title || `Conversation ${index + 1}`;
-                    const preview = conv.last_message || 'No messages yet';
-                    const timeAgo = formatTimeAgo(conv.updated_at || conv.created_at);
-                    const isActive = index === 0 ? 'active' : '';
-                    
-                    return `
-                        <div class="drawer__item chat-history-item ${isActive}" onclick="loadConversation('${conv.id}')">
-                            <div class="chat-history-title">${escapeHtml(title)}</div>
-                            <div class="chat-history-preview">${escapeHtml(preview)}</div>
-                            <div class="chat-history-time">${timeAgo}</div>
-                        </div>
-                    `;
-                }).join('');
-            } catch (error) {
-                console.error('Error populating drawer content:', error);
-                drawerList.innerHTML = '';
-            }
+            // Just reload the chat history which will update both desktop and mobile
+            loadChatHistory();
         }
         
         // Visual viewport handling for keyboard
@@ -1239,9 +1238,39 @@
         }
 
         function displayChatHistory(conversations) {
-            // Chat history is now displayed in mobile drawer only
-            // Desktop sidebar has been removed - update drawer instead
-            populateDrawerContent();
+            // Populate both desktop sidebar and mobile drawer
+            const desktopHistory = document.getElementById('desktopChatHistory');
+            const drawerHistory = document.getElementById('drawerChatList');
+            
+            // Sort conversations by timestamp (most recent first)
+            conversations.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            
+            // Generate HTML for chat history
+            const historyHTML = conversations.map(conv => {
+                const title = conv.title || conv.messages?.[0]?.content?.substring(0, 30) + '...' || 'New Chat';
+                const preview = conv.messages?.[conv.messages.length - 1]?.content?.substring(0, 50) + '...' || '';
+                const timeAgo = formatTimeAgo(conv.timestamp || Date.now());
+                
+                return `
+                    <div class="chat-history-item ${conv.id === conversationId ? 'active' : ''}" 
+                         onclick="loadConversation('${conv.id}')"
+                         data-conv-id="${conv.id}">
+                        <div class="chat-history-title">${escapeHtml(title)}</div>
+                        <div class="chat-history-preview">${escapeHtml(preview)}</div>
+                        <div class="chat-history-time">${timeAgo}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Update desktop sidebar
+            if (desktopHistory) {
+                desktopHistory.innerHTML = historyHTML || '<div class="empty-state-text">No chat history yet</div>';
+            }
+            
+            // Update mobile drawer
+            if (drawerHistory) {
+                drawerHistory.innerHTML = historyHTML || '<div class="empty-state-text">No chat history yet</div>';
+            }
         }
 
         function formatTimeAgo(timestamp) {
