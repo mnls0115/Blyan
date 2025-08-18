@@ -122,7 +122,8 @@ MINIMAL_MODE = os.getenv("BLYAN_MINIMAL_MODE", "false").lower() == "true"
 BLOCKCHAIN_ONLY = os.getenv("BLOCKCHAIN_ONLY", "false").lower() == "true"
 DISABLE_PIPELINE_ROUND = os.getenv("DISABLE_PIPELINE_ROUND", "true").lower() == "true"
 DISABLE_GRPC = os.getenv("DISABLE_GRPC", "true").lower() == "true"
-P2P_ENABLE = os.getenv("P2P_ENABLE", "true").lower() == "true" and not MINIMAL_MODE
+# Force P2P to be enabled unless explicitly disabled
+P2P_ENABLE = os.getenv("P2P_ENABLE", "true").lower() != "false" and not MINIMAL_MODE
 DISABLE_SECURITY_MONITOR = os.getenv("BLYAN_DISABLE_SECURITY_MONITOR", "false").lower() == "true"
 
 if MINIMAL_MODE:
@@ -789,17 +790,24 @@ def _startup():
         
         model_manager = ModelManager(meta_chain, param_chain, param_index)
         moe_model_manager = MoEModelManager(meta_chain, param_chain, param_index, usage_tracker)
+    except Exception as e:
+        logger.error(f"Failed to initialize models: {e}")
+        print(f"⚠️  Model initialization failed: {e}")
+        # Continue without models
         
+    # Initialize P2P separately to avoid blocking on model failures
+    try:
         if P2P_ENABLE:
             distributed_coordinator = DistributedInferenceCoordinator(usage_tracker, param_index)
+            print("✅ P2P distributed inference enabled")
         else:
             print("⚠️  P2P distributed inference disabled")
             distributed_coordinator = None
     except Exception as e:
-        logger.error(f"Failed to initialize models/P2P: {e}")
-        print(f"❌ Startup failed: {e}")
-        # Continue anyway in degraded mode
-        return
+        logger.error(f"Failed to initialize P2P coordinator: {e}")
+        print(f"⚠️  P2P initialization failed: {e}")
+        distributed_coordinator = None
+        # Continue without P2P
     
     # Wire scheduler to distributed coordinator
     try:
@@ -2019,7 +2027,15 @@ def is_valid_node_ip(host: str) -> bool:
 async def register_expert_node(req: RegisterNodeRequest):
     """Register a new expert node for distributed inference."""
     if not distributed_coordinator:
-        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+        # Try to initialize it on-demand if it wasn't initialized at startup
+        try:
+            global distributed_coordinator
+            from backend.p2p.distributed_inference import DistributedInferenceCoordinator
+            distributed_coordinator = DistributedInferenceCoordinator(usage_tracker, param_index)
+            print("✅ P2P coordinator initialized on-demand")
+        except Exception as e:
+            logger.error(f"Failed to initialize P2P on-demand: {e}")
+            raise HTTPException(status_code=500, detail="P2P distributed mode is not available on this server")
     
     # Validate IP address
     if not is_valid_node_ip(req.host):

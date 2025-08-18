@@ -97,25 +97,13 @@ class BilyanGPUNode:
                     self.genesis_hash = genesis_info.get('genesis_hash')
                     logger.info(f"Got genesis hash: {self.genesis_hash[:16]}...")
                     
-                    # Now get the actual genesis block from chain A
-                    response = await client.get(f"{MAIN_NODE_URL}/chain/A/blocks")
+                    # Get the full genesis block (index 0) from chain A
+                    response = await client.get(f"{MAIN_NODE_URL}/chain/A/block/0")
                     if response.status_code == 200:
-                        data = response.json()
-                        # Handle both list and dict responses
-                        if isinstance(data, dict) and 'blocks' in data:
-                            blocks = data['blocks']
-                        else:
-                            blocks = data
-                        
-                        if blocks and len(blocks) > 0:
-                            # Find genesis block (usually first)
-                            for block in blocks:
-                                if block.get('header', {}).get('block_type') == 'genesis_pact':
-                                    logger.info("Found genesis pact block")
-                                    return block
-                            # If no genesis_pact found, use first block
-                            logger.info("Using first block as genesis")
-                            return blocks[0]
+                        block = response.json()
+                        if block and block.get('header'):
+                            logger.info("Found genesis block")
+                            return block
                 else:
                     logger.warning(f"Could not fetch genesis hash: {response.status_code}")
                     
@@ -191,24 +179,34 @@ class BilyanGPUNode:
                 # Try to get chain data from main node
                 for chain_id in ['A', 'B', 'D']:
                     try:
+                        # First get block metadata
                         response = await client.get(f"{MAIN_NODE_URL}/chain/{chain_id}/blocks")
                         if response.status_code == 200:
                             data = response.json()
                             # Handle both list and dict responses
                             if isinstance(data, dict) and 'blocks' in data:
-                                blocks = data['blocks']
+                                block_metas = data['blocks']
                             else:
-                                blocks = data
-                            logger.info(f"Received {len(blocks)} blocks for chain {chain_id}")
+                                block_metas = data
+                            logger.info(f"Found {len(block_metas)} blocks for chain {chain_id}")
                             
-                            # Add blocks to local chain
+                            # Fetch and add each full block
                             added_count = 0
-                            for block_dict in blocks:
+                            for block_meta in block_metas:
                                 try:
-                                    # For chain A, check if it's genesis and we already have it
-                                    if chain_id == 'A' and block_dict.get('header', {}).get('index') == 0:
+                                    block_index = block_meta.get('index', 0)
+                                    
+                                    # Skip genesis if we already have it
+                                    if chain_id == 'A' and block_index == 0:
                                         if len(self.chains[chain_id].get_all_blocks()) > 0:
-                                            continue  # Skip if we already have genesis
+                                            continue
+                                    
+                                    # Fetch the full block
+                                    block_response = await client.get(f"{MAIN_NODE_URL}/chain/{chain_id}/block/{block_index}")
+                                    if block_response.status_code != 200:
+                                        continue
+                                        
+                                    block_dict = block_response.json()
                                     
                                     # Try to add block
                                     if hasattr(self.chains[chain_id], 'add_block_from_dict'):
@@ -227,7 +225,7 @@ class BilyanGPUNode:
                                         self.chains[chain_id].storage.save_block(block)
                                         added_count += 1
                                 except Exception as e:
-                                    logger.debug(f"Could not add block: {e}")
+                                    logger.debug(f"Could not add block {block_index}: {e}")
                             
                             if added_count > 0:
                                 logger.info(f"Added {added_count} blocks to chain {chain_id}")
@@ -467,7 +465,14 @@ class BilyanGPUNode:
                 
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data)
                 if resp.status_code == 200:
-                    logger.info("Registered with main node")
+                    logger.info("✅ Registered with main node")
+                elif resp.status_code == 500:
+                    # Check if it's because distributed coordinator is not initialized
+                    if "distributed coordinator" in resp.text.lower():
+                        logger.warning("⚠️  Main node P2P/distributed mode is disabled")
+                        logger.info("💡 Running as standalone GPU node (blockchain sync only)")
+                    else:
+                        logger.warning(f"Registration failed (500): {resp.text[:100]}")
                 else:
                     logger.info(f"Registration status: {resp.status_code}")
                     
