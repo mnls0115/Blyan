@@ -24,8 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 PORT = int(os.environ.get('NODE_PORT', 8002))
 MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL', 'http://165.227.221.225:8000')
 DATA_DIR = Path(os.environ.get('BLYAN_DATA_DIR', './data'))
-MODEL_NAME = os.environ.get('MODEL_NAME', 'microsoft/phi-2')  # Default small model for testing
+MODEL_NAME = os.environ.get('MODEL_NAME', 'openai/gpt-oss-20b')  # OpenAI's GPT-OSS-20B model
 SKIP_POL = os.environ.get('SKIP_POL', 'true').lower() == 'true'
+AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'true').lower() == 'true'  # Auto-upload by default
 
 class BilyanGPUNode:
     """Integrated GPU node with blockchain and model support."""
@@ -305,10 +306,12 @@ class BilyanGPUNode:
                     logger.info(f"  - {expert}")
             else:
                 logger.info("📦 No experts in blockchain yet")
-                logger.info("💡 Upload model using: python miner/upload_moe_parameters.py")
-                # Automatically download and upload if configured
-                if os.getenv("AUTO_DOWNLOAD", "false").lower() == "true":
+                if AUTO_UPLOAD:
+                    logger.info("🚀 Auto-uploading model to blockchain...")
+                    # Create task to download and upload model
                     asyncio.create_task(self.download_and_upload_model())
+                else:
+                    logger.info("💡 Upload model using: python miner/upload_moe_parameters.py")
             
             return True
             
@@ -319,17 +322,18 @@ class BilyanGPUNode:
     async def download_and_upload_model(self):
         """Download model from HuggingFace and upload to blockchain as experts."""
         logger.info(f"📥 Auto-downloading model: {MODEL_NAME}")
+        logger.info("⚠️  This is a 20B parameter model - download may take time...")
         
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            from transformers import AutoModelForCausalLM
             import torch
             import pickle
             
-            # Download model
-            logger.info("⏳ Downloading from HuggingFace...")
+            # Download FULL model - NO quantization
+            logger.info("⏳ Downloading full precision model from HuggingFace...")
             model = AutoModelForCausalLM.from_pretrained(
                 MODEL_NAME,
-                torch_dtype=torch.float16 if self.gpu_available else torch.float32,
+                torch_dtype=torch.float32,  # Full precision, NO quantization
                 trust_remote_code=True
             )
             

@@ -41,6 +41,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system that hosts evolving AI models using DAG (Directed Acyclic Graph) structure. Each expert is stored as an independent block, enabling selective inference, partial mining, and distributed computing. The system has evolved into a **self-learning, evolving AI organism** rather than static data storage.
 
+## 🚨 CRITICAL MODEL REQUIREMENTS
+
+**ALWAYS USE THE FULL MODEL - NO COMPROMISES:**
+- **Model**: `openai/gpt-oss-20b` (https://huggingface.co/openai/gpt-oss-20b)
+- **NO quantized models** (no INT8, no FP16 conversion)
+- **NO smaller models** (no phi-2, no 2.7B alternatives)
+- **NO mock models or hardcoded responses**
+- **Full precision inference from blockchain**
+
+This is non-negotiable. The system is designed for the full 20B parameter model.
+
 ## Development Setup
 
 ### Environment Setup
