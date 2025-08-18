@@ -24,9 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 PORT = int(os.environ.get('NODE_PORT', 8002))
 MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL', 'http://165.227.221.225:8000')
 DATA_DIR = Path(os.environ.get('BLYAN_DATA_DIR', './data'))
-MODEL_NAME = os.environ.get('MODEL_NAME', 'openai/gpt-oss-20b')
+MODEL_NAME = os.environ.get('MODEL_NAME', 'microsoft/phi-2')  # Default small model for testing
 SKIP_POL = os.environ.get('SKIP_POL', 'true').lower() == 'true'
-BLOCKCHAIN_ONLY = os.environ.get('BLOCKCHAIN_ONLY', 'false').lower() == 'true'
 
 class BilyanGPUNode:
     """Integrated GPU node with blockchain and model support."""
@@ -61,28 +60,12 @@ class BilyanGPUNode:
         except ImportError:
             logger.warning("PyTorch not installed - installing...")
             import subprocess
-            if self._detect_gpu_hardware():
-                # Install CUDA version for GPU
-                subprocess.run([sys.executable, "-m", "pip", "install", "-q", 
-                              "torch", "torchvision", "torchaudio", 
-                              "--index-url", "https://download.pytorch.org/whl/cu121"])
-            else:
-                # Install CPU version
-                subprocess.run([sys.executable, "-m", "pip", "install", "-q", 
-                              "torch", "torchvision", "torchaudio"])
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch"])
             return self.check_gpu()  # Recursive call after install
         
         logger.info("No GPU detected - CPU mode")
         return False
     
-    def _detect_gpu_hardware(self) -> bool:
-        """Detect if GPU hardware exists (even without drivers)."""
-        try:
-            import subprocess
-            result = subprocess.run(['nvidia-smi'], capture_output=True, text=True)
-            return result.returncode == 0
-        except:
-            return False
     
     def _create_local_genesis(self):
         """Create a local genesis block for offline testing."""
@@ -289,96 +272,111 @@ class BilyanGPUNode:
             return False
     
     def initialize_model_manager(self) -> bool:
-        """Initialize model manager for inference."""
-        if BLOCKCHAIN_ONLY:
-            logger.info("BLOCKCHAIN_ONLY mode - skipping model initialization")
-            return True
-            
+        """Initialize blockchain-first model manager for inference."""
         try:
-            from backend.model.moe_infer import MoEModelManager
+            # Use blockchain-first loader - NO local models
+            from backend.model.blockchain_first_loader import BlockchainOnlyModelManager
             from backend.core.param_index import ParameterIndex
-            from backend.model.moe_infer import ExpertUsageTracker
+            from backend.core.zero_copy_loader import ZeroCopyTileLoader
             
-            # Initialize components
+            # Initialize parameter index
             param_index = ParameterIndex(DATA_DIR / "param_index.json")
-            usage_tracker = ExpertUsageTracker(DATA_DIR / "expert_usage.json")
             
-            # Create model manager
-            self.model_manager = MoEModelManager(
+            # Initialize blockchain-only model manager
+            self.model_manager = BlockchainOnlyModelManager(
                 meta_chain=self.chains.get('A'),
                 param_chain=self.chains.get('B'),
                 param_index=param_index,
-                usage_tracker=usage_tracker,
                 device="cuda" if self.gpu_available else "cpu"
             )
             
-            # Check for available experts
-            experts = []
-            if hasattr(self.model_manager, '_get_available_experts_for_layer'):
-                # Try to get experts for different layers
-                for layer_id in range(24):  # Assuming 24 layers
-                    layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
-                    experts.extend(layer_experts)
+            # Initialize zero-copy loader for efficient loading
+            self.zero_copy_loader = ZeroCopyTileLoader(
+                chain=self.chains.get('B'),
+                cache_dir=DATA_DIR / "tile_cache"
+            )
             
-            if experts:
-                logger.info(f"Found {len(experts)} experts from blockchain")
+            # Check for available experts in blockchain
+            available_experts = self.model_manager.get_available_experts()
+            
+            if available_experts:
+                logger.info(f"✅ Found {len(available_experts)} experts in blockchain")
+                for expert in available_experts[:5]:  # Show first 5
+                    logger.info(f"  - {expert}")
             else:
-                logger.info("No experts in blockchain - model download may be needed")
+                logger.info("📦 No experts in blockchain yet")
+                logger.info("💡 Upload model using: python miner/upload_moe_parameters.py")
+                # Automatically download and upload if configured
+                if os.getenv("AUTO_DOWNLOAD", "false").lower() == "true":
+                    asyncio.create_task(self.download_and_upload_model())
             
             return True
             
         except Exception as e:
             logger.error(f"Failed to initialize model manager: {e}")
-            # Try simpler approach
-            try:
-                from backend.model.arch import ArchModel
-                self.model_manager = ArchModel()
-                return True
-            except:
-                return False
+            return False
     
-    async def download_and_extract_model(self):
-        """Download model and extract experts to blockchain."""
-        if BLOCKCHAIN_ONLY:
-            return
-            
-        logger.info(f"Downloading model: {MODEL_NAME}")
+    async def download_and_upload_model(self):
+        """Download model from HuggingFace and upload to blockchain as experts."""
+        logger.info(f"📥 Auto-downloading model: {MODEL_NAME}")
         
         try:
-            # Check if model exists locally first
-            model_path = Path(f"./models/{MODEL_NAME.split('/')[-1]}")
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            import torch
+            import pickle
             
-            if not model_path.exists():
-                logger.info("Model not found locally - downloading from HuggingFace...")
-                
-                # Download model using transformers
-                from transformers import AutoModelForCausalLM, AutoTokenizer
-                
-                logger.info("This may take a while for large models...")
-                model = AutoModelForCausalLM.from_pretrained(
-                    MODEL_NAME,
-                    torch_dtype="auto",
-                    device_map="auto" if self.gpu_available else "cpu"
-                )
-                tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-                
-                # Save locally
-                model_path.mkdir(parents=True, exist_ok=True)
-                model.save_pretrained(model_path)
-                tokenizer.save_pretrained(model_path)
-                logger.info(f"Model saved to {model_path}")
-            else:
-                logger.info(f"Model found at {model_path}")
+            # Download model
+            logger.info("⏳ Downloading from HuggingFace...")
+            model = AutoModelForCausalLM.from_pretrained(
+                MODEL_NAME,
+                torch_dtype=torch.float16 if self.gpu_available else torch.float32,
+                trust_remote_code=True
+            )
             
-            # Extract experts and add to blockchain
-            logger.info("Extracting experts to blockchain...")
-            # This would use upload_moe_parameters.py logic
-            # For now, just log that model is ready
-            logger.info("Model ready for inference")
+            # Create meta block if needed
+            if len(self.chains['A'].get_all_blocks()) == 0:
+                meta_spec = {
+                    "model_name": MODEL_NAME,
+                    "architecture": "mixture-of-experts",
+                    "num_layers": 24,
+                    "num_experts": 8,
+                    "routing_strategy": "top2"
+                }
+                self.chains['A'].add_block(json.dumps(meta_spec).encode(), block_type='meta')
+                logger.info("✅ Created meta block")
+            
+            # Extract and upload experts
+            num_uploaded = 0
+            for name, module in model.named_modules():
+                # Look for layers that can be experts
+                if any(x in name.lower() for x in ['layer', 'block', 'mlp', 'attention']):
+                    if hasattr(module, 'weight'):
+                        expert_name = f"expert_{num_uploaded}"
+                        
+                        # Serialize module weights
+                        state_dict = {k: v.cpu() for k, v in module.state_dict().items()}
+                        payload = pickle.dumps(state_dict)
+                        
+                        # Add to blockchain
+                        metadata = json.dumps({"expert_name": expert_name})
+                        self.chains['B'].add_block(
+                            payload,
+                            block_type='expert',
+                            metadata=metadata
+                        )
+                        logger.info(f"✅ Uploaded {expert_name} to blockchain")
+                        num_uploaded += 1
+                        
+                        if num_uploaded >= 8:  # Limit to 8 experts for now
+                            break
+            
+            logger.info(f"✅ Uploaded {num_uploaded} experts to blockchain")
+            
+            # Reinitialize model manager to use new experts
+            self.initialize_model_manager()
             
         except Exception as e:
-            logger.error(f"Failed to download model: {e}")
-            logger.info("Running without model - blockchain node only")
+            logger.error(f"Failed to download/upload model: {e}")
     
     async def start_server(self):
         """Start HTTP server for the node."""
@@ -416,36 +414,48 @@ class BilyanGPUNode:
                 })
             return web.json_response({"error": "Chain not found"}, status=404)
         
-        # Inference endpoint
+        # Inference endpoint - BLOCKCHAIN-FIRST, no local models
         async def inference(request):
             try:
                 data = await request.json()
                 prompt = data.get("prompt", "")
+                max_tokens = data.get("max_length", 100)
+                selected_experts = data.get("experts", [])
                 
-                if self.model_manager and not BLOCKCHAIN_ONLY:
-                    # Real inference
-                    try:
-                        response = await asyncio.to_thread(
-                            self.model_manager.generate,
-                            prompt,
-                            max_length=data.get("max_length", 100)
-                        )
+                if not self.model_manager:
+                    return web.json_response({
+                        "error": "Model manager not initialized"
+                    }, status=503)
+                
+                # Get available experts if none specified
+                if not selected_experts:
+                    available = self.model_manager.get_available_experts()
+                    if available:
+                        # Select top experts for inference
+                        selected_experts = available[:min(4, len(available))]
+                    else:
                         return web.json_response({
-                            "node_id": self.node_id,
-                            "prompt": prompt,
-                            "response": response,
-                            "model": MODEL_NAME,
-                            "gpu_used": self.gpu_available
-                        })
-                    except Exception as e:
-                        logger.error(f"Inference error: {e}")
+                            "error": "No experts in blockchain. Upload model first.",
+                            "hint": "Run: python miner/upload_moe_parameters.py"
+                        }, status=503)
                 
-                # Fallback response
+                logger.info(f"🤖 Blockchain inference with experts: {selected_experts}")
+                
+                # Perform blockchain-first inference
+                response = await asyncio.to_thread(
+                    self.model_manager.generate,
+                    prompt,
+                    selected_experts,
+                    max_tokens
+                )
+                
                 return web.json_response({
                     "node_id": self.node_id,
                     "prompt": prompt,
-                    "response": f"Node {self.node_id} received prompt (model not ready)",
-                    "blockchain_only": BLOCKCHAIN_ONLY
+                    "response": response,
+                    "experts_used": selected_experts,
+                    "blockchain_inference": True,
+                    "gpu_used": self.gpu_available
                 })
                 
             except Exception as e:
