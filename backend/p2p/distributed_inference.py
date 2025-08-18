@@ -316,13 +316,16 @@ class DistributedInferenceCoordinator:
     """Enhanced distributed inference coordinator with expert group optimization and security verification."""
     
     def __init__(self, usage_tracker: ExpertUsageTracker, param_index: Optional[ParameterIndex] = None):
+        # Import os locally to avoid any scope issues
+        import os as _os
+        
         # Legacy registry for backward compatibility
         self.registry = ExpertNodeRegistry()
         
         # Donor utilization cap configuration
-        self.max_donor_utilization_ratio = float(os.getenv("DONOR_USAGE_CAP", "0.3"))
-        self.strict_free_tier = os.getenv("STRICT_FREE_TIER", "false").lower() in ("1", "true", "yes")
-        self.free_tier_queue_timeout = float(os.getenv("FREE_TIER_QUEUE_TIMEOUT", "3.0"))  # seconds
+        self.max_donor_utilization_ratio = float(_os.getenv("DONOR_USAGE_CAP", "0.3"))
+        self.strict_free_tier = _os.getenv("STRICT_FREE_TIER", "false").lower() in ("1", "true", "yes")
+        self.free_tier_queue_timeout = float(_os.getenv("FREE_TIER_QUEUE_TIMEOUT", "3.0"))  # seconds
         
         # Concurrent request tracking with EMA
         self.inflight_total = 0
