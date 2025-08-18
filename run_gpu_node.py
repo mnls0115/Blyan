@@ -329,12 +329,13 @@ class BilyanGPUNode:
             import torch
             import pickle
             
-            # Download FULL model - NO quantization
-            logger.info("⏳ Downloading full precision model from HuggingFace...")
+            # Download model in native BF16 format
+            logger.info("⏳ Downloading BF16 model from HuggingFace...")
             model = AutoModelForCausalLM.from_pretrained(
                 MODEL_NAME,
-                torch_dtype=torch.float32,  # Full precision, NO quantization
-                trust_remote_code=True
+                torch_dtype=torch.bfloat16,  # Native BF16 format as stored on HuggingFace
+                trust_remote_code=True,
+                device_map="auto" if self.gpu_available else "cpu"
             )
             
             # Create meta block if needed

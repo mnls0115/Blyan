@@ -45,12 +45,14 @@ Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system 
 
 **ALWAYS USE THE FULL MODEL - NO COMPROMISES:**
 - **Model**: `openai/gpt-oss-20b` (https://huggingface.co/openai/gpt-oss-20b)
-- **NO quantized models** (no INT8, no FP16 conversion)
+- **Format**: BF16 (bfloat16) - native format as stored on HuggingFace
+- **Size**: 21.5B parameters
+- **NO quantization to INT8 or other formats**
 - **NO smaller models** (no phi-2, no 2.7B alternatives)
 - **NO mock models or hardcoded responses**
-- **Full precision inference from blockchain**
+- **Blockchain-first inference** - all weights from blockchain
 
-This is non-negotiable. The system is designed for the full 20B parameter model.
+This is non-negotiable. The system is designed for the full 20B parameter model in BF16.
 
 ## Development Setup
 
