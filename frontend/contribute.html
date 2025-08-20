@@ -1090,7 +1090,9 @@
                     sessionStorage.setItem('blyan_join_code_expires', data.expires_at);
                     
                     // Show expiry countdown with new system
+                    console.log('[Request] Server response expires_at:', data.expires_at);
                     const exp = parseExpiry(data.expires_at);
+                    console.log('[Request] Calculated expiry:', exp, 'Now:', Date.now(), 'Diff:', exp - Date.now());
                     renderCountdown(exp);
                     
                 } else if (response.status === 429) {
@@ -1115,15 +1117,21 @@
         
         // Utility function for timestamp parsing
         function parseExpiry(ts) {
+            console.log('[parseExpiry] Input:', ts, 'Type:', typeof ts);
+            
             if (!ts) return Date.now() + 30 * 60 * 1000;
             if (typeof ts === 'number') {
-                return ts < 1e12 ? ts * 1000 : ts;
+                const result = ts < 1e12 ? ts * 1000 : ts;
+                console.log('[parseExpiry] Number result:', result, new Date(result).toISOString());
+                return result;
             }
             const t = Date.parse(ts);
+            console.log('[parseExpiry] Parsed time:', t, 'IsNaN:', isNaN(t));
             // If parsing fails, default to 30 minutes from now
             if (isNaN(t)) {
                 return Date.now() + 30 * 60 * 1000;
             }
+            console.log('[parseExpiry] Final result:', new Date(t).toISOString());
             return t;
         }
         
@@ -1146,7 +1154,10 @@
             }
             
             const tick = () => {
-                const left = expMs - Date.now();
+                const now = Date.now();
+                const left = expMs - now;
+                console.log('[Tick] ExpMs:', expMs, 'Now:', now, 'Left:', left, 'Left seconds:', Math.floor(left/1000));
+                
                 // Add 10 second buffer to prevent false expiration due to clock drift
                 if (left <= -10000) {
                     // Show expired message
@@ -1210,8 +1221,10 @@
             const savedExpiry = sessionStorage.getItem('blyan_join_code_expires');
             
             if (savedCode && savedExpiry) {
+                console.log('[PageLoad] Saved code:', savedCode, 'Saved expiry:', savedExpiry);
                 const expiryTime = parseExpiry(savedExpiry);
                 const now = Date.now();
+                console.log('[PageLoad] Expiry time:', expiryTime, 'Now:', now, 'Diff:', expiryTime - now);
                 
                 // Add 10 second grace period for page reload
                 if (expiryTime > (now - 10000)) {
