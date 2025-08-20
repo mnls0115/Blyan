@@ -181,31 +181,39 @@ async def get_leaderboard(
         Anonymous ranked list with earnings and contribution scores
     """
     try:
-        # In production, this would query actual blockchain data
-        # For now, return mock data structure
+        # Get real leaderboard data from user manager
+        from backend.data.user_manager import get_user_manager
+        user_manager = get_user_manager()
         
-        # Mock leaderboard data
+        # Get leaderboard based on category
+        if category == "inference":
+            metric = "total_tokens_generated"
+        elif category == "training":
+            metric = "total_submissions"
+        else:  # all
+            metric = "bly_balance"
+        
+        # Get real leaderboard data
+        leaderboard_data = user_manager.get_leaderboard(metric=metric, limit=offset + limit)
         leaderboard_entries = []
         
-        for i in range(offset, min(offset + limit, 500)):  # Mock 500 contributors
-            # Generate realistic looking data
-            rank = i + 1
+        for user_data in leaderboard_data[offset:offset + limit]:
+            # Anonymize address
+            addr = user_data.get('address', '')
+            if len(addr) > 16:
+                address_hash = f"0x{addr[:8]}...{addr[-8:]}"
+            else:
+                address_hash = f"0x{'*' * 8}...{'*' * 8}"
             
-            if category == "inference":
-                earnings = 50_000 / (rank ** 0.5)  # Power law distribution
-                contribution_score = 10_000 / (rank ** 0.3)
-            elif category == "training":
-                earnings = 100_000 / (rank ** 0.7)
-                contribution_score = 5_000 / (rank ** 0.4)
-            else:  # all
-                earnings = 75_000 / (rank ** 0.6)
-                contribution_score = 7_500 / (rank ** 0.35)
-                
+            # Use real data
+            earnings = user_data.get('bly_balance', 0)
+            quality = user_data.get('quality_score', 0.5)
+            
             entry = {
-                "rank": rank,
-                "address_hash": f"0x{'a' * 8}...{'b' * 8}",  # Anonymized
+                "rank": user_data.get('rank', 0),
+                "address_hash": address_hash,
                 "earnings": int(earnings),
-                "contribution_score": int(contribution_score),
+                "contribution_score": int(quality * 10000),
                 "last_active": datetime.now().isoformat()
             }
             

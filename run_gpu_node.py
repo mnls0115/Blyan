@@ -485,7 +485,7 @@ class BilyanGPUNode:
                             "hint": "Run: python miner/upload_moe_parameters.py"
                         }, status=503)
                 
-                logger.info(f"🤖 Blockchain inference with experts: {selected_experts}")
+                logger.info(f"Performing blockchain inference with {len(selected_experts)} experts")
                 
                 # Perform blockchain-first inference
                 response = await asyncio.to_thread(

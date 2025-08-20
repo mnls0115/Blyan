@@ -266,19 +266,11 @@ class ModelWrapper:
             return f"Blyan MoE response to: '{prompt}' [Note: Using fallback due to model error]"
     
     def _create_mock_model(self):
-        """Create a mock model and tokenizer for testing when real model fails."""
-        try:
-            # Try to create a simple tokenizer
-            from transformers import GPT2TokenizerFast
-            self.tokenizer = GPT2TokenizerFast.from_pretrained('gpt2')
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        except:
-            # Create minimal mock tokenizer
-            self.tokenizer = MockTokenizer()
-        
-        # Mock model that just returns test responses
+        """Create a mock model that returns unavailable message."""
+        # Don't load any fallback models - just use mock that shows unavailable
+        self.tokenizer = MockTokenizer()
         self.model = MockModel()
-        print("✓ Created mock model for testing")
+        print("⚠️ Model not available - inference disabled")
 
 
 class MockTokenizer:
@@ -297,8 +289,8 @@ class MockTokenizer:
         }
     
     def decode(self, token_ids, skip_special_tokens=True):
-        # Return mock decoded text
-        return "This is a mock response from Blyan MoE blockchain system."
+        # Return unavailable message
+        return "Model inference is not available at this time. Please try again later."
 
 
 class MockModel:

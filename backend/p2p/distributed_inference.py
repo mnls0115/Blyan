@@ -525,17 +525,37 @@ class DistributedInferenceCoordinator:
             
             processing_time = time.time() - start_time
             
-            # Record usage for all experts
+            # Record usage for all experts with calculated quality scores
+            from backend.model.quality_calculator import get_quality_calculator
+            quality_calc = get_quality_calculator()
+            
             for expert_name in required_experts:
+                # Calculate real quality score
+                quality_score = quality_calc.calculate_score(
+                    expert_name=expert_name,
+                    response_time=processing_time / len(required_experts),
+                    tokens_generated=len(result.split()) if isinstance(result, str) else 50,
+                    success=True
+                )
+                
                 self.usage_tracker.record_usage(
                     expert_name=expert_name,
                     response_time=processing_time / len(required_experts),
-                    quality_score=0.8  # Mock quality score
+                    quality_score=quality_score
                 )
             
             # Calculate fair reward for the node
-            tokens_generated = len(result)  # Simple token approximation
-            quality_score = 0.9  # Would come from actual PoL evaluation
+            tokens_generated = len(result.split()) if isinstance(result, str) else 50  # Better token approximation
+            # Use average quality score from all experts
+            avg_quality_score = np.mean([
+                quality_calc.calculate_score(
+                    expert_name=expert_name,
+                    response_time=processing_time / len(required_experts),
+                    tokens_generated=tokens_generated,
+                    success=True
+                ) for expert_name in required_experts
+            ])
+            quality_score = avg_quality_score
             integrity_passed = True  # Would come from security verification
             estimated_cost = processing_time * 0.1  # Mock cost estimation
             
@@ -635,12 +655,23 @@ class DistributedInferenceCoordinator:
             
             processing_time = time.time() - start_time
             
-            # Record usage for all experts
+            # Record usage for all experts with real quality scores
+            from backend.model.quality_calculator import get_quality_calculator
+            quality_calc = get_quality_calculator()
+            
             for expert_name in required_experts:
+                # Calculate quality based on performance
+                quality_score = quality_calc.calculate_score(
+                    expert_name=expert_name,
+                    response_time=processing_time / len(required_experts),
+                    tokens_generated=len(result.split()) if isinstance(result, str) else 50,
+                    success=True
+                )
+                
                 self.usage_tracker.record_usage(
                     expert_name=expert_name,
                     response_time=processing_time / len(required_experts),
-                    quality_score=0.8
+                    quality_score=quality_score
                 )
             
             # Update routing info with security results
@@ -952,28 +983,46 @@ class DistributedInferenceCoordinator:
         self.inference_metrics["request_count"] += 1
         self.inference_metrics["active_requests"] += 1
         
-        # Check scheduler state before processing
+        # Get real metrics for scheduler
         avg_latency = self.inference_metrics["total_latency"] / max(1, self.inference_metrics["request_count"])
+        
+        # Try to get real GPU metrics
+        gpu_util = 0.0
+        memory_free = 10.0  # Default assumption
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=utilization.gpu,memory.free', 
+                 '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, timeout=0.5
+            )
+            if result.returncode == 0:
+                parts = result.stdout.strip().split(', ')
+                gpu_util = float(parts[0]) / 100
+                memory_free = float(parts[1]) / 1024  # MB to GB
+        except:
+            pass  # Use defaults if nvidia-smi not available
+        
         current_metrics = Metrics(
             p95_latency_ms=avg_latency * 1000 * 1.2,  # Approximate p95
             p50_latency_ms=avg_latency * 1000,        # Use avg as p50
             queue_depth=self.inference_metrics["active_requests"],
-            queue_wait_ms=0.0,  # Not tracked yet
-            gpu_utilization=0.8,  # Mock value
-            memory_free_gb=4.0,   # Mock value  
-            arrival_rate_per_sec=1.0,  # Mock value
+            queue_wait_ms=0.0,
+            gpu_utilization=gpu_util,
+            memory_free_gb=memory_free,
+            arrival_rate_per_sec=self.inference_metrics["request_count"] / max(1, time.time() - self.start_time),
             warm_pool_hit_ratio=self.warm_pool.get_hit_ratio(),
-            learning_step_duration_ms=300.0  # Default
+            learning_step_duration_ms=300.0
         )
         
         scheduler_state = self.scheduler.tick(current_metrics)
         
         # Apply scheduler-based throttling if in RED state
         if scheduler_state == SchedulerState.RED:
-            print(f"🔴 Scheduler in RED state: delaying inference request")
+            logger.warning(f"Scheduler in RED state: delaying inference request")
             await asyncio.sleep(0.1)  # Brief delay to allow SLO recovery
         elif scheduler_state == SchedulerState.YELLOW:
-            print(f"🟡 Scheduler in YELLOW state: proceeding with caution")
+            logger.info(f"Scheduler in YELLOW state: proceeding with caution")
         
         # Generate request ID
         request_id = hashlib.sha256(f"{prompt}{time.time()}".encode()).hexdigest()[:16]
@@ -999,7 +1048,7 @@ class DistributedInferenceCoordinator:
                     if getattr(node, "donor_mode", False):
                         donor_nodes_used += 1
                 else:
-                    print(f"Warning: No available node for expert {expert_name}")
+                    logger.warning(f"No available node for expert {expert_name}")
             
             # Update donor tracking
             if donor_nodes_used > 0:
@@ -1030,11 +1079,25 @@ class DistributedInferenceCoordinator:
                         "processing_time": response.processing_time
                     }
                     
-                    # Record usage
+                    # Calculate real quality score
+                    from backend.model.quality_calculator import get_quality_calculator
+                    quality_calc = get_quality_calculator()
+                    
+                    # Estimate tokens (can be improved with actual token counting)
+                    tokens_generated = len(response.result.split()) * 1.3 if hasattr(response, 'result') else 50
+                    
+                    quality_score = quality_calc.calculate_score(
+                        expert_name=response.expert_name,
+                        response_time=response.processing_time,
+                        tokens_generated=int(tokens_generated),
+                        success=response.success
+                    )
+                    
+                    # Record usage with real quality score
                     self.usage_tracker.record_usage(
                         expert_name=response.expert_name,
                         response_time=response.processing_time,
-                        quality_score=0.8  # Mock quality score
+                        quality_score=quality_score
                     )
                 elif isinstance(response, Exception):
                     print(f"Expert call failed: {response}")

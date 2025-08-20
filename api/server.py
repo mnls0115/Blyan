@@ -816,6 +816,15 @@ def _startup():
             scheduler_integration.connect_inference_coordinator(distributed_coordinator)
     except Exception as e:
         logger.warning(f"Failed to wire scheduler: {e}")
+    
+    # Initialize production inference pipeline
+    production_pipeline = None
+    try:
+        from backend.inference.production_pipeline import get_production_pipeline
+        production_pipeline = get_production_pipeline(distributed_coordinator)
+        logger.info("✅ Production inference pipeline initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize production pipeline: {e}")
     # Provide real device profiles and model structure to partition planner
     def _device_profile_provider(node_ids: List[str]):
         devices = []
@@ -1114,6 +1123,23 @@ def complete_chat_request(user_address: str, success: bool = True):
         free_tier_manager.consume_request(user_address, success)
 
 
+@app.post("/chat/production")
+async def chat_production(req: ChatRequest, http_request: Request = None):
+    """Production-optimized inference endpoint with no mock data."""
+    if not production_pipeline:
+        raise HTTPException(status_code=503, detail="Production pipeline not initialized")
+    
+    # Process through production pipeline
+    result = await production_pipeline.process_request(
+        prompt=req.prompt,
+        use_distributed=req.use_moe and distributed_coordinator is not None,
+        required_experts=None,  # Let pipeline select best experts
+        max_new_tokens=req.max_new_tokens,
+        stream=req.stream if hasattr(req, 'stream') else False
+    )
+    
+    return result
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, http_request: Request = None):
     import time
@@ -1227,8 +1253,7 @@ async def chat(req: ChatRequest, http_request: Request = None):
         if req.use_moe and has_distributed_nodes:
             # Use distributed inference when nodes are available
             available_experts = list(distributed_coordinator.registry.expert_to_nodes.keys())
-            print(f"DEBUG: Found {len(available_experts)} available experts: {available_experts}")
-            print(f"DEBUG: Nodes: {list(distributed_coordinator.registry.nodes.keys())}")
+            logger.info(f"Found {len(available_experts)} available experts for distributed inference")
             if available_experts:
                 selected_experts = available_experts[:req.top_k_experts]
                 
@@ -3281,6 +3306,14 @@ async def get_genesis_hash():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get genesis hash: {str(e)}")
 
+
+@app.get("/metrics/production")
+async def production_metrics():
+    """Get production pipeline metrics."""
+    if not production_pipeline:
+        return {"error": "Production pipeline not initialized"}
+    
+    return production_pipeline.get_metrics_summary()
 
 @app.get("/health")
 async def health_check():

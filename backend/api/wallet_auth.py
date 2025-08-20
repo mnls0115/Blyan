@@ -236,40 +236,24 @@ def get_user_info(address: str) -> Dict:
     """
     Get user information from database/blockchain.
     """
-    # TODO: Query actual database
-    # For now, return mock data with proper structure
-    
-    # Check if user exists in our tracking
-    # from backend.data.quality_gate_v2 import get_quality_gate
+    # Use real user manager
+    from backend.data.user_manager import get_user_manager
     
     try:
-        # gate = get_quality_gate()
-        # contributor = gate.contributors.get(address, None)
-        contributor = None
-        
-        if contributor:
-            return {
-                "address": address,
-                "bly_balance": 0,  # contributor.total_rewards_bly,
-                "upload_credits": contributor.daily_credits,
-                "total_submissions": contributor.total_submissions,
-                "quality_score": contributor.quality_score,
-                "rank": None,  # TODO: Calculate from leaderboard
-                "authenticated_at": int(time.time())
-            }
-    except:
-        pass
-    
-    # New user
-    return {
-        "address": address,
-        "bly_balance": 0.0,
-        "upload_credits": 20,  # Initial credits
-        "total_submissions": 0,
-        "quality_score": 0.5,
-        "rank": None,
-        "authenticated_at": int(time.time())
-    }
+        user_manager = get_user_manager()
+        return user_manager.get_user_info(address)
+    except Exception as e:
+        logger.error(f"Failed to get user info: {e}")
+        # Fallback response for errors
+        return {
+            "address": address,
+            "bly_balance": 0.0,
+            "upload_credits": 20,
+            "total_submissions": 0,
+            "quality_score": 0.5,
+            "rank": None,
+            "authenticated_at": int(time.time())
+        }
 
 @router.get("/balance/{address}")
 async def get_balance(address: str) -> BalanceResponse:
@@ -280,17 +264,29 @@ async def get_balance(address: str) -> BalanceResponse:
     if not postgres_ledger._initialized:
         await postgres_ledger.initialize()
     
-    # Get balance from PostgreSQL
+    # Get balance from user manager and PostgreSQL
     try:
+        # Get user data from manager
+        from backend.data.user_manager import get_user_manager
+        user_manager = get_user_manager()
+        user_info = user_manager.get_user_info(address)
+        
+        # Also check PostgreSQL for ledger balance
         balance = await postgres_ledger.get_balance(address)
         summary = await postgres_ledger.get_account_summary(address)
         
+        # Use the higher balance (in case of sync issues)
+        final_balance = max(float(balance), user_info['bly_balance'])
+        
         return BalanceResponse(
             address=address,
-            bly_balance=float(balance),
-            upload_credits=20,  # Default credits
-            total_rewards=float(summary.get("total_received", 0)),
-            rank=None  # TODO: Calculate from leaderboard
+            bly_balance=final_balance,
+            upload_credits=user_info['upload_credits'],
+            total_rewards=max(
+                float(summary.get("total_received", 0)),
+                user_info['total_rewards_earned']
+            ),
+            rank=user_info['rank']
         )
     except Exception as e:
         logger.error(f"Failed to get balance from PostgreSQL: {e}")
