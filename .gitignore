@@ -10,6 +10,7 @@ build/
 clones/
 develop-eggs/
 dist/
+docker/
 downloads/
 eggs/
 .eggs/

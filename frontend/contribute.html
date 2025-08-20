@@ -452,7 +452,7 @@
                     <div class="step-title">Step 2: Pull the Docker Image</div>
                     <div class="step-description">Download the official Blyan node image</div>
                     <div class="code-block">
-                        docker pull blyan/node:latest
+                        docker pull mnls0115/blyan-node:latest
                     </div>
                 </div>
                 <div class="setup-step">
@@ -488,7 +488,7 @@
                         &nbsp;&nbsp;-e PUBLIC_IP=$(curl -s https://checkip.amazonaws.com) \<br>
                         &nbsp;&nbsp;-e BLOCKCHAIN_ONLY=false \<br>
                         &nbsp;&nbsp;--restart unless-stopped \<br>
-                        &nbsp;&nbsp;blyan/node:latest
+                        &nbsp;&nbsp;mnls0115/blyan-node:latest
                     </div>
                     <p style="margin-top: 12px; padding: 12px; background: rgba(59, 130, 246, 0.03); border-radius: 6px; color: var(--color-text-secondary);">
                         💡 <strong>GPU Note:</strong> Omit <code>--gpus all</code> if you don't have NVIDIA GPU/drivers.
@@ -925,7 +925,7 @@
                     # 1. Get JOIN_CODE from this page (Request Join Code button)<br><br>
                     
                     # 2. Pull image<br>
-                    docker pull blyan/node:latest<br><br>
+                    docker pull mnls0115/blyan-node:latest<br><br>
                     
                     # 3. Create data directory<br>
                     sudo mkdir -p /var/lib/blyan/data<br><br>
@@ -937,7 +937,7 @@
                     &nbsp;&nbsp;-v /var/lib/blyan/data:/data \<br>
                     &nbsp;&nbsp;-e JOIN_CODE=YOUR_CODE_HERE \<br>
                     &nbsp;&nbsp;--restart unless-stopped \<br>
-                    &nbsp;&nbsp;blyan/node:latest<br><br>
+                    &nbsp;&nbsp;mnls0115/blyan-node:latest<br><br>
                     
                     # 5. Verify<br>
                     docker logs blyan-node
@@ -1124,8 +1124,7 @@
             if (isNaN(t)) {
                 return Date.now() + 30 * 60 * 1000;
             }
-            // Add 5 second grace period to account for server/client time differences
-            return t + 5000;
+            return t;
         }
         
         // Global countdown interval to clear previous ones
@@ -1148,7 +1147,8 @@
             
             const tick = () => {
                 const left = expMs - Date.now();
-                if (left <= 0) {
+                // Add 10 second buffer to prevent false expiration due to clock drift
+                if (left <= -10000) {
                     // Show expired message
                     const expiryMsg = document.createElement('div');
                     expiryMsg.className = 'expiry-message';
@@ -1171,8 +1171,10 @@
                     return;
                 }
                 
-                const m = Math.floor(left / 60000);
-                const s = Math.floor((left % 60000) / 1000);
+                // Handle negative time gracefully
+                const timeLeft = Math.max(0, left);
+                const m = Math.floor(timeLeft / 60000);
+                const s = Math.floor((timeLeft % 60000) / 1000);
                 
                 // Update timer in the small element
                 let timerSpan = document.getElementById('joinCodeTimer');
@@ -1211,12 +1213,34 @@
                 const expiryTime = parseExpiry(savedExpiry);
                 const now = Date.now();
                 
-                if (expiryTime > now) {
+                // Add 10 second grace period for page reload
+                if (expiryTime > (now - 10000)) {
                     // Code is still valid, display it
                     document.getElementById('joinCodeDisplay').textContent = savedCode;
                     document.getElementById('joinCodeResult').style.display = 'block';
                     document.getElementById('joinCodeBtn').style.display = 'none';
-                    startExpiryCountdown(savedExpiry);
+                    
+                    // Only start countdown if there's actually time left
+                    if (expiryTime > now) {
+                        startExpiryCountdown(savedExpiry);
+                    } else {
+                        // Code just expired, show expired message directly
+                        const statusEl = document.getElementById('joinCodeResult');
+                        const expiryMsg = document.createElement('div');
+                        expiryMsg.className = 'expiry-message';
+                        expiryMsg.style.color = '#ef4444';
+                        expiryMsg.style.marginTop = '12px';
+                        expiryMsg.innerHTML = '⚠️ This code has expired. Please request a new one.';
+                        statusEl.appendChild(expiryMsg);
+                        
+                        document.getElementById('joinCodeDisplay').classList.add('is-expired');
+                        
+                        const btn = document.getElementById('joinCodeBtn');
+                        if (btn) {
+                            btn.style.display = 'inline-block';
+                            btn.textContent = 'Request New Code';
+                        }
+                    }
                 } else {
                     // Code expired, clear session
                     sessionStorage.removeItem('blyan_join_code');

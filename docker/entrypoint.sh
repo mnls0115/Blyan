@@ -98,7 +98,10 @@ export BLYAN_NODE_ID="$NODE_ID"
 export BLYAN_NODE_KEY="$NODE_KEY"
 
 # Check which main script to run
-if [ -f "/app/run_blyan_node.py" ]; then
+if [ -f "/app/run_gpu_node.py" ]; then
+    # GPU node script (primary)
+    exec python3 /app/run_gpu_node.py
+elif [ -f "/app/run_blyan_node.py" ]; then
     # Production node script
     exec python3 /app/run_blyan_node.py
 elif [ -f "/app/backend/p2p/node_runner.py" ]; then

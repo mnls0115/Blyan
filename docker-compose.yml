@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  blyan-gpu-node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gpu
+    image: mnls0115/blyan-node:latest
+    container_name: blyan-node
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - blyan-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # For container monitoring
+    environment:
+      # Required: Get your JOIN_CODE from https://blyan.com/contribute
+      - JOIN_CODE=${JOIN_CODE}
+      
+      # Auto-detect public IP
+      - PUBLIC_IP=${PUBLIC_IP:-auto}
+      
+      # Main node URL (default: production)
+      - MAIN_NODE_URL=${MAIN_NODE_URL:-http://165.227.221.225:8000}
+      
+      # Enable model serving (not just blockchain)
+      - BLOCKCHAIN_ONLY=${BLOCKCHAIN_ONLY:-false}
+      
+      # Node configuration
+      - NODE_NAME=${NODE_NAME:-gpu-node}
+      - NODE_PORT=${NODE_PORT:-8001}
+      
+      # GPU configuration (auto-detected)
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all}
+      
+      # Model settings
+      - MODEL_NAME=${MODEL_NAME:-openai/gpt-oss-20b}
+      - MODEL_QUANTIZATION=${MODEL_QUANTIZATION:-int8}
+      
+      # Performance settings
+      - MAX_BATCH_SIZE=${MAX_BATCH_SIZE:-4}
+      - MAX_SEQUENCE_LENGTH=${MAX_SEQUENCE_LENGTH:-2048}
+      
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+    networks:
+      - blyan-network
+
+  # Optional: Local Redis for caching (comment out if not needed)
+  redis:
+    image: redis:7-alpine
+    container_name: blyan-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    networks:
+      - blyan-network
+
+volumes:
+  blyan-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-/var/lib/blyan/data}
+  redis-data:
+    driver: local
+
+networks:
+  blyan-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
