@@ -33,8 +33,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **GPU Nodes**: Distributed compute providers
   - Need `BLYAN_API_KEY` to register with main node
   - Must set `BLOCKCHAIN_ONLY=false` to actually serve models
-  - Use `run_blyan_node.py` as entrypoint
+  - Use `run_gpu_node.py` as entrypoint (auto-downloads openai/gpt-oss-20b if no experts exist)
   - Require public IP/DNS and port forwarding
+  - **Memory Optimization**: Uses MXFP4/NF4 quantization to fit model in 16GB GPU memory
   - See [GPU Node Deployment Guide](docs/GPU_NODE_DEPLOYMENT.md) for setup
 
 ## Project Overview
@@ -43,11 +44,13 @@ Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system 
 
 ## 🚨 CRITICAL MODEL REQUIREMENTS
 
-**ALWAYS USE THE FULL MODEL - NO COMPROMISES:**
+**CONSISTENT QUANTIZATION ACROSS ALL NODES:**
 - **Model**: `openai/gpt-oss-20b` (https://huggingface.co/openai/gpt-oss-20b)
-- **Format**: BF16 (bfloat16) - native format as stored on HuggingFace
-- **Size**: 21.5B parameters
-- **NO quantization to INT8 or other formats**
+- **Quantization**: INT8 (8-bit) - MUST be consistent across all GPU nodes
+- **Size**: 21.5B parameters → ~10GB with INT8 quantization
+- **Memory Required**: ~20GB total (10GB model + 10GB for upload process)
+- **Why INT8**: Ensures consistent inference results across different GPU types
+- **Loading**: `load_in_8bit=True` with transformers library
 - **NO smaller models** (no phi-2, no 2.7B alternatives)
 - **NO mock models or hardcoded responses**
 - **Blockchain-first inference** - all weights from blockchain

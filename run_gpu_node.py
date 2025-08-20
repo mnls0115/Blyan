@@ -325,18 +325,22 @@ class BilyanGPUNode:
         logger.info("⚠️  This is a 20B parameter model - download may take time...")
         
         try:
-            from transformers import AutoModelForCausalLM
+            from transformers import AutoModelForCausalLM, AutoTokenizer
             import torch
-            import pickle
+            import gc
             
-            # Download model in native BF16 format
-            logger.info("⏳ Downloading BF16 model from HuggingFace...")
+            # Use INT8 quantization for consistency across all nodes
+            logger.info("⏳ Loading model with INT8 quantization (~10GB memory)...")
+            
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
             model = AutoModelForCausalLM.from_pretrained(
                 MODEL_NAME,
-                torch_dtype=torch.bfloat16,  # Native BF16 format as stored on HuggingFace
-                trust_remote_code=True,
-                device_map="auto" if self.gpu_available else "cpu"
+                load_in_8bit=True,  # INT8 quantization - consistent across all GPUs
+                device_map="auto" if self.gpu_available else "cpu",
+                low_cpu_mem_usage=True,
+                trust_remote_code=True
             )
+            logger.info("✅ Model loaded with INT8 quantization")
             
             # Create meta block if needed
             if len(self.chains['A'].get_all_blocks()) == 0:
@@ -350,30 +354,67 @@ class BilyanGPUNode:
                 self.chains['A'].add_block(json.dumps(meta_spec).encode(), block_type='meta')
                 logger.info("✅ Created meta block")
             
-            # Extract and upload experts
+            # Extract and upload experts with memory-efficient streaming
             num_uploaded = 0
-            for name, module in model.named_modules():
-                # Look for layers that can be experts
-                if any(x in name.lower() for x in ['layer', 'block', 'mlp', 'attention']):
-                    if hasattr(module, 'weight'):
-                        expert_name = f"expert_{num_uploaded}"
+            
+            # MoE 구조에 맞게 expert 추출
+            for layer_idx in range(24):  # gpt-oss-20b has 24 layers
+                layer_name = f"model.layers.{layer_idx}"
+                
+                # 각 레이어의 MLP를 expert로 추출
+                for name, module in model.named_modules():
+                    if layer_name in name and 'mlp' in name.lower():
+                        expert_name = f"layer{layer_idx}.expert0"  # 각 레이어당 1개 expert로 시작
                         
-                        # Serialize module weights
-                        state_dict = {k: v.cpu() for k, v in module.state_dict().items()}
-                        payload = pickle.dumps(state_dict)
+                        try:
+                            # 메모리 효율적 처리: 하나씩 serialize
+                            import io
+                            import pickle
+                            
+                            # state_dict를 메모리에 유지하지 않고 바로 serialize
+                            buffer = io.BytesIO()
+                            state_dict = module.state_dict()
+                            
+                            # INT8 quantized weights 그대로 저장
+                            for key, tensor in state_dict.items():
+                                # CPU로 이동 없이 직접 저장 (메모리 절약)
+                                state_dict[key] = tensor.detach()
+                            
+                            pickle.dump(state_dict, buffer)
+                            payload = buffer.getvalue()
+                            
+                            # 블록체인에 추가
+                            metadata = json.dumps({
+                                "expert_name": expert_name,
+                                "layer_id": layer_idx,
+                                "quantization": "int8",
+                                "model_source": MODEL_NAME
+                            })
+                            
+                            self.chains['B'].add_block(
+                                payload,
+                                block_type='expert',
+                                metadata=metadata
+                            )
+                            logger.info(f"✅ Uploaded {expert_name} to blockchain")
+                            num_uploaded += 1
+                            
+                            # 메모리 정리
+                            del state_dict, payload, buffer
+                            gc.collect()
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                            
+                            break  # 각 레이어당 하나의 expert만
                         
-                        # Add to blockchain
-                        metadata = json.dumps({"expert_name": expert_name})
-                        self.chains['B'].add_block(
-                            payload,
-                            block_type='expert',
-                            metadata=metadata
-                        )
-                        logger.info(f"✅ Uploaded {expert_name} to blockchain")
-                        num_uploaded += 1
-                        
-                        if num_uploaded >= 8:  # Limit to 8 experts for now
-                            break
+                        except Exception as e:
+                            logger.warning(f"Failed to upload {expert_name}: {e}")
+                
+                # 메모리 부족 방지를 위해 주기적으로 정리
+                if layer_idx % 4 == 0:
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
             
             logger.info(f"✅ Uploaded {num_uploaded} experts to blockchain")
             

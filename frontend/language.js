@@ -7,6 +7,7 @@ const translations = {
     en: {
         // Header Navigation
         home: 'Home',
+        howItWorks: 'How it Works',
         chat: 'Chat',
         network: 'Network',
         docs: 'Docs',
@@ -111,6 +112,7 @@ const translations = {
     ko: {
         // Header Navigation
         home: '홈',
+        howItWorks: '작동 원리',
         chat: '채팅',
         network: '네트워크',
         docs: '문서',

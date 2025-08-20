@@ -7,6 +7,7 @@ function createAIBlockHeader(currentPage = '') {
         'home': { icon: '🏠', nameKey: 'home', url: 'home.html' },
         'chat': { icon: '💬', nameKey: 'chat', url: 'chat.html' },
         'contribute': { icon: '⚡', nameKey: 'network', url: 'contribute.html' },
+        'how-it-works': { icon: '📖', nameKey: 'howItWorks', url: 'how-it-works.html' },
         // Temporarily hidden - will be re-enabled later
         // 'leaderboard': { icon: '🏅', nameKey: 'leaderboard', url: 'leaderboard.html' },
         // 'explorer': { icon: '🔧', nameKey: 'technical', url: 'explorer.html' }
@@ -56,6 +57,7 @@ function refreshHeader() {
     if (currentPageElement) {
         const href = currentPageElement.getAttribute('href');
         if (href.includes('home.html')) currentPage = 'home';
+        else if (href.includes('how-it-works.html')) currentPage = 'how-it-works';
         else if (href.includes('chat.html')) currentPage = 'chat';
         else if (href.includes('contribute.html')) currentPage = 'contribute';
         else if (href.includes('leaderboard.html')) currentPage = 'leaderboard';

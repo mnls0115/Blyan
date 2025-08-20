@@ -1120,7 +1120,12 @@
                 return ts < 1e12 ? ts * 1000 : ts;
             }
             const t = Date.parse(ts);
-            return isNaN(t) ? (Date.now() + 30 * 60 * 1000) : t;
+            // If parsing fails, default to 30 minutes from now
+            if (isNaN(t)) {
+                return Date.now() + 30 * 60 * 1000;
+            }
+            // Add 5 second grace period to account for server/client time differences
+            return t + 5000;
         }
         
         // Global countdown interval to clear previous ones
@@ -1203,8 +1208,8 @@
             const savedExpiry = sessionStorage.getItem('blyan_join_code_expires');
             
             if (savedCode && savedExpiry) {
-                const expiryTime = new Date(savedExpiry).getTime();
-                const now = new Date().getTime();
+                const expiryTime = parseExpiry(savedExpiry);
+                const now = Date.now();
                 
                 if (expiryTime > now) {
                     // Code is still valid, display it
