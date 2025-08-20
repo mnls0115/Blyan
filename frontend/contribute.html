@@ -1125,6 +1125,17 @@
                 console.log('[parseExpiry] Number result:', result, new Date(result).toISOString());
                 return result;
             }
+            
+            // Handle timestamps without timezone (assume local time)
+            if (typeof ts === 'string' && !ts.includes('+') && !ts.includes('Z')) {
+                // If no timezone indicator, treat as local time by appending current offset
+                const localDate = new Date(ts);
+                if (!isNaN(localDate.getTime())) {
+                    console.log('[parseExpiry] Treating as local time:', localDate.toISOString());
+                    return localDate.getTime();
+                }
+            }
+            
             const t = Date.parse(ts);
             console.log('[parseExpiry] Parsed time:', t, 'IsNaN:', isNaN(t));
             // If parsing fails, default to 30 minutes from now

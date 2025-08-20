@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Import the JOIN_CODE system
 import sys
@@ -105,8 +105,8 @@ async def request_join_code(
         else:
             raise HTTPException(status_code=400, detail=error)
     
-    # Format response
-    expires_at = datetime.fromtimestamp(join_code.expires_at).isoformat()
+    # Format response - use UTC timezone explicitly
+    expires_at = datetime.fromtimestamp(join_code.expires_at, tz=timezone.utc).isoformat()
     
     instructions = (
         f"Use this code when starting your Docker container:\n"
