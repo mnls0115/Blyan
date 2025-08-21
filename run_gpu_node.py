@@ -336,10 +336,18 @@ class BilyanGPUNode:
             # Use INT8 quantization for consistency across all nodes
             logger.info("⏳ Loading model with INT8 quantization (~10GB memory)...")
             
+            from transformers import BitsAndBytesConfig
+            
+            # Configure quantization properly for newer transformers
+            quantization_config = BitsAndBytesConfig(
+                load_in_8bit=True,
+                llm_int8_enable_fp32_cpu_offload=True
+            )
+            
             tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
             model = AutoModelForCausalLM.from_pretrained(
                 MODEL_NAME,
-                load_in_8bit=True,  # INT8 quantization - consistent across all GPUs
+                quantization_config=quantization_config,
                 device_map="auto" if self.gpu_available else "cpu",
                 low_cpu_mem_usage=True,
                 trust_remote_code=True

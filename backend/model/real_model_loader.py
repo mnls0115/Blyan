@@ -105,7 +105,12 @@ class RealModelLoader:
                 load_kwargs["device_map"] = "auto"
                 
                 if self.config.load_in_8bit:
-                    load_kwargs["load_in_8bit"] = True
+                    from transformers import BitsAndBytesConfig
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                        llm_int8_enable_fp32_cpu_offload=True
+                    )
+                    load_kwargs["quantization_config"] = quantization_config
                     if self.config.max_memory:
                         load_kwargs["max_memory"] = self.config.max_memory
                 else:

@@ -90,11 +90,22 @@ class ModelWrapper:
             
             # Add quantization options
             if load_in_8bit:
-                load_kwargs['load_in_8bit'] = True
+                from transformers import BitsAndBytesConfig
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    llm_int8_enable_fp32_cpu_offload=True
+                )
+                load_kwargs['quantization_config'] = quantization_config
                 print("📦 Loading model in INT8 (8-bit quantization)")
             elif load_in_4bit:
-                load_kwargs['load_in_4bit'] = True
-                load_kwargs['bnb_4bit_compute_dtype'] = torch.float16
+                from transformers import BitsAndBytesConfig
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4"
+                )
+                load_kwargs['quantization_config'] = quantization_config
                 print("📦 Loading model in INT4 (4-bit quantization)")
             else:
                 load_kwargs['torch_dtype'] = torch.float16 if torch.cuda.is_available() else torch.float32
