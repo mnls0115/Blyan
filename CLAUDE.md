@@ -60,6 +60,24 @@ This is a true MoE model perfect for distributed expert hosting.
 ## Development Setup
 
 ### Environment Setup
+
+**🚀 Recommended: Ultra-fast setup with UV (10-100x faster than pip):**
+```bash
+./setup_gpu_fast.sh  # Installs UV + all dependencies automatically
+```
+
+**⚡ Manual UV setup (for GPU nodes):**
+```bash
+# Install UV (once)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create environment and install dependencies (much faster!)
+uv venv .venv && source .venv/bin/activate
+uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+uv pip install -r requirements-gpu.txt
+```
+
+**🐌 Alternative: Standard setup with pip:**
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate

@@ -58,8 +58,8 @@ MODEL_NAME = os.environ.get('MODEL_NAME', DEFAULT_MODEL_NAME)  # Use centralized
 SKIP_POL = os.environ.get('SKIP_POL', 'true').lower() == 'true'
 AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'true').lower() == 'true'  # Auto-upload by default
 
-# ENFORCED PRECISION - All nodes must use FP16
-ENFORCED_PRECISION = "fp16"  # No fallbacks allowed
+# Model precision is now auto-detected from model config
+# FP8 for Qwen3-30B, FP16 for others
 REQUIRE_INT8_SUPPORT = False  # INT8 not required
 
 class BlyanGPUNode:
@@ -404,7 +404,8 @@ class BlyanGPUNode:
     async def download_and_upload_model(self):
         """Download model from HuggingFace and upload to blockchain as experts."""
         logger.info(f"📥 Auto-downloading model: {MODEL_NAME}")
-        logger.info("⚙️  Qwen1.5-MoE: 14.3B total params, 2.7B active params per token")
+        model_config = get_model_config(MODEL_NAME)
+        logger.info(f"⚙️  Model: {model_config.get('total_params', 'unknown')} total params, {model_config.get('active_params', 'unknown')} active params per token")
         
         try:
             import torch
@@ -430,8 +431,10 @@ class BlyanGPUNode:
                 logger.info("Loading tokenizer...")
                 tokenizer = load_tokenizer(MODEL_NAME)
                 
-                # ENFORCE FP16 ONLY - No fallbacks
-                logger.info(f"Loading model with ENFORCED {ENFORCED_PRECISION} precision...")
+                # Load with model-specific configuration
+                model_config = get_model_config(MODEL_NAME)
+                torch_dtype = model_config.get('torch_dtype', 'auto')
+                logger.info(f"Loading model with {model_config.get('precision', 'auto')} precision...")
                 
                 # Force FP16 loading only
                 from transformers import AutoModelForCausalLM
@@ -446,7 +449,7 @@ class BlyanGPUNode:
                 
                 model = AutoModelForCausalLM.from_pretrained(
                     MODEL_NAME,
-                    torch_dtype=torch.float16,  # FP16 enforced
+                    torch_dtype="auto",  # Auto-detect for FP8 models
                     device_map="auto" if self.gpu_available else None,  # Auto distributes across all GPUs
                     low_cpu_mem_usage=True,
                     trust_remote_code=True
@@ -455,7 +458,7 @@ class BlyanGPUNode:
                 if not self.gpu_available:
                     model = model.to("cpu")
                 
-                logger.info(f"✅ Model loaded with {ENFORCED_PRECISION} precision (enforced)")
+                logger.info(f"✅ Model loaded with {model_config.get('precision', 'auto')} precision")
                 
             else:
                 # Fallback to original loading method
@@ -473,10 +476,11 @@ class BlyanGPUNode:
                 logger.info("⏳ Loading model...")
                 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
                 
-                # ENFORCE FP16 ONLY - No fallbacks in legacy path
+                # Load with auto dtype for compatibility
+                model_config = get_model_config(MODEL_NAME)
                 model = AutoModelForCausalLM.from_pretrained(
                     MODEL_NAME,
-                    torch_dtype=torch.float16,  # FP16 enforced
+                    torch_dtype="auto",  # Auto-detect for FP8 models
                     device_map="auto" if self.gpu_available else None,
                     low_cpu_mem_usage=True,
                     trust_remote_code=True
@@ -485,16 +489,18 @@ class BlyanGPUNode:
                 if not self.gpu_available:
                     model = model.to("cpu")
                     
-                logger.info(f"✅ Model loaded with {ENFORCED_PRECISION} precision (enforced)")
+                logger.info(f"✅ Model loaded with {model_config.get('precision', 'auto')} precision")
             
             # Create meta block if needed
             if len(self.chains['A'].get_all_blocks()) == 0:
+                model_config = get_model_config(MODEL_NAME)
                 meta_spec = {
                     "model_name": MODEL_NAME,
-                    "architecture": "mixture-of-experts",
-                    "num_layers": 24,
-                    "num_experts": 8,
-                    "routing_strategy": "top2"
+                    "architecture": model_config.get('architecture', 'mixture-of-experts'),
+                    "num_layers": model_config.get('num_layers', 48),
+                    "num_experts": model_config.get('num_experts', 128),
+                    "activated_experts": model_config.get('activated_experts', 8),
+                    "routing_strategy": "top-k"
                 }
                 self.chains['A'].add_block(json.dumps(meta_spec).encode(), block_type='meta')
                 logger.info("✅ Created meta block")

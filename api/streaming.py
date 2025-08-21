@@ -259,8 +259,11 @@ class StreamingChatHandler:
         # Use distributed streaming if available
         if use_moe and distributed_coordinator and enable_streaming:
             try:
-                # Get required experts (mock for now - should be determined from prompt)
-                required_experts = ["layer0.expert0", "layer1.expert1"]  # Example
+                # Determine required experts based on prompt
+                # For Qwen3-30B, we use top-k routing with 8 activated experts
+                from backend.model.moe_infer import MoEModelManager
+                model_manager = MoEModelManager()
+                required_experts = model_manager.select_experts_for_prompt(prompt, top_k=8)
                 
                 # Choose streaming method
                 if enable_speculative:
@@ -293,7 +296,7 @@ class StreamingChatHandler:
                         yield result.get("token", "")
                     elif result.get("type") == "error":
                         logger.error(f"Streaming error: {result.get('error')}")
-                        # Fall back to mock
+                        # Continue to fallback
                         break
                 else:
                     # Successfully completed streaming
@@ -301,12 +304,31 @@ class StreamingChatHandler:
                     
             except Exception as e:
                 logger.error(f"Distributed streaming failed: {e}")
-                # Fall back to mock generation
+                # Fall back to actual model generation
         
-        # Fallback: Mock token generation
-        response_tokens = [
-            "The", "answer", "to", "your", "question", "is", "quite", 
-            "interesting", ".", "Let", "me", "explain", "in", "detail", ".",
+        # Fallback: Use actual model for generation
+        try:
+            from backend.model.moe_infer import MoEModelManager
+            model_manager = MoEModelManager()
+            
+            # Generate response using actual model
+            full_response = await model_manager.generate_text(
+                prompt=prompt,
+                max_length=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                stream=False  # Non-streaming fallback
+            )
+            
+            # Convert to tokens for streaming simulation
+            response_tokens = full_response.split()
+            
+        except Exception as e:
+            logger.error(f"Model generation failed: {e}")
+            # Ultimate fallback: error message
+            response_tokens = [
+                "Error:", "Model", "inference", "is", "currently", 
+                "unavailable.", "Please", "try", "again", "later", ".",
             "First", ",", "we", "need", "to", "understand", "the", "context", ".",
             "Then", ",", "we", "can", "explore", "the", "implications", ".",
             "Finally", ",", "I'll", "provide", "some", "recommendations", "."

@@ -1,5 +1,10 @@
 # GPU Node Requirements
-# Install with:
+# Install with UV (much faster than pip):
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
+#   uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+#   uv pip install -r requirements-gpu.txt
+# 
+# Or with pip (slower):
 #   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 #   pip install -r requirements-gpu.txt
 
@@ -9,12 +14,12 @@ httpx
 pyyaml
 structlog
 
-# Transformers and ML
-transformers==4.44.2
+# Transformers and ML (Qwen3-30B requires transformers>=4.51.0)
+transformers>=4.51.0
 huggingface-hub>=0.25.2
 safetensors>=0.4.3
 accelerate>=0.34.0
-tokenizers==0.19.1
+tokenizers>=0.19.1
 
 # Model optimization (optional, for quantization support)
 # bitsandbytes>=0.41.0  # Optional: for INT8/INT4 quantization

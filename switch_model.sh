@@ -2,8 +2,8 @@
 # Script to switch between different models easily
 
 echo "Available models:"
-echo "1. Qwen/Qwen1.5-MoE-A2.7B (default, 2.7B active params)"
-echo "2. openai/gpt-oss-20b (20B params - has issues)"
+echo "1. Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 (default, 30.5B total/3.3B active, FP8)"
+echo "2. Qwen/Qwen1.5-MoE-A2.7B (14.3B total/2.7B active params)"
 echo "3. EleutherAI/gpt-j-6b (6B params)"
 echo "4. bigscience/bloom-7b1 (7B params)"
 echo ""
@@ -12,11 +12,10 @@ read -p "Select model (1-4) or enter custom model name: " choice
 
 case $choice in
     1)
-        MODEL="Qwen/Qwen1.5-MoE-A2.7B"
+        MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
         ;;
     2)
-        MODEL="openai/gpt-oss-20b"
-        echo "⚠️  Warning: This model has known tokenizer issues"
+        MODEL="Qwen/Qwen1.5-MoE-A2.7B"
         ;;
     3)
         MODEL="EleutherAI/gpt-j-6b"
@@ -64,6 +63,17 @@ FALLBACK_MODELS = [
 
 # Model-specific settings
 MODEL_CONFIGS = {
+    "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8": {
+        "architecture": "mixture-of-experts",
+        "num_layers": 48,
+        "num_experts": 128,
+        "activated_experts": 8,
+        "active_params": "3.3B",
+        "total_params": "30.5B",
+        "precision": "fp8",
+        "max_sequence_length": 262144,
+        "requires_transformers": ">=4.51.0",
+    },
     "Qwen/Qwen1.5-MoE-A2.7B": {
         "architecture": "mixture-of-experts",
         "num_layers": 28,

@@ -19,20 +19,18 @@ RUN apt-get update && apt-get install -y \
     vim \
     && rm -rf /var/lib/apt/lists/*
 
+# Install UV (fast Python package manager)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
 # Create app directory
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt /app/
-RUN pip3 install --no-cache-dir \
-    torch==2.1.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 && \
-    pip3 install --no-cache-dir -r requirements.txt && \
-    pip3 install --no-cache-dir \
-    transformers==4.36.0 \
-    accelerate==0.25.0 \
-    bitsandbytes==0.41.3 \
-    httpx \
-    redis
+# Install Python dependencies with UV (much faster!)
+COPY requirements-gpu.txt /app/
+RUN uv pip install --system \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 && \
+    uv pip install --system -r requirements-gpu.txt
 
 # Copy application code
 COPY . /app/
