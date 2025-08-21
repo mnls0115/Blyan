@@ -25,14 +25,33 @@ try:
     import transformers
     import tokenizers
     logger.info(f"Library versions - transformers: {transformers.__version__}, tokenizers: {tokenizers.__version__}")
-    
-    # Check version compatibility
-    trans_version = tuple(map(int, transformers.__version__.split('.')[:2]))
-    if trans_version < (4, 35) or trans_version >= (4, 43):
-        logger.warning(f"⚠️ transformers version {transformers.__version__} may have compatibility issues")
-        logger.warning("   Recommended: transformers>=4.35.0,<4.43.0")
 except Exception as e:
     logger.warning(f"Could not check library versions: {e}")
+
+# Fix triton kernel typo bug aggressively
+try:
+    import transformers.utils
+    import transformers.utils.import_utils
+    
+    # Create a stub that always returns False
+    def triton_stub(*args, **kwargs):
+        return False
+    
+    # Patch all possible variations
+    for module in [transformers.utils, transformers.utils.import_utils]:
+        for name in ['is_triton_available', 'is_triton_kernels_available', 'is_triton_kernels_availalble']:
+            if not hasattr(module, name):
+                setattr(module, name, triton_stub)
+    
+    # Also patch in the main transformers module
+    import transformers
+    for name in ['is_triton_available', 'is_triton_kernels_available', 'is_triton_kernels_availalble']:
+        if not hasattr(transformers, name):
+            setattr(transformers, name, triton_stub)
+            
+    logger.info("Applied triton compatibility patches")
+except Exception as e:
+    logger.debug(f"Triton patching: {e}")
 
 # Import compatibility layer
 try:
@@ -82,7 +101,7 @@ class BlyanGPUNode:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         
     def check_gpu(self) -> bool:
-        """Check GPU availability."""
+        """Check GPU availability and detect all GPUs."""
         # Use compatibility layer if available
         if COMPAT_AVAILABLE:
             caps = detect_capabilities()
@@ -90,17 +109,35 @@ class BlyanGPUNode:
             self.supports_int8 = False  # INT8 not required anymore
             
             if caps['cuda']:
+                import torch
+                num_gpus = torch.cuda.device_count()
+                
+                # Store info for all GPUs
                 self.gpu_info = {
-                    "name": caps['gpu_name'],
-                    "memory_gb": caps['gpu_memory_gb'],
+                    "num_gpus": num_gpus,
+                    "gpus": [],
                     "cuda_version": caps['cuda_version'],
                     "supports_bf16": caps['supports_bf16'],
-                    "bnb_cuda": caps.get('bnb_cuda', False)
+                    "bnb_cuda": caps.get('bnb_cuda', False),
+                    # For compatibility, keep single GPU info
+                    "name": caps['gpu_name'],
+                    "memory_gb": caps['gpu_memory_gb']
                 }
-                logger.info(f"GPU: {self.gpu_info['name']}")
-                logger.info(f"Memory: {self.gpu_info['memory_gb']:.2f} GB")
+                
+                # Get info for each GPU
+                for i in range(num_gpus):
+                    gpu_props = torch.cuda.get_device_properties(i)
+                    gpu_info = {
+                        "id": i,
+                        "name": torch.cuda.get_device_name(i),
+                        "memory_gb": gpu_props.total_memory / 1e9
+                    }
+                    self.gpu_info["gpus"].append(gpu_info)
+                    logger.info(f"GPU {i}: {gpu_info['name']} - Memory: {gpu_info['memory_gb']:.2f} GB")
+                
+                logger.info(f"Total GPUs detected: {num_gpus}")
                 logger.info(f"CUDA: {self.gpu_info['cuda_version']}")
-                logger.info(f"✅ FP16 support enabled")
+                logger.info(f"✅ FP16 support enabled on all GPUs")
                 return True
             else:
                 logger.info("No GPU detected - CPU mode with FP16")
@@ -417,10 +454,14 @@ class BlyanGPUNode:
                 from transformers import AutoModelForCausalLM
                 import torch
                 
+                # Multi-GPU support with device_map="auto"
+                if self.gpu_available and self.gpu_info.get("num_gpus", 1) > 1:
+                    logger.info(f"Using {self.gpu_info['num_gpus']} GPUs for model loading")
+                
                 model = AutoModelForCausalLM.from_pretrained(
                     MODEL_NAME,
                     torch_dtype=torch.float16,  # FP16 enforced
-                    device_map="auto" if self.gpu_available else None,
+                    device_map="auto" if self.gpu_available else None,  # Auto distributes across all GPUs
                     low_cpu_mem_usage=True,
                     trust_remote_code=True
                 )
