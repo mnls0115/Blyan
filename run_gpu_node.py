@@ -28,7 +28,7 @@ MODEL_NAME = os.environ.get('MODEL_NAME', 'openai/gpt-oss-20b')  # OpenAI's GPT-
 SKIP_POL = os.environ.get('SKIP_POL', 'true').lower() == 'true'
 AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'true').lower() == 'true'  # Auto-upload by default
 
-class BilyanGPUNode:
+class BlyanGPUNode:
     """Integrated GPU node with blockchain and model support."""
     
     def __init__(self):
@@ -329,26 +329,33 @@ class BilyanGPUNode:
         logger.info("⚠️  This is a 20B parameter model - download may take time...")
         
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
+            # ✅ Require CUDA for quantized load
             import torch
+            if not torch.cuda.is_available() or not self.gpu_available:
+                logger.error("CUDA not available on this node. Skipping auto-upload; quantized load requires NVIDIA GPUs.")
+                return
+
+            # Optional: speed up HF downloads and silence warning
+            os.environ.setdefault("HF_HOME", str((DATA_DIR / ".hf").resolve()))
+            os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
+
+            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
             import gc
             
             # Use INT8 quantization for consistency across all nodes
             logger.info("⏳ Loading model with INT8 quantization (~10GB memory)...")
             
-            from transformers import BitsAndBytesConfig
-            
-            # Configure quantization properly for newer transformers
+            # ✅ Configure quantization properly for newer transformers
             quantization_config = BitsAndBytesConfig(
                 load_in_8bit=True,
                 llm_int8_enable_fp32_cpu_offload=True
             )
             
-            tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+            tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
             model = AutoModelForCausalLM.from_pretrained(
                 MODEL_NAME,
-                quantization_config=quantization_config,
-                device_map="auto" if self.gpu_available else "cpu",
+                quantization_config=quantization_config,  # ✅ correct way
+                device_map="auto",  # ✅ only when CUDA
                 low_cpu_mem_usage=True,
                 trust_remote_code=True
             )
@@ -367,66 +374,62 @@ class BilyanGPUNode:
                 logger.info("✅ Created meta block")
             
             # Extract and upload experts with memory-efficient streaming
+            import io, pickle, gc, torch
+
             num_uploaded = 0
-            
-            # MoE 구조에 맞게 expert 추출
-            for layer_idx in range(24):  # gpt-oss-20b has 24 layers
-                layer_name = f"model.layers.{layer_idx}"
-                
-                # 각 레이어의 MLP를 expert로 추출
-                for name, module in model.named_modules():
-                    if layer_name in name and 'mlp' in name.lower():
-                        expert_name = f"layer{layer_idx}.expert0"  # 각 레이어당 1개 expert로 시작
-                        
-                        try:
-                            # 메모리 효율적 처리: 하나씩 serialize
-                            import io
-                            import pickle
-                            
-                            # state_dict를 메모리에 유지하지 않고 바로 serialize
-                            buffer = io.BytesIO()
-                            state_dict = module.state_dict()
-                            
-                            # INT8 quantized weights 그대로 저장
-                            for key, tensor in state_dict.items():
-                                # CPU로 이동 없이 직접 저장 (메모리 절약)
-                                state_dict[key] = tensor.detach()
-                            
-                            pickle.dump(state_dict, buffer)
-                            payload = buffer.getvalue()
-                            
-                            # 블록체인에 추가
-                            metadata = json.dumps({
-                                "expert_name": expert_name,
-                                "layer_id": layer_idx,
-                                "quantization": "int8",
-                                "model_source": MODEL_NAME
-                            })
-                            
-                            self.chains['B'].add_block(
-                                payload,
-                                block_type='expert',
-                                metadata=metadata
-                            )
-                            logger.info(f"✅ Uploaded {expert_name} to blockchain")
-                            num_uploaded += 1
-                            
-                            # 메모리 정리
-                            del state_dict, payload, buffer
-                            gc.collect()
-                            if torch.cuda.is_available():
-                                torch.cuda.empty_cache()
-                            
-                            break  # 각 레이어당 하나의 expert만
-                        
-                        except Exception as e:
-                            logger.warning(f"Failed to upload {expert_name}: {e}")
-                
-                # 메모리 부족 방지를 위해 주기적으로 정리
-                if layer_idx % 4 == 0:
-                    gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
+            layers = getattr(model, "model", None)
+            layers = getattr(layers, "layers", None)
+
+            if layers is None:
+                raise RuntimeError("Model structure unexpected: missing model.layers")
+
+            for layer_idx in range(min(24, len(layers))):  # gpt-oss-20b: 24 layers
+                layer = layers[layer_idx]
+                mlp = getattr(layer, "mlp", None)
+                if mlp is None:
+                    logger.warning(f"Layer {layer_idx} has no MLP; skipping")
+                    continue
+
+                expert_name = f"layer{layer_idx}.expert0"
+
+                try:
+                    # ✅ Build a CPU-only, pickle-safe state_dict
+                    cpu_state = {}
+                    for k, v in mlp.state_dict().items():
+                        # move to cpu, detach, and ensure contiguous CPU tensor
+                        if hasattr(v, "to"):
+                            v_cpu = v.detach().to("cpu").contiguous()
+                        else:
+                            v_cpu = v
+                        cpu_state[k] = v_cpu
+
+                    buffer = io.BytesIO()
+                    pickle.dump(cpu_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
+                    payload = buffer.getvalue()
+
+                    metadata = json.dumps({
+                        "expert_name": expert_name,
+                        "layer_id": layer_idx,
+                        "quantization": "int8",  # or "4bit" if you switched
+                        "model_source": MODEL_NAME
+                    })
+
+                    self.chains['B'].add_block(
+                        payload,
+                        block_type='expert',
+                        metadata=metadata
+                    )
+                    logger.info(f"✅ Uploaded {expert_name} to blockchain")
+                    num_uploaded += 1
+
+                except Exception as e:
+                    logger.warning(f"Failed to upload {expert_name}: {e}")
+
+                # periodic memory cleanup
+                del cpu_state, payload, buffer
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             
             logger.info(f"✅ Uploaded {num_uploaded} experts to blockchain")
             
@@ -477,7 +480,7 @@ class BilyanGPUNode:
             try:
                 data = await request.json()
                 prompt = data.get("prompt", "")
-                max_tokens = data.get("max_length", 100)
+                max_tokens = data.get("max_new_tokens", data.get("max_length", 100))
                 selected_experts = data.get("experts", [])
                 
                 if not self.model_manager:
@@ -668,10 +671,16 @@ class BilyanGPUNode:
                 
                 # Get available experts for registration
                 available_experts = []
-                if self.model_manager and hasattr(self.model_manager, '_get_available_experts_for_layer'):
-                    for layer_id in range(24):
-                        layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
-                        available_experts.extend(layer_experts)
+                try:
+                    if self.model_manager:
+                        if hasattr(self.model_manager, "get_available_experts"):
+                            available_experts = self.model_manager.get_available_experts()
+                        elif hasattr(self.model_manager, "_get_available_experts_for_layer"):
+                            for layer_id in range(24):
+                                layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
+                                available_experts.extend(layer_experts)
+                except Exception as e:
+                    logger.warning(f"Could not enumerate experts for registration: {e}")
                 
                 # Register
                 data = {
@@ -810,7 +819,7 @@ class BilyanGPUNode:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 # Submit delta to service node
                 resp = await client.post(
-                    f"{MAIN_NODE_URL}/learning/node_delta",
+                    f"{MAIN_NODE_URL}/learning/delta/submit",  # ✅ align with service endpoint
                     json={
                         "round_id": round_id,
                         "node_id": self.node_id,
@@ -871,7 +880,7 @@ class BilyanGPUNode:
 
 async def main():
     """Entry point."""
-    node = BilyanGPUNode()
+    node = BlyanGPUNode()
     await node.run()
 
 if __name__ == "__main__":
