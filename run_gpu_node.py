@@ -47,6 +47,16 @@ try:
 except Exception:
     pass
 
+# Fix for transformers triton kernel typo bug
+try:
+    from transformers.utils import is_triton_available
+    # Some versions have a typo - create alias for the mistyped name
+    import transformers.utils
+    if not hasattr(transformers.utils, 'is_triton_kernels_availalble'):
+        transformers.utils.is_triton_kernels_availalble = lambda: False
+except Exception:
+    pass
+
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
 
