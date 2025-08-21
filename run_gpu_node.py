@@ -28,31 +28,6 @@ try:
 except Exception as e:
     logger.warning(f"Could not check library versions: {e}")
 
-# Fix triton kernel typo bug aggressively
-try:
-    import transformers.utils
-    import transformers.utils.import_utils
-    
-    # Create a stub that always returns False
-    def triton_stub(*args, **kwargs):
-        return False
-    
-    # Patch all possible variations
-    for module in [transformers.utils, transformers.utils.import_utils]:
-        for name in ['is_triton_available', 'is_triton_kernels_available', 'is_triton_kernels_availalble']:
-            if not hasattr(module, name):
-                setattr(module, name, triton_stub)
-    
-    # Also patch in the main transformers module
-    import transformers
-    for name in ['is_triton_available', 'is_triton_kernels_available', 'is_triton_kernels_availalble']:
-        if not hasattr(transformers, name):
-            setattr(transformers, name, triton_stub)
-            
-    logger.info("Applied triton compatibility patches")
-except Exception as e:
-    logger.debug(f"Triton patching: {e}")
-
 # Import compatibility layer
 try:
     from backend.common.compat import (
@@ -67,11 +42,19 @@ except ImportError:
     logger.warning("Compatibility module not available, using fallback loading")
     COMPAT_AVAILABLE = False
 
+# Import model configuration
+try:
+    from config.model_config import DEFAULT_MODEL_NAME, get_model_config
+except ImportError:
+    DEFAULT_MODEL_NAME = 'Qwen/Qwen1.5-MoE-A2.7B'
+    def get_model_config(name):
+        return {}
+
 # Configuration
 PORT = int(os.environ.get('NODE_PORT', 8002))
 MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL', 'http://165.227.221.225:8000')
 DATA_DIR = Path(os.environ.get('BLYAN_DATA_DIR', './data'))
-MODEL_NAME = os.environ.get('MODEL_NAME', 'openai/gpt-oss-20b')  # OpenAI's GPT-OSS-20B model
+MODEL_NAME = os.environ.get('MODEL_NAME', DEFAULT_MODEL_NAME)  # Use centralized default
 SKIP_POL = os.environ.get('SKIP_POL', 'true').lower() == 'true'
 AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'true').lower() == 'true'  # Auto-upload by default
 
@@ -421,7 +404,7 @@ class BlyanGPUNode:
     async def download_and_upload_model(self):
         """Download model from HuggingFace and upload to blockchain as experts."""
         logger.info(f"📥 Auto-downloading model: {MODEL_NAME}")
-        logger.info("⚠️  This is a 20B parameter model - download may take time...")
+        logger.info("⚙️  Qwen1.5-MoE: 14.3B total params, 2.7B active params per token")
         
         try:
             import torch
@@ -526,7 +509,7 @@ class BlyanGPUNode:
             if layers is None:
                 raise RuntimeError("Model structure unexpected: missing model.layers")
 
-            for layer_idx in range(min(24, len(layers))):  # gpt-oss-20b: 24 layers
+            for layer_idx in range(min(28, len(layers))):  # Qwen1.5-MoE: 28 layers
                 layer = layers[layer_idx]
                 mlp = getattr(layer, "mlp", None)
                 if mlp is None:

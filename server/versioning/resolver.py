@@ -15,7 +15,7 @@ logger = structlog.get_logger()
 @dataclass
 class VersionSpec:
     """Version specification with semver and hash."""
-    name: str  # e.g., "gpt_oss_20b"
+    name: str  # e.g., "qwen_1_5_moe_a2_7b"
     version: str  # e.g., "v1.2.3"
     content_hash: Optional[str] = None  # e.g., "sha256:abc123..."
     tokenizer_version: Optional[str] = None
@@ -80,12 +80,12 @@ class VersionResolver:
         
         # Default versions
         self.default_versions = default_versions or {
-            "gpt_oss_20b": VersionSpec(
-                name="gpt_oss_20b",
+            "qwen_1_5_moe_a2_7b": VersionSpec(
+                name="qwen_1_5_moe_a2_7b",
                 version="v1.0.0",
-                content_hash="sha256:default20b",
+                content_hash="sha256:defaultqwen",
                 tokenizer_version="v1.0.0",
-                tokenizer_hash="sha256:tokenizer20b"
+                tokenizer_hash="sha256:tokenizerqwen"
             ),
             "gpt_oss_120b": VersionSpec(
                 name="gpt_oss_120b",
@@ -113,7 +113,7 @@ class VersionResolver:
         """Resolve model version with validation.
         
         Args:
-            model_name: Model identifier (e.g., "gpt_oss_20b")
+            model_name: Model identifier (e.g., "qwen_1_5_moe_a2_7b")
             requested_version: Optional specific version
             requested_hash: Optional content hash for validation
             

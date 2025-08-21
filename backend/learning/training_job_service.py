@@ -112,7 +112,7 @@ class TrainingJobService:
 
     def _load_config(self, override: Optional[Dict[str, Any]]) -> TrainingJobConfig:
         cfg = TrainingJobConfig(
-            model_name=os.getenv('TRAINING_MODEL_NAME', 'openai/gpt-oss-20b'),
+            model_name=os.getenv('TRAINING_MODEL_NAME', 'Qwen/Qwen1.5-MoE-A2.7B'),
             batch_size=int(os.getenv('TRAINING_BATCH_SIZE', '1')),
             seq_len=int(os.getenv('TRAINING_SEQ_LEN', '512')),
             max_uris=int(os.getenv('TRAINING_MAX_URIS', '4')),

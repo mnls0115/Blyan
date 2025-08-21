@@ -250,7 +250,7 @@ class PipelineRoundService:
         if self._model_wrapper is not None and self._optimizer is not None and self._ms_trainer is not None and self._dataloader is not None:
             return True
         # Initialize model/tokenizer
-        model_name = os.getenv('TRAINING_MODEL_NAME', 'openai/gpt-oss-20b')
+        model_name = os.getenv('TRAINING_MODEL_NAME', 'Qwen/Qwen1.5-MoE-A2.7B')
         self._model_wrapper = ModelWrapper(model_name, allow_mock_fallback=False)
         # Optional DDP
         if os.getenv('USE_DDP', '0').lower() in ('1', 'true', 'yes'):

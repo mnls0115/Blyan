@@ -173,9 +173,9 @@ class ProductionInferencePipeline:
         from backend.model.real_model_loader import get_model_loader, ModelConfig
         
         config = ModelConfig(
-            model_name="openai/gpt-oss-20b",
+            model_name="Qwen/Qwen1.5-MoE-A2.7B",
             cache_dir="./models",
-            load_in_8bit=True  # Consistent quantization
+            load_in_8bit=False  # Use FP16 for Qwen
         )
         
         loader = get_model_loader(config)

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """Model configuration"""
-    model_name: str = "openai/gpt-oss-20b"  # Only use the real model, no fallbacks
+    model_name: str = "Qwen/Qwen1.5-MoE-A2.7B"  # Use Qwen MoE model
     cache_dir: str = "/data/models"
     device: str = "auto"
     load_in_8bit: bool = True
@@ -74,7 +74,7 @@ class RealModelLoader:
             
             if not model_path.exists() or not any(model_path.glob("*.bin")) and not any(model_path.glob("*.safetensors")):
                 logger.error(f"Model not found at {model_path}")
-                logger.error("openai/gpt-oss-20b model is not available.")
+                logger.error(f"{self.config.model_name} model is not available.")
                 logger.error("Model must be deployed by GPU nodes first.")
                 return False
             else:

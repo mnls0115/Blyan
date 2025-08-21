@@ -44,7 +44,7 @@ class ChainModelResolver(IModelResolver):
     
     async def resolve(self, request: Dict[str, Any]) -> Tuple[str, str, str]:
         """Resolve from chain or cache."""
-        model_id = request.get("model", "gpt_oss_20b")
+        model_id = request.get("model", "qwen_1_5_moe_a2_7b")
         version = request.get("model_version", "latest")
         
         cache_key = f"{model_id}:{version}"
@@ -75,7 +75,7 @@ class ChainModelResolver(IModelResolver):
     
     async def get_default_version(self) -> Tuple[str, str, str]:
         """Get default model version."""
-        return await self.resolve({"model": "gpt_oss_20b", "model_version": "latest"})
+        return await self.resolve({"model": "qwen_1_5_moe_a2_7b", "model_version": "latest"})
 
 
 @dataclass

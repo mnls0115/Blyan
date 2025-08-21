@@ -135,7 +135,7 @@ class ValidationModelManager:
         # Load main model (FP16)
         try:
             suite['main'] = self.load_model(
-                'gpt_oss_20b',
+                'qwen_1_5_moe_a2_7b',
                 'main',
                 apply_quantization=True
             )

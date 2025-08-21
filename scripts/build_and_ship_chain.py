@@ -11,7 +11,7 @@ Runs on a GPU node (e.g., Runpod) to:
 
 Usage (example):
   python scripts/build_and_ship_chain.py \
-    --model-id openai/gpt-oss-20b \
+    --model-id Qwen/Qwen1.5-MoE-A2.7B \
     --remote user@MAIN_HOST \
     --remote-path /root/aiblock/data \
     --ssh-key ~/.ssh/id_rsa \
@@ -164,7 +164,7 @@ def try_fetch_remote_genesis(remote: str, remote_path: str, ssh_key: str | None,
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build MoE DAG chain locally and ship to main node")
-    parser.add_argument("--model-id", default="openai/gpt-oss-20b", help="HF repo id or local ckpt path")
+    parser.add_argument("--model-id", default="Qwen/Qwen1.5-MoE-A2.7B", help="HF repo id or local ckpt path")
     parser.add_argument("--build-root", default="./data_build", help="Local build root for chain data")
     parser.add_argument("--meta-arch", default="gpt-oss", help="Architecture label for meta block")
     parser.add_argument("--skip-pol", action="store_true", help="Initialize chains with SKIP_POL for speed")

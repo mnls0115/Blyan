@@ -73,7 +73,7 @@ class AccountingMiddleware:
                 "prompt_per_1k": Decimal("0.001"),
                 "completion_per_1k": Decimal("0.003")
             },
-            "gpt_oss_20b": {
+            "qwen_1_5_moe_a2_7b": {
                 "prompt_per_1k": Decimal("0.001"),
                 "completion_per_1k": Decimal("0.003")
             },
@@ -109,7 +109,7 @@ class AccountingMiddleware:
         user_address: str,
         prompt_tokens: List[int],
         completion_tokens: List[int],
-        model_name: str = "gpt_oss_20b",
+        model_name: str = "qwen_1_5_moe_a2_7b",
         inference_receipt: Optional[InferenceReceipt] = None
     ) -> BillingReceipt:
         """Track token usage and generate billing receipt."""
@@ -217,7 +217,7 @@ class AccountingMiddleware:
         user_address: str,
         prompt_tokens: List[int],
         completion_tokens: List[int],
-        model_name: str = "gpt_oss_20b"
+        model_name: str = "qwen_1_5_moe_a2_7b"
     ) -> BillingReceipt:
         """Track free tier usage (no billing)."""
         

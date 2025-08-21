@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **GPU Nodes**: Distributed compute providers
   - Need `BLYAN_API_KEY` to register with main node
   - Must set `BLOCKCHAIN_ONLY=false` to actually serve models
-  - Use `run_gpu_node.py` as entrypoint (auto-downloads openai/gpt-oss-20b if no experts exist)
+  - Use `run_gpu_node.py` as entrypoint (auto-downloads Qwen/Qwen1.5-MoE-A2.7B if no experts exist)
   - Require public IP/DNS and port forwarding
   - **Memory Optimization**: Uses MXFP4/NF4 quantization to fit model in 16GB GPU memory
   - See [GPU Node Deployment Guide](docs/GPU_NODE_DEPLOYMENT.md) for setup
@@ -45,17 +45,17 @@ Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system 
 ## 🚨 CRITICAL MODEL REQUIREMENTS
 
 **CONSISTENT QUANTIZATION ACROSS ALL NODES:**
-- **Model**: `openai/gpt-oss-20b` (https://huggingface.co/openai/gpt-oss-20b)
-- **Quantization**: INT8 (8-bit) - MUST be consistent across all GPU nodes
-- **Size**: 21.5B parameters → ~10GB with INT8 quantization
-- **Memory Required**: ~20GB total (10GB model + 10GB for upload process)
-- **Why INT8**: Ensures consistent inference results across different GPU types
-- **Loading**: `load_in_8bit=True` with transformers library
-- **NO smaller models** (no phi-2, no 2.7B alternatives)
+- **Model**: `Qwen/Qwen1.5-MoE-A2.7B` (https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B)
+- **Architecture**: Mixture-of-Experts (MoE) with 60 experts
+- **Size**: 14.3B total parameters, 2.7B active params per token
+- **Precision**: FP16 - consistent across all GPU nodes
+- **Memory Required**: ~28GB total in FP16 (can distribute across multiple GPUs)
+- **Why FP16**: Better compatibility, no BitsAndBytes dependency
+- **Loading**: `torch_dtype=torch.float16` with transformers library
 - **NO mock models or hardcoded responses**
 - **Blockchain-first inference** - all weights from blockchain
 
-This is non-negotiable. The system is designed for the full 20B parameter model in BF16.
+This is a true MoE model perfect for distributed expert hosting.
 
 ## Development Setup
 

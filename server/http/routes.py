@@ -27,7 +27,7 @@ class StreamRequest(BaseModel):
     stream: bool = True
     stream_id: Optional[str] = None
     use_moe: bool = False
-    model: str = "gpt_oss_20b"
+    model: str = "qwen_1_5_moe_a2_7b"
 
 
 class CancelRequest(BaseModel):

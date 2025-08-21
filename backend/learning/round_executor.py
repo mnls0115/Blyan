@@ -68,7 +68,7 @@ class RoundExecutor:
                     # Build dataset loader from GOLD tier
                     ds_chain = DatasetChain(Path('./data'), 'D')
                     # Load model via ModelWrapper (must exist in the environment)
-                    model_name = os.getenv('TRAINING_MODEL_NAME', 'openai/gpt-oss-20b')
+                    model_name = os.getenv('TRAINING_MODEL_NAME', 'Qwen/Qwen1.5-MoE-A2.7B')
                     wrapper = ModelWrapper(model_name, allow_mock_fallback=False)
 
                     # Optional DDP and ZeRO-1

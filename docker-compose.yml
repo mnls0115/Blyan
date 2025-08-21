@@ -33,9 +33,9 @@ services:
       # GPU configuration (auto-detected)
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all}
       
-      # Model settings
-      - MODEL_NAME=${MODEL_NAME:-openai/gpt-oss-20b}
-      - MODEL_QUANTIZATION=${MODEL_QUANTIZATION:-int8}
+      # Model settings (can override via .env.model or environment)
+      - MODEL_NAME=${MODEL_NAME:-Qwen/Qwen1.5-MoE-A2.7B}
+      - MODEL_QUANTIZATION=${MODEL_QUANTIZATION:-fp16}
       
       # Performance settings
       - MAX_BATCH_SIZE=${MAX_BATCH_SIZE:-4}

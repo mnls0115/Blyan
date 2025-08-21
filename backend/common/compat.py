@@ -232,9 +232,9 @@ def load_tokenizer(model_name: str, **kwargs) -> Any:
         logger.info(f"Loaded fast tokenizer for {model_name}")
         return tokenizer
     except Exception as e_fast:
-        logger.warning(f"Fast tokenizer failed: {e_fast}")
+        logger.warning(f"Fast tokenizer failed: {e_fast}, trying slow tokenizer")
         
-        # Try slow tokenizer (only if slow files exist)
+        # Try slow tokenizer
         try:
             tokenizer = AutoTokenizer.from_pretrained(
                 model_name,
@@ -244,14 +244,8 @@ def load_tokenizer(model_name: str, **kwargs) -> Any:
             logger.info(f"Loaded slow tokenizer for {model_name}")
             return tokenizer
         except Exception as e_slow:
-            # Both failed - this usually means incompatible versions
             error_msg = (
                 f"Failed to load tokenizer for {model_name}.\n"
-                f"This typically indicates version incompatibility.\n"
-                f"Please ensure:\n"
-                f"  1. transformers>=4.35.0,<4.43.0\n"
-                f"  2. tokenizers>=0.15.0\n"
-                f"  3. Clear HF cache if needed: rm -rf ~/.cache/huggingface\n"
                 f"Fast error: {e_fast}\n"
                 f"Slow error: {e_slow}"
             )
