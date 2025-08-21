@@ -455,8 +455,11 @@ class BlyanGPUNode:
                 import torch
                 
                 # Multi-GPU support with device_map="auto"
-                if self.gpu_available and self.gpu_info.get("num_gpus", 1) > 1:
-                    logger.info(f"Using {self.gpu_info['num_gpus']} GPUs for model loading")
+                if self.gpu_available:
+                    num_gpus = self.gpu_info.get("num_gpus", 1)
+                    logger.info(f"Using {num_gpus} GPU(s) for model loading")
+                    if num_gpus > 1:
+                        logger.info("Model will be distributed across all available GPUs")
                 
                 model = AutoModelForCausalLM.from_pretrained(
                     MODEL_NAME,
