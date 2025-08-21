@@ -544,7 +544,7 @@ class BlyanGPUNode:
                     metadata = json.dumps({
                         "expert_name": expert_name,
                         "layer_id": layer_idx,
-                        "quantization": ENFORCED_PRECISION,  # fp16
+                        "quantization": self.precision,  # auto-detected
                         "model_source": MODEL_NAME,
                         "precision_enforced": True  # Mark as enforced precision
                     })
@@ -617,12 +617,12 @@ class BlyanGPUNode:
                 prompt = data.get("prompt", "")
                 max_tokens = data.get("max_new_tokens", data.get("max_length", 100))
                 selected_experts = data.get("experts", [])
-                required_precision = data.get("precision", ENFORCED_PRECISION)
+                required_precision = data.get("precision", self.precision)
                 
                 # Validate precision requirement
-                if required_precision != ENFORCED_PRECISION:
+                if required_precision != self.precision:
                     return web.json_response({
-                        "error": f"Precision mismatch: requested {required_precision}, node enforces {ENFORCED_PRECISION}"
+                        "error": f"Precision mismatch: requested {required_precision}, node enforces {self.precision}"
                     }, status=400)
                 
                 if not self.model_manager:
@@ -659,7 +659,7 @@ class BlyanGPUNode:
                     "experts_used": selected_experts,
                     "blockchain_inference": True,
                     "gpu_used": self.gpu_available,
-                    "precision": ENFORCED_PRECISION  # Report precision used
+                    "precision": self.precision  # Report precision used
                 })
                 
             except Exception as e:
@@ -673,14 +673,14 @@ class BlyanGPUNode:
                 round_id = data.get("round_id")
                 target_expert = data.get("target_expert")
                 base_version = data.get("base_version")
-                required_precision = data.get("precision", ENFORCED_PRECISION)
+                required_precision = data.get("precision", self.precision)
                 
                 # Validate precision requirement
-                if required_precision != ENFORCED_PRECISION:
-                    logger.error(f"Precision mismatch: coordinator requires {required_precision}, node enforces {ENFORCED_PRECISION}")
+                if required_precision != self.precision:
+                    logger.error(f"Precision mismatch: coordinator requires {required_precision}, node enforces {self.precision}")
                     return web.json_response({
                         "status": "rejected",
-                        "reason": f"Precision mismatch: node only supports {ENFORCED_PRECISION}"
+                        "reason": f"Precision mismatch: node only supports {self.precision}"
                     }, status=400)
                 
                 # Store learning state
@@ -845,7 +845,7 @@ class BlyanGPUNode:
                     "chains": list(self.chains.keys()),
                     "model_ready": self.model_manager is not None,
                     "genesis_hash": self.genesis_hash,  # Include genesis hash for verification
-                    "precision": ENFORCED_PRECISION,  # Report enforced precision (fp16)
+                    "precision": self.precision,  # Report auto-detected precision
                     "supports_int8": False  # INT8 not used
                 }
                 
