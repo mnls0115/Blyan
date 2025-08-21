@@ -78,7 +78,9 @@ class BlyanGPUNode:
         self.training_in_progress = False
         self.gpu_info = {}
         self.genesis_hash = None
-        self.precision = ENFORCED_PRECISION  # Store enforced precision
+        # Precision is now auto-detected from model config
+        model_config = get_model_config(MODEL_NAME)
+        self.precision = model_config.get('precision', 'auto')
         
         # Ensure data directory exists
         DATA_DIR.mkdir(parents=True, exist_ok=True)
