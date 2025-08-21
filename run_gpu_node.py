@@ -17,38 +17,22 @@ from typing import Optional, Dict, Any, List
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- BitsAndBytes backward-compat shim (safe no-op on new code) ---
-try:
-    from transformers import BitsAndBytesConfig
-    def _bnb_get_loading_attributes(self):
-        # Map common fields to the old kwargs dict shape
-        d = {}
-        if getattr(self, "load_in_8bit", False): d["load_in_8bit"] = True
-        if getattr(self, "load_in_4bit", False): d["load_in_4bit"] = True
-        if getattr(self, "bnb_4bit_quant_type", None) is not None:
-            d["bnb_4bit_quant_type"] = self.bnb_4bit_quant_type
-        if getattr(self, "bnb_4bit_use_double_quant", None) is not None:
-            d["bnb_4bit_use_double_quant"] = self.bnb_4bit_use_double_quant
-        if getattr(self, "bnb_4bit_compute_dtype", None) is not None:
-            d["bnb_4bit_compute_dtype"] = self.bnb_4bit_compute_dtype
-        if getattr(self, "llm_int8_enable_fp32_cpu_offload", None) is not None:
-            d["llm_int8_enable_fp32_cpu_offload"] = self.llm_int8_enable_fp32_cpu_offload
-        return d
-    if not hasattr(BitsAndBytesConfig, "get_loading_attributes"):
-        BitsAndBytesConfig.get_loading_attributes = _bnb_get_loading_attributes
-except Exception:
-    pass
-# -------------------------------------------------------------------
-
-# Version logging for debugging
-try:
-    import torch, transformers, bitsandbytes as bnb
-    logger.info(f"torch={torch.__version__}, transformers={transformers.__version__}, bitsandbytes={bnb.__version__}")
-except Exception:
-    pass
-
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Import compatibility layer
+try:
+    from backend.common.compat import (
+        setup_hf_cache,
+        load_tokenizer,
+        load_model_any_precision,
+        detect_capabilities,
+        print_capabilities
+    )
+    COMPAT_AVAILABLE = True
+except ImportError:
+    logger.warning("Compatibility module not available, using fallback loading")
+    COMPAT_AVAILABLE = False
 
 # Configuration
 PORT = int(os.environ.get('NODE_PORT', 8002))
@@ -79,27 +63,51 @@ class BlyanGPUNode:
         
     def check_gpu(self) -> bool:
         """Check GPU availability and get info."""
-        try:
-            import torch
-            if torch.cuda.is_available():
-                self.gpu_available = True
+        # Use compatibility layer if available
+        if COMPAT_AVAILABLE:
+            caps = detect_capabilities()
+            self.gpu_available = caps['cuda']
+            
+            if caps['cuda']:
                 self.gpu_info = {
-                    "name": torch.cuda.get_device_name(0),
-                    "memory_gb": torch.cuda.get_device_properties(0).total_memory / 1e9,
-                    "cuda_version": torch.version.cuda
+                    "name": caps['gpu_name'],
+                    "memory_gb": caps['gpu_memory_gb'],
+                    "cuda_version": caps['cuda_version'],
+                    "supports_bf16": caps['supports_bf16'],
+                    "bnb_cuda": caps['bnb_cuda']
                 }
                 logger.info(f"GPU: {self.gpu_info['name']}")
                 logger.info(f"Memory: {self.gpu_info['memory_gb']:.2f} GB")
                 logger.info(f"CUDA: {self.gpu_info['cuda_version']}")
+                logger.info(f"BF16 Support: {self.gpu_info['supports_bf16']}")
+                logger.info(f"BitsAndBytes CUDA: {self.gpu_info['bnb_cuda']}")
                 return True
-        except ImportError:
-            logger.warning("PyTorch not installed - installing...")
-            import subprocess
-            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch"])
-            return self.check_gpu()  # Recursive call after install
-        
-        logger.info("No GPU detected - CPU mode")
-        return False
+            else:
+                logger.info("No GPU detected - CPU mode")
+                return False
+        else:
+            # Fallback to original method
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    self.gpu_available = True
+                    self.gpu_info = {
+                        "name": torch.cuda.get_device_name(0),
+                        "memory_gb": torch.cuda.get_device_properties(0).total_memory / 1e9,
+                        "cuda_version": torch.version.cuda
+                    }
+                    logger.info(f"GPU: {self.gpu_info['name']}")
+                    logger.info(f"Memory: {self.gpu_info['memory_gb']:.2f} GB")
+                    logger.info(f"CUDA: {self.gpu_info['cuda_version']}")
+                    return True
+            except ImportError:
+                logger.warning("PyTorch not installed - installing...")
+                import subprocess
+                subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch"])
+                return self.check_gpu()  # Recursive call after install
+            
+            logger.info("No GPU detected - CPU mode")
+            return False
     
     
     def _create_local_genesis(self):
@@ -359,37 +367,83 @@ class BlyanGPUNode:
         logger.info("⚠️  This is a 20B parameter model - download may take time...")
         
         try:
-            # ✅ Require CUDA for quantized load
             import torch
-            if not torch.cuda.is_available() or not self.gpu_available:
-                logger.error("CUDA not available on this node. Skipping auto-upload; quantized load requires NVIDIA GPUs.")
-                return
-
-            # Optional: speed up HF downloads and silence warning
-            os.environ.setdefault("HF_HOME", str((DATA_DIR / ".hf").resolve()))
-            os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
-
-            from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
             import gc
             
-            # Use INT8 quantization for consistency across all nodes
-            logger.info("⏳ Loading model with INT8 quantization (~10GB memory)...")
-            
-            # ✅ Configure quantization properly for newer transformers
-            quantization_config = BitsAndBytesConfig(
-                load_in_8bit=True,
-                llm_int8_enable_fp32_cpu_offload=True
-            )
-            
-            tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
-            model = AutoModelForCausalLM.from_pretrained(
-                MODEL_NAME,
-                quantization_config=quantization_config,  # ✅ correct way
-                device_map="auto",  # ✅ only when CUDA
-                low_cpu_mem_usage=True,
-                trust_remote_code=True
-            )
-            logger.info("✅ Model loaded with INT8 quantization")
+            # Use compatibility layer if available
+            if COMPAT_AVAILABLE:
+                # Setup HF cache
+                setup_hf_cache((DATA_DIR / ".hf").resolve())
+                
+                # Detect capabilities
+                caps = detect_capabilities()
+                
+                # Check if we can use quantization
+                if not caps['cuda']:
+                    logger.error("CUDA not available on this node. Skipping auto-upload.")
+                    return
+                
+                if not caps['bnb_cuda']:
+                    logger.warning("BitsAndBytes CUDA support not available, will try non-quantized loading")
+                
+                # Load tokenizer with compatibility handling
+                logger.info("Loading tokenizer...")
+                tokenizer = load_tokenizer(MODEL_NAME)
+                
+                # Load model with automatic precision fallback
+                logger.info("Loading model with automatic precision selection...")
+                model, load_info = load_model_any_precision(
+                    MODEL_NAME,
+                    prefer_quant="8bit" if caps['bnb_cuda'] else None,
+                    device_pref="auto",
+                    max_memory_gb=caps.get('gpu_memory_gb', None)
+                )
+                
+                logger.info(f"✅ Model loaded with {load_info['method']} precision")
+                if load_info.get('fallback_reason'):
+                    logger.warning(f"Fallback reason: {load_info['fallback_reason']}")
+                
+            else:
+                # Fallback to original loading method
+                if not torch.cuda.is_available() or not self.gpu_available:
+                    logger.error("CUDA not available on this node. Skipping auto-upload.")
+                    return
+                
+                # Setup environment
+                os.environ.setdefault("HF_HOME", str((DATA_DIR / ".hf").resolve()))
+                os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
+                
+                from transformers import AutoModelForCausalLM, AutoTokenizer
+                
+                # Try loading with FP16 as fallback
+                logger.info("⏳ Loading model...")
+                tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+                
+                try:
+                    # Try INT8 first
+                    from transformers import BitsAndBytesConfig
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                        llm_int8_enable_fp32_cpu_offload=True
+                    )
+                    model = AutoModelForCausalLM.from_pretrained(
+                        MODEL_NAME,
+                        quantization_config=quantization_config,
+                        device_map="auto",
+                        low_cpu_mem_usage=True,
+                        trust_remote_code=True
+                    )
+                    logger.info("✅ Model loaded with INT8 quantization")
+                except Exception as e:
+                    logger.warning(f"INT8 loading failed: {e}, trying FP16")
+                    model = AutoModelForCausalLM.from_pretrained(
+                        MODEL_NAME,
+                        torch_dtype=torch.float16,
+                        device_map="auto",
+                        low_cpu_mem_usage=True,
+                        trust_remote_code=True
+                    )
+                    logger.info("✅ Model loaded with FP16 precision")
             
             # Create meta block if needed
             if len(self.chains['A'].get_all_blocks()) == 0:
