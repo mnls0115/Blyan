@@ -20,6 +20,20 @@ logger = logging.getLogger(__name__)
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Version check for debugging
+try:
+    import transformers
+    import tokenizers
+    logger.info(f"Library versions - transformers: {transformers.__version__}, tokenizers: {tokenizers.__version__}")
+    
+    # Check version compatibility
+    trans_version = tuple(map(int, transformers.__version__.split('.')[:2]))
+    if trans_version < (4, 35) or trans_version >= (4, 43):
+        logger.warning(f"⚠️ transformers version {transformers.__version__} may have compatibility issues")
+        logger.warning("   Recommended: transformers>=4.35.0,<4.43.0")
+except Exception as e:
+    logger.warning(f"Could not check library versions: {e}")
+
 # Import compatibility layer
 try:
     from backend.common.compat import (

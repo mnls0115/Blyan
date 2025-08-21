@@ -4,17 +4,17 @@
 #   pip install -r requirements-gpu.txt
 
 # Core dependencies for GPU nodes
-aiohttp>=3.9.0
-httpx>=0.25.0
-pyyaml>=6.0
-structlog>=23.0.0
+aiohttp
+httpx
+pyyaml
+structlog
 
 # Transformers and ML
-transformers>=4.35.0,<4.43.0
-huggingface-hub>=0.19.0
-safetensors>=0.4.0
-accelerate>=0.25.0
-tokenizers>=0.15.0
+transformers
+huggingface-hub
+safetensors
+accelerate
+tokenizers
 
 # Model optimization (optional, for quantization support)
 # bitsandbytes>=0.41.0  # Optional: for INT8/INT4 quantization
@@ -22,21 +22,21 @@ tokenizers>=0.15.0
 # sentencepiece>=0.1.99  # For some tokenizers
 
 # Numerical computing
-numpy>=1.24.0,<2.0.0
-scipy>=1.10.0
+numpy
+scipy
 
 # Monitoring and utilities
-psutil>=5.9.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
+psutil
+pydantic
+python-dotenv
 
 # Blockchain/crypto (for node registration)
-ecdsa>=0.18.0
-cryptography>=41.0.0
+ecdsa
+cryptography
 
 # Data handling
-tiktoken>=0.5.0  # For GPT tokenization
-datasets>=2.14.0  # For dataset loading
+tiktoken
+datasets
 
 # Performance optimization (optional)
 # flash-attn>=2.3.0  # Requires specific CUDA versions
@@ -48,11 +48,11 @@ datasets>=2.14.0  # For dataset loading
 # matplotlib>=3.7.0
 
 # Common ML utilities
-tqdm>=4.65.0
-regex>=2023.0.0
-filelock>=3.12.0
-packaging>=23.0
+tqdm
+regex
+filelock
+packaging
 
 # For distributed training (optional)
-deepspeed>=0.12.0
-fairscale>=0.4.13
+deepspeed
+fairscale

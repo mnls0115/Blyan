@@ -207,7 +207,7 @@ def detect_capabilities() -> Dict[str, Any]:
 
 def load_tokenizer(model_name: str, **kwargs) -> Any:
     """
-    Load tokenizer with fallback strategies.
+    Load tokenizer robustly - try fast first, then slow if available.
     
     Args:
         model_name: Model name or path
@@ -218,6 +218,10 @@ def load_tokenizer(model_name: str, **kwargs) -> Any:
     """
     from transformers import AutoTokenizer
     
+    # Add trust_remote_code by default for compatibility
+    if 'trust_remote_code' not in kwargs:
+        kwargs['trust_remote_code'] = True
+    
     # Try fast tokenizer first
     try:
         tokenizer = AutoTokenizer.from_pretrained(
@@ -227,21 +231,32 @@ def load_tokenizer(model_name: str, **kwargs) -> Any:
         )
         logger.info(f"Loaded fast tokenizer for {model_name}")
         return tokenizer
-    except Exception as e:
-        logger.warning(f"Fast tokenizer failed: {e}, trying slow tokenizer")
-    
-    # Fallback to slow tokenizer
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_name,
-            use_fast=False,
-            **kwargs
-        )
-        logger.info(f"Loaded slow tokenizer for {model_name}")
-        return tokenizer
-    except Exception as e:
-        logger.error(f"Failed to load tokenizer: {e}")
-        raise
+    except Exception as e_fast:
+        logger.warning(f"Fast tokenizer failed: {e_fast}")
+        
+        # Try slow tokenizer (only if slow files exist)
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name,
+                use_fast=False,
+                **kwargs
+            )
+            logger.info(f"Loaded slow tokenizer for {model_name}")
+            return tokenizer
+        except Exception as e_slow:
+            # Both failed - this usually means incompatible versions
+            error_msg = (
+                f"Failed to load tokenizer for {model_name}.\n"
+                f"This typically indicates version incompatibility.\n"
+                f"Please ensure:\n"
+                f"  1. transformers>=4.35.0,<4.43.0\n"
+                f"  2. tokenizers>=0.15.0\n"
+                f"  3. Clear HF cache if needed: rm -rf ~/.cache/huggingface\n"
+                f"Fast error: {e_fast}\n"
+                f"Slow error: {e_slow}"
+            )
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e_slow
 
 # ============================================================================
 # MODEL LOADING WITH FALLBACKS
