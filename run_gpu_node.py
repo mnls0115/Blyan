@@ -541,18 +541,12 @@ class BlyanGPUNode:
                     pickle.dump(cpu_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
                     payload = buffer.getvalue()
 
-                    metadata = json.dumps({
-                        "expert_name": expert_name,
-                        "layer_id": layer_idx,
-                        "quantization": self.precision,  # auto-detected
-                        "model_source": MODEL_NAME,
-                        "precision_enforced": True  # Mark as enforced precision
-                    })
-
+                    # Add expert block with proper parameters
                     self.chains['B'].add_block(
                         payload,
                         block_type='expert',
-                        metadata=metadata
+                        expert_name=expert_name,
+                        layer_id=f"layer{layer_idx}"
                     )
                     logger.info(f"✅ Uploaded {expert_name} to blockchain")
                     num_uploaded += 1
