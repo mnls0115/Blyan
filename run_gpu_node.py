@@ -42,6 +42,10 @@ MODEL_NAME = os.environ.get('MODEL_NAME', 'openai/gpt-oss-20b')  # OpenAI's GPT-
 SKIP_POL = os.environ.get('SKIP_POL', 'true').lower() == 'true'
 AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'true').lower() == 'true'  # Auto-upload by default
 
+# ENFORCED PRECISION - All nodes must use INT8
+ENFORCED_PRECISION = "int8"  # No fallbacks allowed
+REQUIRE_INT8_SUPPORT = True  # Node must support INT8 or it cannot participate
+
 class BlyanGPUNode:
     """Integrated GPU node with blockchain and model support."""
     
@@ -51,22 +55,25 @@ class BlyanGPUNode:
         self.chains = {}
         self.model_manager = None
         self.gpu_available = False
+        self.supports_int8 = False  # Track INT8 support
         
         # Initialize learning state
         self.current_learning_round = None
         self.training_in_progress = False
         self.gpu_info = {}
         self.genesis_hash = None
+        self.precision = ENFORCED_PRECISION  # Store enforced precision
         
         # Ensure data directory exists
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         
     def check_gpu(self) -> bool:
-        """Check GPU availability and get info."""
+        """Check GPU availability and INT8 support."""
         # Use compatibility layer if available
         if COMPAT_AVAILABLE:
             caps = detect_capabilities()
             self.gpu_available = caps['cuda']
+            self.supports_int8 = caps['cuda'] and caps['bnb_cuda']  # Both CUDA and BnB CUDA required
             
             if caps['cuda']:
                 self.gpu_info = {
@@ -79,11 +86,18 @@ class BlyanGPUNode:
                 logger.info(f"GPU: {self.gpu_info['name']}")
                 logger.info(f"Memory: {self.gpu_info['memory_gb']:.2f} GB")
                 logger.info(f"CUDA: {self.gpu_info['cuda_version']}")
-                logger.info(f"BF16 Support: {self.gpu_info['supports_bf16']}")
                 logger.info(f"BitsAndBytes CUDA: {self.gpu_info['bnb_cuda']}")
+                
+                # Check INT8 requirement
+                if REQUIRE_INT8_SUPPORT and not self.supports_int8:
+                    logger.error("❌ This node does not support INT8 quantization (required)")
+                    logger.error("   BitsAndBytes with CUDA support is required for participation")
+                    return False
+                    
+                logger.info(f"✅ INT8 quantization support: {self.supports_int8}")
                 return True
             else:
-                logger.info("No GPU detected - CPU mode")
+                logger.info("No GPU detected - cannot participate (INT8 requires GPU)")
                 return False
         else:
             # Fallback to original method
@@ -390,18 +404,29 @@ class BlyanGPUNode:
                 logger.info("Loading tokenizer...")
                 tokenizer = load_tokenizer(MODEL_NAME)
                 
-                # Load model with automatic precision fallback
-                logger.info("Loading model with automatic precision selection...")
-                model, load_info = load_model_any_precision(
-                    MODEL_NAME,
-                    prefer_quant="8bit" if caps['bnb_cuda'] else None,
-                    device_pref="auto",
-                    max_memory_gb=caps.get('gpu_memory_gb', None)
+                # ENFORCE INT8 ONLY - No fallbacks
+                if not self.supports_int8:
+                    logger.error("Cannot load model: INT8 support is required")
+                    return
+                
+                logger.info(f"Loading model with ENFORCED {ENFORCED_PRECISION} precision...")
+                
+                # Force INT8 loading only
+                from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    llm_int8_enable_fp32_cpu_offload=True
                 )
                 
-                logger.info(f"✅ Model loaded with {load_info['method']} precision")
-                if load_info.get('fallback_reason'):
-                    logger.warning(f"Fallback reason: {load_info['fallback_reason']}")
+                model = AutoModelForCausalLM.from_pretrained(
+                    MODEL_NAME,
+                    quantization_config=quantization_config,
+                    device_map="auto",
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True
+                )
+                
+                logger.info(f"✅ Model loaded with {ENFORCED_PRECISION} precision (enforced)")
                 
             else:
                 # Fallback to original loading method
@@ -419,31 +444,20 @@ class BlyanGPUNode:
                 logger.info("⏳ Loading model...")
                 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
                 
-                try:
-                    # Try INT8 first
-                    from transformers import BitsAndBytesConfig
-                    quantization_config = BitsAndBytesConfig(
-                        load_in_8bit=True,
-                        llm_int8_enable_fp32_cpu_offload=True
-                    )
-                    model = AutoModelForCausalLM.from_pretrained(
-                        MODEL_NAME,
-                        quantization_config=quantization_config,
-                        device_map="auto",
-                        low_cpu_mem_usage=True,
-                        trust_remote_code=True
-                    )
-                    logger.info("✅ Model loaded with INT8 quantization")
-                except Exception as e:
-                    logger.warning(f"INT8 loading failed: {e}, trying FP16")
-                    model = AutoModelForCausalLM.from_pretrained(
-                        MODEL_NAME,
-                        torch_dtype=torch.float16,
-                        device_map="auto",
-                        low_cpu_mem_usage=True,
-                        trust_remote_code=True
-                    )
-                    logger.info("✅ Model loaded with FP16 precision")
+                # ENFORCE INT8 ONLY - No fallbacks in legacy path
+                from transformers import BitsAndBytesConfig
+                quantization_config = BitsAndBytesConfig(
+                    load_in_8bit=True,
+                    llm_int8_enable_fp32_cpu_offload=True
+                )
+                model = AutoModelForCausalLM.from_pretrained(
+                    MODEL_NAME,
+                    quantization_config=quantization_config,
+                    device_map="auto",
+                    low_cpu_mem_usage=True,
+                    trust_remote_code=True
+                )
+                logger.info(f"✅ Model loaded with {ENFORCED_PRECISION} quantization (enforced)")
             
             # Create meta block if needed
             if len(self.chains['A'].get_all_blocks()) == 0:
@@ -494,8 +508,9 @@ class BlyanGPUNode:
                     metadata = json.dumps({
                         "expert_name": expert_name,
                         "layer_id": layer_idx,
-                        "quantization": "int8",  # or "4bit" if you switched
-                        "model_source": MODEL_NAME
+                        "quantization": ENFORCED_PRECISION,  # Use enforced precision
+                        "model_source": MODEL_NAME,
+                        "precision_enforced": True  # Mark as enforced precision
                     })
 
                     self.chains['B'].add_block(
@@ -566,6 +581,18 @@ class BlyanGPUNode:
                 prompt = data.get("prompt", "")
                 max_tokens = data.get("max_new_tokens", data.get("max_length", 100))
                 selected_experts = data.get("experts", [])
+                required_precision = data.get("precision", ENFORCED_PRECISION)
+                
+                # Validate precision requirement
+                if required_precision != ENFORCED_PRECISION:
+                    return web.json_response({
+                        "error": f"Precision mismatch: requested {required_precision}, node enforces {ENFORCED_PRECISION}"
+                    }, status=400)
+                
+                if not self.supports_int8:
+                    return web.json_response({
+                        "error": "Node does not support INT8 quantization"
+                    }, status=503)
                 
                 if not self.model_manager:
                     return web.json_response({
@@ -600,7 +627,8 @@ class BlyanGPUNode:
                     "response": response,
                     "experts_used": selected_experts,
                     "blockchain_inference": True,
-                    "gpu_used": self.gpu_available
+                    "gpu_used": self.gpu_available,
+                    "precision": ENFORCED_PRECISION  # Report precision used
                 })
                 
             except Exception as e:
@@ -614,6 +642,21 @@ class BlyanGPUNode:
                 round_id = data.get("round_id")
                 target_expert = data.get("target_expert")
                 base_version = data.get("base_version")
+                required_precision = data.get("precision", ENFORCED_PRECISION)
+                
+                # Validate precision requirement
+                if required_precision != ENFORCED_PRECISION:
+                    logger.error(f"Precision mismatch: coordinator requires {required_precision}, node enforces {ENFORCED_PRECISION}")
+                    return web.json_response({
+                        "status": "rejected",
+                        "reason": f"Precision mismatch: node only supports {ENFORCED_PRECISION}"
+                    }, status=400)
+                
+                if not self.supports_int8:
+                    return web.json_response({
+                        "status": "rejected",
+                        "reason": "Node does not support INT8 quantization"
+                    }, status=400)
                 
                 # Store learning state
                 self.current_learning_round = {
@@ -766,7 +809,7 @@ class BlyanGPUNode:
                 except Exception as e:
                     logger.warning(f"Could not enumerate experts for registration: {e}")
                 
-                # Register
+                # Register with precision info
                 data = {
                     "node_id": self.node_id,
                     "host": public_ip,
@@ -776,7 +819,9 @@ class BlyanGPUNode:
                     "gpu_info": self.gpu_info,
                     "chains": list(self.chains.keys()),
                     "model_ready": self.model_manager is not None,
-                    "genesis_hash": self.genesis_hash  # Include genesis hash for verification
+                    "genesis_hash": self.genesis_hash,  # Include genesis hash for verification
+                    "precision": ENFORCED_PRECISION,  # Report enforced precision
+                    "supports_int8": self.supports_int8  # Report INT8 capability
                 }
                 
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data)
