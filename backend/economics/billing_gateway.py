@@ -34,9 +34,10 @@ class BillingGateway:
     1. User pays in USD/USDC
     2. Gateway buys BLY from DEX
     3. 50% burned, 50% to reward pool
+    4. Burn accumulates to trigger learning cycles
     """
     
-    def __init__(self):
+    def __init__(self, learning_coordinator=None):
         self.bly_price = Decimal("0.10")  # Initial price
         self.total_burned = Decimal("0")
         self.total_to_pool = Decimal("0")
@@ -45,6 +46,7 @@ class BillingGateway:
             "weekly": [],
             "monthly": []
         }
+        self.learning_coordinator = learning_coordinator
         
     async def process_inference_payment(
         self,
@@ -131,6 +133,11 @@ class BillingGateway:
         """Burn BLY tokens by sending to burn address."""
         # In production: send to 0x0000...dead or contract burn function
         logger.info(f"Burned {amount} BLY")
+        
+        # Notify learning coordinator about the burn
+        if self.learning_coordinator:
+            self.learning_coordinator.record_inference_burn(amount)
+            logger.info(f"Recorded {amount} BLY burn for learning trigger")
         
     async def _transfer_to_pool(self, amount: Decimal):
         """Transfer BLY to reward pool."""
@@ -227,9 +234,12 @@ class BillingGateway:
 # Singleton
 _gateway = None
 
-def get_billing_gateway() -> BillingGateway:
+def get_billing_gateway(learning_coordinator=None) -> BillingGateway:
     """Get or create billing gateway singleton."""
     global _gateway
     if _gateway is None:
-        _gateway = BillingGateway()
+        _gateway = BillingGateway(learning_coordinator)
+    elif learning_coordinator and not _gateway.learning_coordinator:
+        # Update learning coordinator if provided
+        _gateway.learning_coordinator = learning_coordinator
     return _gateway

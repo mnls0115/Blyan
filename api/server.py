@@ -825,6 +825,69 @@ def _startup():
         logger.info("✅ Production inference pipeline initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize production pipeline: {e}")
+    
+    # Initialize learning coordinator (production version with fault tolerance)
+    global learning_coordinator
+    learning_coordinator = None
+    
+    async def init_learning_coordinator():
+        global learning_coordinator
+        try:
+            # Try fault-tolerant coordinator first
+            try:
+                from backend.learning.production_coordinator_v2 import get_fault_tolerant_coordinator
+                from backend.economics.budget_controller import get_budget_controller
+                from backend.economics.billing_gateway import get_billing_gateway
+                
+                # Get budget controller
+                budget_controller = get_budget_controller()
+                
+                # Initialize fault-tolerant learning coordinator
+                learning_coordinator = await get_fault_tolerant_coordinator(
+                    dataset_chain=dataset_chain,
+                    param_chain=param_chain,
+                    budget_controller=budget_controller
+                )
+                
+                # Start the coordinator
+                await learning_coordinator.start()
+                
+                # Update billing gateway with learning coordinator
+                billing_gateway = get_billing_gateway(learning_coordinator)
+                
+                logger.info("✅ Fault-tolerant learning coordinator V2 initialized and started")
+                
+                # Mount V2 API endpoints
+                from api.learning_v2 import init_router
+                v2_router = init_router(learning_coordinator)
+                app.include_router(v2_router)
+                logger.info("✅ Learning V2 API endpoints mounted")
+                
+            except ImportError:
+                # Fall back to original coordinator
+                from backend.learning.production_coordinator import get_production_coordinator
+                budget_controller = get_budget_controller()
+                learning_coordinator = await get_production_coordinator(
+                    dataset_chain=dataset_chain,
+                    param_chain=param_chain,
+                    budget_controller=budget_controller
+                )
+                await learning_coordinator.start()
+                billing_gateway = get_billing_gateway(learning_coordinator)
+                logger.info("✅ Production learning coordinator V1 initialized")
+                
+        except Exception as e:
+            logger.warning(f"Failed to initialize learning coordinator: {e}")
+    
+    # Will be initialized on startup event
+    @app.on_event("startup")
+    async def startup_learning_coordinator():
+        await init_learning_coordinator()
+    
+    @app.on_event("shutdown")
+    async def shutdown_learning_coordinator():
+        if learning_coordinator and hasattr(learning_coordinator, 'stop'):
+            await learning_coordinator.stop()
     # Provide real device profiles and model structure to partition planner
     def _device_profile_provider(node_ids: List[str]):
         devices = []
@@ -3314,6 +3377,114 @@ async def production_metrics():
         return {"error": "Production pipeline not initialized"}
     
     return production_pipeline.get_metrics_summary()
+
+@app.get("/learning/status")
+async def learning_status():
+    """Get current learning cycle status."""
+    if not learning_coordinator:
+        return {"error": "Learning coordinator not initialized"}
+    
+    return learning_coordinator.get_status()
+
+@app.post("/learning/trigger")
+async def trigger_learning_manually():
+    """Manually trigger a learning round (for testing)."""
+    if not learning_coordinator:
+        raise HTTPException(status_code=503, detail="Learning coordinator not initialized")
+    
+    # Simulate burning enough BLY to trigger
+    from decimal import Decimal
+    user_addr = "test_trigger"
+    request_id = f"manual_{int(time.time())}"
+    amount = Decimal("1000")  # Default threshold
+    
+    learning_coordinator.record_inference_burn(user_addr, request_id, amount)
+    
+    return {
+        "status": "triggered",
+        "amount": float(amount),
+        "message": "Learning round triggered manually"
+    }
+
+@app.post("/learning/delta/submit")
+async def submit_delta(request: Request):
+    """Submit trained delta from GPU node."""
+    if not learning_coordinator:
+        raise HTTPException(status_code=503, detail="Learning coordinator not initialized")
+    
+    data = await request.json()
+    round_id = data.get("round_id")
+    node_id = data.get("node_id")
+    delta_data = data.get("delta")
+    
+    if not all([round_id, node_id, delta_data]):
+        raise HTTPException(status_code=400, detail="Missing required fields")
+    
+    delta_id = await learning_coordinator.submit_delta(round_id, node_id, delta_data)
+    
+    return {
+        "status": "accepted",
+        "delta_id": delta_id,
+        "round_id": round_id,
+        "node_id": node_id
+    }
+
+@app.get("/learning/rounds")
+async def get_learning_rounds():
+    """Get list of learning rounds."""
+    if not learning_coordinator:
+        return {"error": "Learning coordinator not initialized"}
+    
+    try:
+        db = learning_coordinator.db
+        rounds = await db.get_active_rounds()
+        
+        return {
+            "active_rounds": rounds,
+            "total": len(rounds)
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/learning/metrics")
+async def learning_metrics():
+    """Get comprehensive learning metrics."""
+    if not learning_coordinator:
+        return {"error": "Learning coordinator not initialized"}
+    
+    try:
+        db = learning_coordinator.db
+        
+        # Get burn accumulator
+        total_burned, last_round = await db.get_burn_accumulator()
+        
+        # Get active nodes
+        nodes = await db.get_active_nodes()
+        
+        # Get active rounds
+        rounds = await db.get_active_rounds()
+        
+        return {
+            "burn_accumulator": {
+                "total": float(total_burned),
+                "threshold": float(learning_coordinator.config["threshold_bly"]),
+                "progress_percent": float(total_burned / learning_coordinator.config["threshold_bly"] * 100),
+                "last_round_time": last_round.isoformat() if last_round else None
+            },
+            "nodes": {
+                "active": len(nodes),
+                "list": [{"node_id": n["node_id"], "reputation": float(n["reputation_score"])} for n in nodes]
+            },
+            "rounds": {
+                "active": len(rounds),
+                "states": {state: sum(1 for r in rounds if r["state"] == state) 
+                          for state in ["TRIGGERED", "NOTIFYING", "DATA_ALLOC", "TRAINING", "CONSENSUS", "DELTA_CREATION", "REWARD_DIST"]}
+            },
+            "config": learning_coordinator.get_status()["config"]
+        }
+        
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/health")
 async def health_check():

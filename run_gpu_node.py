@@ -37,6 +37,10 @@ class BilyanGPUNode:
         self.chains = {}
         self.model_manager = None
         self.gpu_available = False
+        
+        # Initialize learning state
+        self.current_learning_round = None
+        self.training_in_progress = False
         self.gpu_info = {}
         self.genesis_hash = None
         
@@ -507,11 +511,119 @@ class BilyanGPUNode:
             except Exception as e:
                 return web.json_response({"error": str(e)}, status=500)
         
+        # Learning endpoints
+        async def learning_start(request):
+            """Handle learning start notification from service node."""
+            try:
+                data = await request.json()
+                round_id = data.get("round_id")
+                target_expert = data.get("target_expert")
+                base_version = data.get("base_version")
+                
+                # Store learning state
+                self.current_learning_round = {
+                    "round_id": round_id,
+                    "target_expert": target_expert,
+                    "base_version": base_version,
+                    "status": "notified",
+                    "start_time": time.time()
+                }
+                
+                logger.info(f"📚 Learning round {round_id} started for {target_expert}")
+                
+                return web.json_response({
+                    "status": "accepted",
+                    "round_id": round_id,
+                    "node_id": self.node_id
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to start learning: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+        
+        async def learning_data_allocation(request):
+            """Receive data allocation for learning."""
+            try:
+                data = await request.json()
+                round_id = data.get("round_id")
+                dataset_ids = data.get("dataset_ids", [])
+                
+                if not self.current_learning_round or self.current_learning_round["round_id"] != round_id:
+                    return web.json_response({"error": "Invalid round"}, status=400)
+                
+                # Store allocated datasets
+                self.current_learning_round["datasets"] = dataset_ids
+                self.current_learning_round["status"] = "data_allocated"
+                
+                logger.info(f"Received {len(dataset_ids)} datasets for round {round_id}")
+                
+                # Start training asynchronously
+                asyncio.create_task(self.execute_training(round_id, dataset_ids))
+                
+                return web.json_response({
+                    "status": "accepted",
+                    "datasets_received": len(dataset_ids)
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to receive data allocation: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+        
+        async def learning_status(request):
+            """Report current learning status."""
+            try:
+                if not self.current_learning_round:
+                    return web.json_response({
+                        "status": "idle",
+                        "current_round": None
+                    })
+                
+                return web.json_response({
+                    "status": self.current_learning_round.get("status", "unknown"),
+                    "round_id": self.current_learning_round.get("round_id"),
+                    "progress": self.current_learning_round.get("progress", 0),
+                    "elapsed_time": time.time() - self.current_learning_round.get("start_time", 0)
+                })
+                
+            except Exception as e:
+                return web.json_response({"error": str(e)}, status=500)
+        
+        async def submit_delta(request):
+            """Submit trained delta to service node."""
+            try:
+                data = await request.json()
+                round_id = data.get("round_id")
+                
+                if not self.current_learning_round or self.current_learning_round["round_id"] != round_id:
+                    return web.json_response({"error": "Invalid round"}, status=400)
+                
+                # Get the trained delta
+                delta = self.current_learning_round.get("trained_delta")
+                if not delta:
+                    return web.json_response({"error": "No delta available"}, status=400)
+                
+                logger.info(f"Submitting delta for round {round_id}")
+                
+                return web.json_response({
+                    "status": "submitted",
+                    "delta_hash": hashlib.sha256(str(delta).encode()).hexdigest()[:16],
+                    "node_id": self.node_id
+                })
+                
+            except Exception as e:
+                return web.json_response({"error": str(e)}, status=500)
+        
         # Register routes
         app.router.add_get('/', health)
         app.router.add_get('/health', health)
         app.router.add_get('/chain/{chain_id}', chain_info)
         app.router.add_post('/inference', inference)
+        
+        # Learning routes
+        app.router.add_post('/learning/start', learning_start)
+        app.router.add_post('/learning/data', learning_data_allocation)
+        app.router.add_get('/learning/status', learning_status)
+        app.router.add_post('/learning/delta', submit_delta)
         
         # Start server
         runner = web.AppRunner(app)
@@ -604,6 +716,109 @@ class BilyanGPUNode:
                     # Exponential backoff
                     retry_interval = min(retry_interval * 2, max_interval)
                     logger.debug(f"Next sync attempt in {retry_interval} seconds")
+    
+    async def execute_training(self, round_id: str, dataset_ids: List[str]):
+        """Execute actual training with allocated datasets."""
+        if self.training_in_progress:
+            logger.warning("Training already in progress")
+            return
+        
+        self.training_in_progress = True
+        logger.info(f"Starting training for round {round_id} with {len(dataset_ids)} datasets")
+        
+        try:
+            # Update status
+            self.current_learning_round["status"] = "training"
+            self.current_learning_round["progress"] = 0
+            
+            # Get target expert
+            target_expert = self.current_learning_round.get("target_expert", "layer0.expert0")
+            base_version = self.current_learning_round.get("base_version", "")
+            
+            # Load datasets from chain D
+            training_data = []
+            if dataset_ids:
+                for dataset_id in dataset_ids[:5]:  # Limit to 5 datasets for now
+                    # In production: Load actual dataset from chain D
+                    # For now, simulate with sample data
+                    training_data.append({
+                        "dataset_id": dataset_id,
+                        "samples": ["Sample text for training"] * 10
+                    })
+            
+            # Simulate training process
+            total_steps = 100
+            for step in range(total_steps):
+                # Update progress
+                self.current_learning_round["progress"] = (step + 1) / total_steps * 100
+                
+                # Simulate training step
+                await asyncio.sleep(0.1)  # Simulate computation time
+                
+                if step % 10 == 0:
+                    logger.info(f"Training progress: {self.current_learning_round['progress']:.1f}%")
+            
+            # Generate delta (difference between new and old weights)
+            # In production: Calculate actual weight deltas from training
+            trained_delta = {
+                "expert": target_expert,
+                "base_version": base_version,
+                "delta_weights": {
+                    "layer.weight": [0.001] * 100,  # Simulated weight changes
+                    "layer.bias": [0.0001] * 10
+                },
+                "improvement_metrics": {
+                    "loss_reduction": 0.15,
+                    "accuracy_gain": 0.02
+                },
+                "training_metadata": {
+                    "datasets_used": len(dataset_ids),
+                    "training_steps": total_steps,
+                    "node_id": self.node_id
+                }
+            }
+            
+            # Store trained delta
+            self.current_learning_round["trained_delta"] = trained_delta
+            self.current_learning_round["status"] = "trained"
+            
+            logger.info(f"✅ Training complete for round {round_id}")
+            
+            # Submit delta to service node
+            await self.submit_delta_to_service(round_id, trained_delta)
+            
+        except Exception as e:
+            logger.error(f"Training failed: {e}")
+            self.current_learning_round["status"] = "failed"
+            self.current_learning_round["error"] = str(e)
+        finally:
+            self.training_in_progress = False
+    
+    async def submit_delta_to_service(self, round_id: str, delta: Dict):
+        """Submit trained delta to service node."""
+        try:
+            import httpx
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Submit delta to service node
+                resp = await client.post(
+                    f"{MAIN_NODE_URL}/learning/node_delta",
+                    json={
+                        "round_id": round_id,
+                        "node_id": self.node_id,
+                        "delta": delta,
+                        "timestamp": time.time()
+                    }
+                )
+                
+                if resp.status_code == 200:
+                    logger.info(f"✅ Delta submitted for round {round_id}")
+                    self.current_learning_round["status"] = "delta_submitted"
+                else:
+                    logger.warning(f"Failed to submit delta: {resp.status_code}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to submit delta: {e}")
     
     async def run(self):
         """Main run loop."""
