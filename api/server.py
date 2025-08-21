@@ -458,12 +458,15 @@ async def monitoring_middleware(request: Request, call_next):
 # Add rate limiting middleware
 from backend.security.rate_limiting import RateLimitMiddleware
 from backend.security.input_validation import validate_heartbeat_params
-rate_limit_middleware = RateLimitMiddleware(
-    default_limit=60,  # 60 requests per minute for basic tier
-    premium_limit=300,  # 300 requests per minute for premium
-    enterprise_limit=1000  # 1000 requests per minute for enterprise
-)
-app.middleware("http")(rate_limit_middleware)
+
+# Only apply rate limiting if not disabled
+if not os.getenv("RATE_LIMIT_DISABLED", "false").lower() == "true":
+    rate_limit_middleware = RateLimitMiddleware(
+        default_limit=60,  # 60 requests per minute for basic tier
+        premium_limit=300,  # 300 requests per minute for premium
+        enterprise_limit=1000  # 1000 requests per minute for enterprise
+    )
+    app.middleware("http")(rate_limit_middleware)
 
 # Add CORS middleware (restrict in production)
 # Default to specific domains for production security
