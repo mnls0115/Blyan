@@ -17,6 +17,36 @@ from typing import Optional, Dict, Any, List
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# --- BitsAndBytes backward-compat shim (safe no-op on new code) ---
+try:
+    from transformers import BitsAndBytesConfig
+    def _bnb_get_loading_attributes(self):
+        # Map common fields to the old kwargs dict shape
+        d = {}
+        if getattr(self, "load_in_8bit", False): d["load_in_8bit"] = True
+        if getattr(self, "load_in_4bit", False): d["load_in_4bit"] = True
+        if getattr(self, "bnb_4bit_quant_type", None) is not None:
+            d["bnb_4bit_quant_type"] = self.bnb_4bit_quant_type
+        if getattr(self, "bnb_4bit_use_double_quant", None) is not None:
+            d["bnb_4bit_use_double_quant"] = self.bnb_4bit_use_double_quant
+        if getattr(self, "bnb_4bit_compute_dtype", None) is not None:
+            d["bnb_4bit_compute_dtype"] = self.bnb_4bit_compute_dtype
+        if getattr(self, "llm_int8_enable_fp32_cpu_offload", None) is not None:
+            d["llm_int8_enable_fp32_cpu_offload"] = self.llm_int8_enable_fp32_cpu_offload
+        return d
+    if not hasattr(BitsAndBytesConfig, "get_loading_attributes"):
+        BitsAndBytesConfig.get_loading_attributes = _bnb_get_loading_attributes
+except Exception:
+    pass
+# -------------------------------------------------------------------
+
+# Version logging for debugging
+try:
+    import torch, transformers, bitsandbytes as bnb
+    logger.info(f"torch={torch.__version__}, transformers={transformers.__version__}, bitsandbytes={bnb.__version__}")
+except Exception:
+    pass
+
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
 
