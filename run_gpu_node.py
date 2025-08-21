@@ -5,20 +5,27 @@ Includes blockchain initialization, model loading, and peer sync
 """
 import os
 import sys
+from pathlib import Path
+
+# Add project to path FIRST
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Apply triton patches BEFORE any other imports
+try:
+    import triton_patch
+except Exception as e:
+    print(f"Warning: Could not apply triton patch: {e}")
+
 import asyncio
 import logging
 import json
 import time
 import hashlib
-from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# Add project to path
-sys.path.insert(0, str(Path(__file__).parent))
 
 # Version check for debugging
 try:
@@ -27,31 +34,6 @@ try:
     logger.info(f"Library versions - transformers: {transformers.__version__}, tokenizers: {tokenizers.__version__}")
 except Exception as e:
     logger.warning(f"Could not check library versions: {e}")
-
-# Fix triton kernel typo bug aggressively
-try:
-    import transformers.utils
-    import transformers.utils.import_utils
-    
-    # Create a stub that always returns False
-    def triton_stub(*args, **kwargs):
-        return False
-    
-    # Patch all possible variations
-    for module in [transformers.utils, transformers.utils.import_utils]:
-        for name in ['is_triton_available', 'is_triton_kernels_available', 'is_triton_kernels_availalble']:
-            if not hasattr(module, name):
-                setattr(module, name, triton_stub)
-    
-    # Also patch in the main transformers module
-    import transformers
-    for name in ['is_triton_available', 'is_triton_kernels_available', 'is_triton_kernels_availalble']:
-        if not hasattr(transformers, name):
-            setattr(transformers, name, triton_stub)
-            
-    logger.info("Applied triton compatibility patches")
-except Exception as e:
-    logger.debug(f"Triton patching: {e}")
 
 # Import compatibility layer
 try:
