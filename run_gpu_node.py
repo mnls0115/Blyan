@@ -217,7 +217,14 @@ class BlyanGPUNode:
     def initialize_chains(self) -> bool:
         """Initialize or sync blockchain chains."""
         try:
-            from backend.core.chain import Chain
+            # Import with fallback to standard chain if optimized not available
+            try:
+                from backend.core.chain_optimized import OptimizedChain as Chain
+                logger.info("Using optimized chain loading (fast parallel processing)")
+            except ImportError:
+                from backend.core.chain import Chain
+                logger.warning("Optimized chain not available, using standard chain (slower)")
+            
             from backend.core.dataset_chain import DatasetChain
             
             logger.info("Initializing blockchains...")
@@ -509,7 +516,13 @@ class BlyanGPUNode:
                         chain_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Reinitialize chain
-                    from backend.core.chain import Chain
+                    try:
+                        from backend.core.chain_optimized import OptimizedChain as Chain
+                        logger.info("Using optimized chain loading (fast parallel processing)")
+                    except ImportError:
+                        from backend.core.chain import Chain
+                        logger.warning("Optimized chain not available, using standard chain (slower)")
+                    
                     self.chains[cid] = Chain(DATA_DIR, cid, skip_pol=True)
                     
                     # Re-add genesis for meta chain
