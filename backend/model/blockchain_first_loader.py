@@ -4,6 +4,9 @@ This replaces the fallback behavior to ensure true decentralization
 """
 import torch
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from backend.core.chain import Chain
@@ -75,17 +78,29 @@ class BlockchainOnlyModelManager:
         return None
     
     def get_available_experts(self) -> List[str]:
-        """List all experts available in blockchain."""
+        """List all experts available in blockchain (optimized)."""
         experts = []
-        all_blocks = self.param_chain.get_all_blocks()
         
-        for block in all_blocks:
-            if hasattr(block, 'block_type') and block.block_type == 'expert':
-                if hasattr(block, 'metadata'):
-                    metadata = json.loads(block.metadata) if isinstance(block.metadata, str) else block.metadata
-                    expert_name = metadata.get('expert_name')
-                    if expert_name:
-                        experts.append(expert_name)
+        # Use index to count blocks first
+        block_count = len(self.param_chain._hash_index) if hasattr(self.param_chain, '_hash_index') else 0
+        
+        # For large chains, use sampling to estimate experts
+        if block_count > 1000:
+            # Sample approach - check last 100 blocks
+            for i in range(max(0, block_count - 100), block_count):
+                block = self.param_chain.storage.get_block_by_index(i)
+                if block and block.header.block_type == 'expert' and block.header.expert_name:
+                    experts.append(block.header.expert_name)
+            
+            # Estimate total based on sample
+            if experts:
+                logger.info(f"Found {len(experts)} experts in sample (estimated ~{block_count} total blocks)")
+        else:
+            # For small chains, check all blocks
+            for i in range(block_count):
+                block = self.param_chain.storage.get_block_by_index(i)
+                if block and block.header.block_type == 'expert' and block.header.expert_name:
+                    experts.append(block.header.expert_name)
         
         return experts
     

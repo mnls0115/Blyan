@@ -220,8 +220,8 @@ class BlyanGPUNode:
         try:
             # Import with fallback to standard chain if optimized not available
             try:
-                from backend.core.chain_optimized import OptimizedChain as Chain
-                logger.info("Using optimized chain loading (fast parallel processing)")
+                from backend.core.chain_fast import FastChain as Chain
+                logger.info("Using fast-sync chain loading (instant startup with lazy loading)")
             except ImportError:
                 from backend.core.chain import Chain
                 logger.warning("Optimized chain not available, using standard chain (slower)")
@@ -596,8 +596,8 @@ class BlyanGPUNode:
                     
                     # Reinitialize chain
                     try:
-                        from backend.core.chain_optimized import OptimizedChain as Chain
-                        logger.info("Using optimized chain loading (fast parallel processing)")
+                        from backend.core.chain_fast import FastChain as Chain
+                        logger.info("Using fast-sync chain loading (instant startup with lazy loading)")
                     except ImportError:
                         from backend.core.chain import Chain
                         logger.warning("Optimized chain not available, using standard chain (slower)")
@@ -1748,7 +1748,7 @@ class BlyanGPUNode:
             asyncio.create_task(self.periodic_sync())
         
         # Register with network
-        asyncio.create_task(self.register_with_network())
+        asyncio.create_task(self.register_with_main())
         
         # Final summary
         total_time = time.time() - startup_begin
