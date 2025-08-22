@@ -673,7 +673,23 @@ class BlyanGPUNode:
         
         # Check if we should auto-upload
         if AUTO_UPLOAD:
-            if current_count < total_needed:
+            # Check if upload was already completed
+            upload_state_file = DATA_DIR / "upload_completed.json"
+            if upload_state_file.exists():
+                logger.info("✅ Upload already completed (found state file)")
+            elif progress["progress_percentage"] >= 99.0:
+                # If we're 99%+ complete, consider it done (may have minor discrepancies)
+                logger.info(f"✅ Model upload essentially complete ({progress['progress_percentage']:.1f}%)")
+                # Mark as complete to prevent re-upload
+                upload_state = {
+                    "model": MODEL_NAME,
+                    "num_experts": current_count,
+                    "timestamp": time.time(),
+                    "completed": True
+                }
+                with open(upload_state_file, 'w') as f:
+                    json.dump(upload_state, f)
+            elif current_count < total_needed:
                 logger.info("🚀 Starting auto-upload of model to blockchain...")
                 asyncio.create_task(self.download_and_upload_model())
             else:
