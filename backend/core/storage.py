@@ -28,8 +28,16 @@ class BlockStorage:
     def save_block(self, block: Block) -> None:
         self.ensure_dir()
         path = self._block_path(block.header.index)
-        with path.open("w") as fp:
-            json.dump(block.to_dict(), fp)
+        try:
+            block_dict = block.to_dict()
+            with path.open("w") as fp:
+                json.dump(block_dict, fp)
+        except (TypeError, ValueError) as e:
+            # If JSON serialization fails, try to identify the issue
+            import sys
+            print(f"ERROR: Failed to save block {block.header.index}: {e}", file=sys.stderr)
+            print(f"Block type: {block.header.block_type}, Expert: {getattr(block.header, 'expert_name', 'N/A')}", file=sys.stderr)
+            raise
 
     def load_block(self, index: int) -> Optional[Block]:
         path = self._block_path(index)

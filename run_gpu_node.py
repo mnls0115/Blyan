@@ -828,40 +828,90 @@ class BlyanGPUNode:
                     num_experts = len(mlp.experts) if hasattr(mlp.experts, '__len__') else 0
                     logger.info(f"📦 Layer {layer_idx} has {num_experts} experts to upload")
                     
-                    # Upload each expert individually
+                    # Upload each expert individually with retry logic
                     for expert_idx in range(num_experts):
-                        try:
-                            expert = mlp.experts[expert_idx]
-                            expert_name = get_expert_naming(layer_idx, expert_idx) if PROFILE_AVAILABLE else f"layer{layer_idx}.expert{expert_idx}"
-                            
-                            # Extract expert weights (gate_proj, up_proj, down_proj)
-                            expert_state = {}
-                            if hasattr(expert, 'gate_proj'):
-                                expert_state['gate_proj.weight'] = expert.gate_proj.weight.detach().cpu().contiguous()
-                            if hasattr(expert, 'up_proj'):
-                                expert_state['up_proj.weight'] = expert.up_proj.weight.detach().cpu().contiguous()
-                            if hasattr(expert, 'down_proj'):
-                                expert_state['down_proj.weight'] = expert.down_proj.weight.detach().cpu().contiguous()
-                            
-                            if expert_state:
-                                buffer = io.BytesIO()
-                                pickle.dump(expert_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
-                                payload = buffer.getvalue()
+                        upload_success = False
+                        retry_count = 0
+                        max_retries = 3
+                        
+                        while not upload_success and retry_count < max_retries:
+                            try:
+                                expert = mlp.experts[expert_idx]
+                                expert_name = get_expert_naming(layer_idx, expert_idx) if PROFILE_AVAILABLE else f"layer{layer_idx}.expert{expert_idx}"
                                 
-                                self.chains['B'].add_block(
-                                    payload,
-                                    block_type='expert',
-                                    expert_name=expert_name,
-                                    layer_id=f"layer{layer_idx}"
-                                )
-                                logger.info(f"✅ Uploaded {expert_name} to blockchain")
-                                num_uploaded += 1
+                                # Extract expert weights (gate_proj, up_proj, down_proj)
+                                expert_state = {}
                                 
-                                # Cleanup after each expert
-                                del expert_state, buffer, payload
-                            
-                        except Exception as e:
-                            logger.warning(f"Failed to upload expert {expert_idx} from layer {layer_idx}: {e}")
+                                # Check if expert has any weights at all
+                                has_weights = False
+                                
+                                if hasattr(expert, 'gate_proj') and hasattr(expert.gate_proj, 'weight'):
+                                    weight = expert.gate_proj.weight.detach().cpu().contiguous()
+                                    # Check for NaN/Inf values
+                                    if torch.isnan(weight).any() or torch.isinf(weight).any():
+                                        logger.warning(f"Expert {expert_idx} layer {layer_idx} gate_proj has NaN/Inf values - skipping")
+                                        break
+                                    expert_state['gate_proj.weight'] = weight
+                                    has_weights = True
+                                    
+                                if hasattr(expert, 'up_proj') and hasattr(expert.up_proj, 'weight'):
+                                    weight = expert.up_proj.weight.detach().cpu().contiguous()
+                                    if torch.isnan(weight).any() or torch.isinf(weight).any():
+                                        logger.warning(f"Expert {expert_idx} layer {layer_idx} up_proj has NaN/Inf values - skipping")
+                                        break
+                                    expert_state['up_proj.weight'] = weight
+                                    has_weights = True
+                                    
+                                if hasattr(expert, 'down_proj') and hasattr(expert.down_proj, 'weight'):
+                                    weight = expert.down_proj.weight.detach().cpu().contiguous()
+                                    if torch.isnan(weight).any() or torch.isinf(weight).any():
+                                        logger.warning(f"Expert {expert_idx} layer {layer_idx} down_proj has NaN/Inf values - skipping")
+                                        break
+                                    expert_state['down_proj.weight'] = weight
+                                    has_weights = True
+                                
+                                if not has_weights:
+                                    logger.warning(f"Expert {expert_idx} layer {layer_idx} has no weights - skipping")
+                                    break
+                                
+                                if expert_state:
+                                    buffer = io.BytesIO()
+                                    pickle.dump(expert_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
+                                    payload = buffer.getvalue()
+                                    
+                                    # Add with proper error handling
+                                    try:
+                                        self.chains['B'].add_block(
+                                            payload,
+                                            block_type='expert',
+                                            expert_name=expert_name,
+                                            layer_id=f"layer{layer_idx}",
+                                            depends_on=[]  # Explicitly set empty list to avoid None issues
+                                        )
+                                        logger.info(f"✅ Uploaded {expert_name} to blockchain")
+                                        num_uploaded += 1
+                                        upload_success = True
+                                    except Exception as add_error:
+                                        if "Expecting value" in str(add_error):
+                                            logger.error(f"JSON serialization error for {expert_name}: {add_error}")
+                                            logger.debug(f"Payload size: {len(payload)} bytes")
+                                            # Skip this expert if JSON error persists
+                                            break
+                                        else:
+                                            raise
+                                    
+                                    # Cleanup after each expert
+                                    del expert_state, buffer, payload
+                                
+                            except Exception as e:
+                                retry_count += 1
+                                if retry_count < max_retries:
+                                    logger.warning(f"Failed to upload {expert_name} (attempt {retry_count}/{max_retries}): {str(e)[:100]}")
+                                    time.sleep(0.5 * retry_count)  # Exponential backoff
+                                else:
+                                    logger.error(f"Failed to upload {expert_name} after {max_retries} attempts: {str(e)[:100]}")
+                                    import traceback
+                                    logger.debug(f"Full error trace: {traceback.format_exc()}")
                         
                         # Memory cleanup every 10 experts
                         if expert_idx % 10 == 0:
