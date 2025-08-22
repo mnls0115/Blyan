@@ -96,8 +96,10 @@ class FastChain:
             # Use fast boot for sharded format
             self._fast_boot()
         else:
-            # Empty chain
+            # Empty chain - initialize storage for compatibility
             logger.info(f"No existing blockchain data for chain {self.chain_id}")
+            from .storage import BlockStorage
+            self.storage = BlockStorage(self.storage_dir)
     
     def _fast_boot(self):
         """Fast boot using manifest and index cache."""
@@ -283,6 +285,18 @@ class FastChain:
             
             self._block_cache[index] = block
     
+    def get_block_by_index(self, index: int) -> Optional[Block]:
+        """Get block by index (compatibility method)."""
+        # Check if we have storage
+        if hasattr(self, 'storage') and self.storage is not None:
+            return self.storage.get_block_by_index(index)
+        
+        # Try lazy loading if available
+        if hasattr(self, 'get_block_lazy'):
+            return self.get_block_lazy(index)
+        
+        return None
+    
     def add_block(
         self,
         payload: bytes,
@@ -295,13 +309,27 @@ class FastChain:
         layer_id: Optional[str] = None,
     ) -> Block:
         """Add new block to chain."""
+        # If we have standard storage, use it
+        if hasattr(self, 'storage') and self.storage is not None:
+            return self.storage.add_block(
+                payload=payload,
+                points_to=points_to,
+                miner_pub=miner_pub,
+                payload_sig=payload_sig,
+                depends_on=depends_on,
+                block_type=block_type,
+                expert_name=expert_name,
+                layer_id=layer_id
+            )
+        
+        # Otherwise use manifest-based approach
         # Get latest block index
         if self.manifest and self.manifest.objects:
             prev_index = max(e.block_index for e in self.manifest.objects if e.block_index is not None)
             prev_entry = next(e for e in self.manifest.objects if e.block_index == prev_index)
             prev_hash = prev_entry.cid[:64]
         else:
-            prev_index = -1
+            prev_index = len(self._hash_index) - 1 if self._hash_index else -1
             prev_hash = "0" * 64
         
         index = prev_index + 1
@@ -392,7 +420,7 @@ class FastChain:
     
     def get_all_blocks(self) -> List[Block]:
         """Get all blocks (loads everything - avoid in fast-sync mode)."""
-        if hasattr(self, 'storage'):
+        if hasattr(self, 'storage') and self.storage is not None:
             # Standard mode - use BlockStorage
             return list(self.storage.iter_blocks())
         
@@ -416,7 +444,7 @@ class FastChain:
             return []
         
         # For small chains or with storage, load and filter
-        if hasattr(self, 'storage'):
+        if hasattr(self, 'storage') and self.storage is not None:
             return [block for block in self.storage.iter_blocks() 
                     if block.header.block_type == block_type]
         

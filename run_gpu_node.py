@@ -180,7 +180,12 @@ class BlyanGPUNode:
             
             # Store the hash for reference (only load first block)
             if hasattr(self.chains['A'], 'storage'):
-                first_block = self.chains['A'].storage.get_block_by_index(0)
+                if hasattr(self.chains['A'], 'get_block_by_index'):
+                    first_block = self.chains['A'].get_block_by_index(0)
+                elif hasattr(self.chains['A'], 'storage') and self.chains['A'].storage:
+                    first_block = self.chains['A'].storage.get_block_by_index(0)
+                else:
+                    first_block = None
                 if first_block:
                     self.genesis_hash = first_block.compute_hash()
                 logger.info(f"Genesis hash: {self.genesis_hash[:16]}...")
@@ -322,7 +327,11 @@ class BlyanGPUNode:
                         payload = json.dumps(payload).encode('utf-8')
                     
                     block = Block(header=header, payload=payload)
-                    self.chains['A'].storage.save_block(block)
+                    if hasattr(self.chains['A'], 'storage') and self.chains['A'].storage:
+                        self.chains['A'].storage.save_block(block)
+                    else:
+                        # Use add_block instead
+                        self.chains['A'].add_block(payload)
                     logger.info("Genesis block added successfully")
                 except Exception as e:
                     logger.warning(f"Could not add genesis block directly: {e}")
@@ -375,7 +384,11 @@ class BlyanGPUNode:
                                         elif isinstance(payload, dict):
                                             payload = json.dumps(payload).encode('utf-8')
                                         block = Block(header=header, payload=payload)
-                                        self.chains[chain_id].storage.save_block(block)
+                                        if hasattr(self.chains[chain_id], 'storage') and self.chains[chain_id].storage:
+                                            self.chains[chain_id].storage.save_block(block)
+                                        else:
+                                            # Use add_block with raw payload
+                                            self.chains[chain_id].add_block(payload)
                                         added_count += 1
                                 except Exception as e:
                                     logger.debug(f"Could not add block {block_index}: {e}")
@@ -541,8 +554,15 @@ class BlyanGPUNode:
             import hashlib
             start_time = time.time()
             
-            # Get last block
-            last_block = chain.storage.get_block_by_index(block_count - 1)
+            # Get last block using the chain's method
+            if hasattr(chain, 'get_block_by_index'):
+                last_block = chain.get_block_by_index(block_count - 1)
+            elif hasattr(chain, 'storage') and chain.storage:
+                last_block = chain.storage.get_block_by_index(block_count - 1)
+            else:
+                # No blocks to verify for empty chain
+                logger.info(f"Chain {chain_id}: Empty chain, nothing to verify")
+                return True
             if not last_block:
                 logger.error(f"Chain {chain_id}: Failed to load last block (index {block_count - 1})")
                 return False
@@ -559,7 +579,12 @@ class BlyanGPUNode:
             # If we have more than one block, verify the hash chain linkage
             if block_count > 1:
                 # Get second-to-last block to verify linkage
-                prev_block = chain.storage.get_block_by_index(block_count - 2)
+                if hasattr(chain, 'get_block_by_index'):
+                    prev_block = chain.get_block_by_index(block_count - 2)
+                elif hasattr(chain, 'storage') and chain.storage:
+                    prev_block = chain.storage.get_block_by_index(block_count - 2)
+                else:
+                    prev_block = None
                 if prev_block:
                     prev_hash = prev_block.compute_hash()
                     if last_block.header.prev_hash != prev_hash:
@@ -1278,7 +1303,12 @@ class BlyanGPUNode:
                 blocks = []
                 start_idx = max(0, block_count - 100)
                 for i in range(start_idx, block_count):
-                    block = chain.storage.get_block_by_index(i)
+                    if hasattr(chain, 'get_block_by_index'):
+                        block = chain.get_block_by_index(i)
+                    elif hasattr(chain, 'storage') and chain.storage:
+                        block = chain.storage.get_block_by_index(i)
+                    else:
+                        block = None
                     if block:
                         blocks.append(block)
                 
