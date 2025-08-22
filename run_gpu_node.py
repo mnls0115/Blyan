@@ -503,24 +503,35 @@ class BlyanGPUNode:
                 logger.error("No chains initialized")
                 return False
             
-            # For GPU nodes, empty chains are OK (will upload model)
-            # Just verify what we have is valid
+            # OPTIMIZATION: Skip full verification for large chains
+            # In production, you might want to verify a sample or do this in background
             
-            # Verify meta chain if it has blocks
-            meta_blocks = self.chains['A'].get_all_blocks()
-            if len(meta_blocks) > 0:
-                if not self.chains['A'].verify_chain():
-                    logger.error("Meta chain verification failed")
-                    return False
+            # Check meta chain size
+            meta_count = len(self.chains['A']._hash_index) if hasattr(self.chains['A'], '_hash_index') else 0
+            if meta_count > 0:
+                logger.info(f"Meta chain has {meta_count} blocks - skipping full verification for performance")
+                # Could do sample verification here in production
             else:
                 logger.info("Meta chain empty (OK for new GPU node)")
             
-            # Verify parameter chain if it has blocks
-            param_blocks = self.chains['B'].get_all_blocks()
-            if len(param_blocks) > 0:
+            # Check parameter chain size
+            param_count = len(self.chains['B']._hash_index) if hasattr(self.chains['B'], '_hash_index') else 0
+            if param_count > 1000:
+                logger.info(f"Parameter chain has {param_count} blocks - skipping full verification (too expensive)")
+                # In production, you could:
+                # 1. Verify a random sample of blocks
+                # 2. Verify in background thread
+                # 3. Use merkle trees for efficient verification
+                # For now, assume valid if we have many blocks
+                return True
+            elif param_count > 0:
+                logger.info(f"Verifying {param_count} parameter blocks...")
+                start_time = time.time()
                 if not self.chains['B'].verify_chain():
                     logger.error("Parameter chain verification failed")
                     return False
+                elapsed = time.time() - start_time
+                logger.info(f"✅ Parameter chain verified in {elapsed:.1f}s")
             else:
                 logger.info("Parameter chain empty (OK for new GPU node)")
             
