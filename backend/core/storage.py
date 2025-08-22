@@ -69,3 +69,7 @@ class BlockStorage:
             except ValueError:
                 # Skip non-numeric filenames
                 continue 
+    
+    def get_block_by_index(self, index: int) -> Optional[Block]:
+        """Alias for load_block to maintain compatibility."""
+        return self.load_block(index)
