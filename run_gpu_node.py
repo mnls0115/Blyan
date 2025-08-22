@@ -1137,7 +1137,36 @@ class BlyanGPUNode:
             subprocess.run([sys.executable, "-m", "pip", "install", "-q", "aiohttp"])
             from aiohttp import web
         
+        # Add CORS middleware
+        from aiohttp import web
+        try:
+            import aiohttp_cors
+            CORS_AVAILABLE = True
+        except ImportError:
+            logger.warning("aiohttp-cors not installed. Installing...")
+            import subprocess
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", "aiohttp-cors"])
+            try:
+                import aiohttp_cors
+                CORS_AVAILABLE = True
+            except ImportError:
+                logger.warning("CORS support not available")
+                CORS_AVAILABLE = False
+        
         app = web.Application()
+        
+        # Configure CORS if available
+        if CORS_AVAILABLE:
+            cors = aiohttp_cors.setup(app, defaults={
+                "*": aiohttp_cors.ResourceOptions(
+                    allow_credentials=True,
+                    expose_headers="*",
+                    allow_headers="*",
+                    allow_methods="*"
+                )
+            })
+        else:
+            cors = None
         
         # Health endpoint
         async def health(request):
@@ -1475,18 +1504,34 @@ class BlyanGPUNode:
                 return web.json_response({"error": str(e)}, status=500)
         
         # Register routes
-        app.router.add_get('/', health)
-        app.router.add_get('/health', health)
-        app.router.add_get('/debug/moe-status', debug_moe_status)
-        app.router.add_post('/chat', chat)
-        app.router.add_get('/chain/{chain_id}', chain_info)
-        app.router.add_post('/inference', inference)
-        
-        # Learning routes
-        app.router.add_post('/learning/start', learning_start)
-        app.router.add_post('/learning/data', learning_data_allocation)
-        app.router.add_get('/learning/status', learning_status)
-        app.router.add_post('/learning/delta', submit_delta)
+        if cors:
+            # Add routes with CORS
+            cors.add(app.router.add_get('/', health))
+            cors.add(app.router.add_get('/health', health))
+            cors.add(app.router.add_get('/debug/moe-status', debug_moe_status))
+            cors.add(app.router.add_post('/chat', chat))
+            cors.add(app.router.add_get('/chain/{chain_id}', chain_info))
+            cors.add(app.router.add_post('/inference', inference))
+            cors.add(app.router.add_get('/pol/status', lambda r: web.json_response({"status": "ok"})))
+            
+            # Learning routes with CORS
+            cors.add(app.router.add_post('/learning/start', learning_start))
+            cors.add(app.router.add_post('/learning/data', learning_data_allocation))
+            cors.add(app.router.add_get('/learning/status', learning_status))
+            cors.add(app.router.add_post('/learning/delta', submit_delta))
+        else:
+            # Add routes without CORS
+            app.router.add_get('/', health)
+            app.router.add_get('/health', health)
+            app.router.add_get('/debug/moe-status', debug_moe_status)
+            app.router.add_post('/chat', chat)
+            app.router.add_get('/chain/{chain_id}', chain_info)
+            app.router.add_post('/inference', inference)
+            app.router.add_get('/pol/status', lambda r: web.json_response({"status": "ok"}))
+            app.router.add_post('/learning/start', learning_start)
+            app.router.add_post('/learning/data', learning_data_allocation)
+            app.router.add_get('/learning/status', learning_status)
+            app.router.add_post('/learning/delta', submit_delta)
         
         # Start server
         runner = web.AppRunner(app)
