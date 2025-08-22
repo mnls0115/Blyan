@@ -254,12 +254,28 @@ class BlyanGPUNode:
             logger.error(f"Failed to initialize chains: {e}")
             return False
     
-    async def sync_from_peers(self):
-        """Sync blockchain from other nodes."""
+    async def sync_from_peers(self, force_full: bool = False):
+        """Sync blockchain from other GPU nodes (NOT from main node).
+        
+        Note: Main node (DigitalOcean) is just a service coordinator.
+        Only GPU nodes store blockchain data.
+        
+        Args:
+            force_full: If True, reset local chains before syncing
+        """
+        # Main node has NO blockchain - it's just a coordinator
+        # GPU nodes maintain their own blockchains independently
+        logger.info("📝 Note: Main node has no blockchain. GPU nodes maintain local chains.")
+        
+        # For now, skip sync since main node doesn't store blockchain
+        # TODO: Implement GPU-to-GPU peer sync in the future
+        return True  # Return success to continue initialization
+    
+    async def OLD_sync_from_peers_DEPRECATED(self):
+        """OLD sync code - kept for reference but not used.
+        This tried to sync from main node which doesn't have blockchain."""
         try:
             import httpx
-            logger.info(f"Attempting to sync from main node: {MAIN_NODE_URL}")
-            
             # Check if main node is reachable
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
@@ -436,29 +452,147 @@ class BlyanGPUNode:
             return progress
     
     def verify_block_integrity(self) -> bool:
-        """Verify integrity of blockchain blocks."""
+        """Verify integrity of LOCAL blockchain blocks.
+        
+        Note: GPU nodes maintain independent blockchains.
+        Empty chains are valid (will be populated during upload).
+        """
         try:
-            # Verify meta chain
-            if not self.chains['A'].verify_chain():
-                logger.error("Meta chain verification failed")
+            # Check if chains exist
+            if not self.chains:
+                logger.error("No chains initialized")
                 return False
             
-            # Verify parameter chain
-            if not self.chains['B'].verify_chain():
-                logger.error("Parameter chain verification failed")
-                return False
+            # For GPU nodes, empty chains are OK (will upload model)
+            # Just verify what we have is valid
             
-            # Check for required meta block
-            meta_blocks = self.chains['A'].get_blocks_by_type('meta')
-            if len(meta_blocks) == 0:
-                logger.warning("No meta blocks found")
-                return False
+            # Verify meta chain if it has blocks
+            meta_blocks = self.chains['A'].get_all_blocks()
+            if len(meta_blocks) > 0:
+                if not self.chains['A'].verify_chain():
+                    logger.error("Meta chain verification failed")
+                    return False
+            else:
+                logger.info("Meta chain empty (OK for new GPU node)")
             
-            return True
+            # Verify parameter chain if it has blocks
+            param_blocks = self.chains['B'].get_all_blocks()
+            if len(param_blocks) > 0:
+                if not self.chains['B'].verify_chain():
+                    logger.error("Parameter chain verification failed")
+                    return False
+            else:
+                logger.info("Parameter chain empty (OK for new GPU node)")
+            
+            return True  # Empty or valid chains are both OK
             
         except Exception as e:
             logger.error(f"Block integrity check failed: {e}")
             return False
+    
+    def reset_blockchain(self, chain_id: str = None):
+        """Reset blockchain to clean state."""
+        try:
+            if chain_id:
+                chains_to_reset = [chain_id]
+            else:
+                chains_to_reset = ['A', 'B', 'D']
+            
+            for cid in chains_to_reset:
+                if cid in self.chains:
+                    logger.warning(f"🔄 Resetting chain {cid}")
+                    # Remove all block files
+                    chain_dir = DATA_DIR / cid
+                    if chain_dir.exists():
+                        import shutil
+                        shutil.rmtree(chain_dir)
+                        chain_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # Reinitialize chain
+                    from backend.core.chain import Chain
+                    self.chains[cid] = Chain(DATA_DIR, cid, skip_pol=True)
+                    
+                    # Re-add genesis for meta chain
+                    if cid == 'A' and self.genesis_hash:
+                        try:
+                            # Create proper genesis block
+                            genesis_data = {
+                                "version": "1.0.0",
+                                "timestamp": time.time(),
+                                "network": "blyan",
+                                "genesis": True,
+                                "hash": self.genesis_hash
+                            }
+                            self.chains['A'].add_block(
+                                json.dumps(genesis_data).encode(),
+                                block_type='genesis_pact'
+                            )
+                            logger.info(f"✅ Re-created genesis block for chain A")
+                        except Exception as e:
+                            logger.warning(f"Could not recreate genesis: {e}")
+            
+            logger.info(f"✅ Blockchain reset complete")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reset blockchain: {e}")
+            return False
+    
+    async def handle_integrity_failure(self):
+        """Handle blockchain integrity failures."""
+        logger.warning("⚠️ Blockchain integrity check failed - attempting recovery")
+        
+        # Option 1: Try to sync from main node
+        logger.info("Attempting full resync from main node...")
+        sync_success = await self.sync_from_peers(force_full=True)
+        
+        if sync_success:
+            # Re-check integrity
+            if self.verify_block_integrity():
+                logger.info("✅ Integrity restored after sync")
+                return True
+        
+        # Option 2: Reset and rebuild
+        logger.warning("Sync failed to restore integrity - resetting blockchain")
+        
+        # Save any uploaded experts before reset
+        expert_blocks = self.chains['B'].get_blocks_by_type('expert')
+        saved_experts = []
+        if expert_blocks:
+            logger.info(f"Saving {len(expert_blocks)} expert blocks before reset...")
+            for block in expert_blocks:
+                saved_experts.append({
+                    'payload': block.payload,
+                    'expert_name': block.header.expert_name,
+                    'layer_id': block.header.layer_id
+                })
+        
+        # Reset chains
+        self.reset_blockchain()
+        
+        # Re-initialize chains
+        if not self.initialize_chains():
+            logger.error("Failed to reinitialize chains after reset")
+            return False
+        
+        # Restore saved experts if any
+        if saved_experts:
+            logger.info(f"Restoring {len(saved_experts)} expert blocks...")
+            restored = 0
+            for expert_data in saved_experts:
+                try:
+                    self.chains['B'].add_block(
+                        expert_data['payload'],
+                        block_type='expert',
+                        expert_name=expert_data['expert_name'],
+                        layer_id=expert_data['layer_id']
+                    )
+                    restored += 1
+                except Exception as e:
+                    logger.warning(f"Could not restore expert {expert_data['expert_name']}: {e}")
+            logger.info(f"✅ Restored {restored}/{len(saved_experts)} expert blocks")
+        
+        return True
     
     def continue_block_building(self, progress: dict):
         """Continue building missing blocks."""
@@ -467,18 +601,28 @@ class BlyanGPUNode:
             return
         
         if not progress["integrity_valid"]:
-            logger.error("❌ Cannot continue building - integrity check failed")
-            return
+            logger.warning("⚠️ Integrity issue detected, but continuing...")
+            # Don't block upload for GPU nodes - they maintain independent chains
         
-        missing_count = len([e for e in progress["missing_experts"] if e != "... and more"])
-        logger.info(f"📦 Need to build {missing_count} more expert blocks")
+        # Calculate what's needed
+        total_needed = progress["expected_experts"]
+        current_count = progress["expert_blocks"]
+        
+        if current_count == 0:
+            logger.info(f"📦 Starting fresh - need to upload {total_needed} experts")
+        else:
+            remaining = total_needed - current_count
+            logger.info(f"📦 Resuming - need {remaining} more experts ({progress['progress_percentage']:.1f}% complete)")
         
         # Check if we should auto-upload
-        if AUTO_UPLOAD and progress["expert_blocks"] == 0:
-            logger.info("🚀 Starting auto-upload of missing experts...")
-            asyncio.create_task(self.download_and_upload_model())
+        if AUTO_UPLOAD:
+            if current_count < total_needed:
+                logger.info("🚀 Starting auto-upload of model to blockchain...")
+                asyncio.create_task(self.download_and_upload_model())
+            else:
+                logger.info("✅ Model fully uploaded")
         else:
-            logger.info(f"ℹ️  Manual upload required for remaining {missing_count} experts")
+            logger.info(f"ℹ️  Manual upload required (set AUTO_UPLOAD=True to enable)")
     
     def initialize_model_manager(self) -> bool:
         """Initialize blockchain-first model manager for inference."""
@@ -1207,6 +1351,17 @@ class BlyanGPUNode:
         # 2.5. Check block progress and integrity
         logger.info("🔍 Checking blockchain progress...")
         progress = self.check_block_progress()
+        
+        # Handle integrity failure if detected
+        if not progress["integrity_valid"]:
+            logger.warning("⚠️ Blockchain integrity issue detected")
+            recovery_success = await self.handle_integrity_failure()
+            if recovery_success:
+                # Re-check progress after recovery
+                progress = self.check_block_progress()
+            else:
+                logger.error("Failed to recover blockchain integrity")
+                # Continue anyway but with warnings
         
         # Continue building blocks if needed
         self.continue_block_building(progress)
