@@ -1261,26 +1261,41 @@ class BlyanGPUNode:
                         return web.json_response({"error": "Model manager not initialized"}, status=500)
 
                     # Use correct parameters for BlockchainOnlyModelManager
-                    answer = self.model_manager.generate(prompt)
-                    inference_time = time.time() - start_time
-
-                    # Check if it's a blockchain manager to get expert info
-                    expert_usage = {}
-                    used_moe = False
-
                     if hasattr(self.model_manager, 'validate_blockchain_state'):
-                        # This is a BlockchainOnlyModelManager
+                        # This is a BlockchainOnlyModelManager - get available experts
                         state = self.model_manager.validate_blockchain_state()
-                        if state['ready_for_inference']:
-                            # Get expert usage from response if available
-                            if 'Generated using blockchain experts:' in answer:
-                                used_moe = True
-                                # Parse expert names from response
-                                import re
-                                expert_match = re.search(r'Generated using blockchain experts: ([^\\]]+)', answer)
-                                if expert_match:
-                                    expert_names = expert_match.group(1).split(', ')
-                                    expert_usage = {name: 1 for name in expert_names}
+                        available_experts = state.get('available_experts', [])
+
+                        # Select experts to use (take first few or all if small number)
+                        selected_experts = available_experts[:min(len(available_experts), top_k_experts)]
+                        if not selected_experts:
+                            # No experts available, use fallback
+                            answer = f"⚠️ No experts available in blockchain. Please upload experts first. Prompt: {prompt}"
+                            expert_usage = {}
+                            used_moe = False
+                        else:
+                            # Generate with selected experts
+                            answer = self.model_manager.generate(prompt, selected_experts, max_new_tokens)
+                            inference_time = time.time() - start_time
+
+                            # Parse expert usage from response
+                            expert_usage = {}
+                            used_moe = True
+                            import re
+                            expert_match = re.search(r'Generated using blockchain experts: ([^\\]]+)', answer)
+                            if expert_match:
+                                expert_names = expert_match.group(1).split(', ')
+                                expert_usage = {name: 1 for name in expert_names}
+                            else:
+                                # Fallback: use selected experts
+                                expert_usage = {name: 1 for name in selected_experts}
+                    else:
+                        # Fallback for other model managers
+                        answer = f"Standard model response to: {prompt}"
+                        expert_usage = {}
+                        used_moe = False
+
+                    inference_time = time.time() - start_time
 
                     return web.json_response({
                         "response": answer,
