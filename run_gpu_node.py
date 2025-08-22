@@ -665,16 +665,30 @@ class BlyanGPUNode:
             # Check for available experts in blockchain
             available_experts = self.model_manager.get_available_experts()
             
-            if available_experts:
-                logger.info(f"✅ Found {len(available_experts)} experts in blockchain")
+            # Also do a quick count of actual blocks as backup check
+            actual_block_count = 0
+            try:
+                chain_b = self.chains.get('B')
+                if chain_b:
+                    actual_block_count = len(chain_b.get_all_blocks())
+            except:
+                pass
+            
+            if available_experts or actual_block_count > 100:  # If we have experts OR many blocks
+                logger.info(f"✅ Found {len(available_experts)} experts in blockchain (total blocks: {actual_block_count})")
                 for expert in available_experts[:5]:  # Show first 5
                     logger.info(f"  - {expert}")
             else:
-                logger.info("📦 No experts in blockchain yet")
+                logger.info(f"📦 No experts in blockchain yet (blocks: {actual_block_count})")
                 if AUTO_UPLOAD:
-                    logger.info("🚀 Auto-uploading model to blockchain...")
-                    # Create task to download and upload model
-                    asyncio.create_task(self.download_and_upload_model())
+                    # Check if upload was already done
+                    upload_state_file = DATA_DIR / "upload_completed.json"
+                    if upload_state_file.exists():
+                        logger.info("✅ Upload already completed (found state file)")
+                    else:
+                        logger.info("🚀 Auto-uploading model to blockchain...")
+                        # Create task to download and upload model
+                        asyncio.create_task(self.download_and_upload_model())
                 else:
                     logger.info("💡 Upload model using: python miner/upload_moe_parameters.py")
             
@@ -686,6 +700,20 @@ class BlyanGPUNode:
     
     async def download_and_upload_model(self):
         """Download model from HuggingFace and upload to blockchain as experts."""
+        
+        # Check if upload was already completed
+        upload_state_file = DATA_DIR / "upload_completed.json"
+        if upload_state_file.exists():
+            try:
+                with open(upload_state_file, 'r') as f:
+                    upload_state = json.load(f)
+                if upload_state.get("completed") and upload_state.get("model") == MODEL_NAME:
+                    logger.info(f"✅ Model {MODEL_NAME} already uploaded ({upload_state.get('num_experts', 0)} experts)")
+                    logger.info("💡 Delete upload_completed.json to force re-upload")
+                    return
+            except Exception as e:
+                logger.warning(f"Failed to read upload state: {e}")
+        
         logger.info(f"📥 Auto-downloading model: {MODEL_NAME}")
         model_config = get_model_config(MODEL_NAME)
         logger.info(f"⚙️  Model: {model_config.get('total_params', 'unknown')} total params, {model_config.get('active_params', 'unknown')} active params per token")
@@ -1038,6 +1066,18 @@ class BlyanGPUNode:
             
             logger.info(f"✅ Uploaded {num_uploaded} experts to blockchain")
             
+            # Save upload state to prevent re-upload
+            upload_state_file = DATA_DIR / "upload_completed.json"
+            upload_state = {
+                "model": MODEL_NAME,
+                "num_experts": num_uploaded,
+                "timestamp": time.time(),
+                "completed": True
+            }
+            with open(upload_state_file, 'w') as f:
+                json.dump(upload_state, f)
+            logger.info(f"💾 Saved upload state to {upload_state_file}")
+            
             # Clean up model from memory after upload
             logger.info("🧹 Cleaning up model from memory...")
             del model
@@ -1047,8 +1087,9 @@ class BlyanGPUNode:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            # Reinitialize model manager to use new experts
-            self.initialize_model_manager()
+            # DO NOT reinitialize model manager here - it causes a loop!
+            # The model manager will be initialized on next restart
+            logger.info("✅ Upload complete. Restart node to use blockchain experts.")
             
         except Exception as e:
             logger.error(f"Failed to download/upload model: {e}")
