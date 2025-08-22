@@ -242,13 +242,24 @@ class BlyanGPUNode:
             self.chains['B'] = Chain(DATA_DIR, "B", skip_pol=SKIP_POL)  # Parameter chain
             self.chains['D'] = DatasetChain(DATA_DIR, "D")  # Dataset chain
             
-            # Log chain status
+            # Log chain status (optimized to avoid loading all blocks)
             for chain_id, chain in self.chains.items():
-                blocks = chain.get_all_blocks()
-                logger.info(f"Chain {chain_id}: {len(blocks)} blocks")
+                # Use cached block count instead of loading all blocks
+                if hasattr(chain, '_hash_index'):
+                    # OptimizedChain has a hash index we can use
+                    block_count = len(chain._hash_index)
+                    logger.info(f"Chain {chain_id}: {block_count} blocks (indexed)")
+                else:
+                    # Fallback for chains without index
+                    logger.info(f"Chain {chain_id}: counting blocks...")
+                    start_time = time.time()
+                    blocks = chain.get_all_blocks()
+                    elapsed = time.time() - start_time
+                    logger.info(f"Chain {chain_id}: {len(blocks)} blocks (loaded in {elapsed:.1f}s)")
             
             # If chain A is empty, we can create a local genesis for testing
-            if not chains_exist or len(self.chains['A'].get_all_blocks()) == 0:
+            chain_a_empty = len(self.chains['A']._hash_index) == 0 if hasattr(self.chains['A'], '_hash_index') else len(self.chains['A'].get_all_blocks()) == 0
+            if not chains_exist or chain_a_empty:
                 if os.getenv("CREATE_LOCAL_GENESIS", "false").lower() == "true":
                     logger.info("Creating local genesis block for testing...")
                     self._create_local_genesis()
@@ -412,7 +423,18 @@ class BlyanGPUNode:
                 progress["expected_experts"] = 28 * 16  # Default for older models
             
             # OPTIMIZATION: Skip expensive block type check if we have many blocks
-            chain_b_blocks = len(self.chains['B'].get_all_blocks())
+            logger.info("📊 Counting blocks in chain B...")
+            start_time = time.time()
+            
+            # Try to use index first
+            if hasattr(self.chains['B'], '_hash_index'):
+                chain_b_blocks = len(self.chains['B']._hash_index)
+                logger.info(f"✅ Chain B has {chain_b_blocks} blocks (from index)")
+            else:
+                chain_b_blocks = len(self.chains['B'].get_all_blocks())
+                elapsed = time.time() - start_time
+                logger.info(f"✅ Chain B has {chain_b_blocks} blocks (counted in {elapsed:.1f}s)")
+            
             if chain_b_blocks > 1000:
                 # Assume most blocks are experts if we have many
                 progress["expert_blocks"] = chain_b_blocks - 50  # Subtract some for routers
