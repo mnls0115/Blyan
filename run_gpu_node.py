@@ -1088,8 +1088,9 @@ class BlyanGPUNode:
                 torch.cuda.empty_cache()
             
             # DO NOT reinitialize model manager here - it causes a loop!
-            # The model manager will be initialized on next restart
-            logger.info("✅ Upload complete. Restart node to use blockchain experts.")
+            # Set a flag to indicate upload is complete but model manager needs init
+            self.upload_completed = True
+            logger.info("✅ Upload complete. Model manager will reinitialize automatically.")
             
         except Exception as e:
             logger.error(f"Failed to download/upload model: {e}")
@@ -1555,6 +1556,16 @@ class BlyanGPUNode:
         # 4. Initialize model manager
         if not self.initialize_model_manager():
             logger.warning("Running without model manager")
+        
+        # 4.5 Check if we just completed an upload and need to reinit
+        if hasattr(self, 'upload_completed') and self.upload_completed:
+            logger.info("🔄 Upload was just completed, reinitializing model manager...")
+            # Wait a bit for filesystem to settle
+            await asyncio.sleep(2)
+            if self.initialize_model_manager():
+                logger.info("✅ Model manager reinitialized with blockchain experts")
+            else:
+                logger.error("❌ Failed to reinitialize model manager after upload")
         
         # 5. Start server
         await self.start_server()
