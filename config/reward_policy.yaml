@@ -1,0 +1,123 @@
+# Blyan Network Reward Policy Configuration
+# Single source of truth for all reward calculations
+# All rewards are work-based, not hardware-based
+
+# Core Token Economics
+total_supply: 1_000_000_000      # Total BLY supply cap
+annual_inflation_cap: 0.10       # 10% max annual inflation
+daily_budget_bly: 273_972        # ~100M BLY per year at 10% inflation
+
+# Per-Unit Reward Rates (Work-based)
+rates:
+  # Inference rewards per 1000 tokens
+  per_1k_tokens_bly: 1.0          # Base rate for 1000 tokens at quality 1.0
+  
+  # Learning rewards per 1% improvement
+  per_1pct_improvement_bly: 500.0  # Base rate for 1% validated improvement
+  
+  # Validation rewards
+  per_validation_task_bly: 10.0    # Per validation task completed
+  
+  # Dataset contribution rewards
+  per_gb_dataset_bly: 100.0        # Per GB of quality dataset contributed
+
+# Quality Multipliers
+inference_quality_multiplier:
+  min: 0.5          # Poor quality (50% of base rate)
+  max: 1.5          # Excellent quality (150% of base rate)
+  default: 1.0      # Standard quality
+  
+learning_quality_factors:
+  # Difficulty factor: How hard was the improvement?
+  difficulty_factor:
+    min: 1.0        # Simple optimization
+    max: 3.0        # Complex breakthrough
+    default: 1.5    # Standard difficulty
+  
+  # Applicability factor: How widely useful is the improvement?
+  applicability_factor:
+    min: 0.8        # Narrow use case
+    max: 1.2        # Broad applicability
+    default: 1.0    # Standard applicability
+
+# Budget Allocation (Daily splits)
+bucket_split:
+  inference: 0.45      # 45% for inference rewards
+  learning: 0.35       # 35% for learning rewards
+  validation: 0.10     # 10% for validation rewards
+  dataset: 0.10        # 10% for dataset contributions
+
+# Budget Floors (Minimum guaranteed allocation)
+bucket_floor_pct:
+  inference: 0.30      # At least 30% must go to inference
+  learning: 0.25       # At least 25% must go to learning
+  validation: 0.05     # At least 5% for validation
+  dataset: 0.05        # At least 5% for datasets
+
+# Budget Ceilings (Maximum allowed allocation)
+bucket_ceiling_pct:
+  inference: 0.60      # No more than 60% to inference
+  learning: 0.50       # No more than 50% to learning
+  validation: 0.15     # No more than 15% to validation
+  dataset: 0.15        # No more than 15% to datasets
+
+# Rollover and Backpay Settings
+rollover:
+  enabled: true
+  hours: 24            # Unused budget rolls over for 24 hours
+  max_accumulation: 3  # Max 3x daily budget can accumulate
+
+backpay:
+  enabled: true        # Queue unpaid rewards when budget exhausted
+  max_queue_days: 7    # Keep unpaid claims for up to 7 days
+  priority:            # Payment priority when budget available
+    - learning         # Pay learning backlog first
+    - validation       # Then validation
+    - dataset          # Then dataset
+    - inference        # Inference last (usually well-funded)
+
+# Minimum Guaranteed Rewards
+minimum_rewards:
+  learning_stipend_bly: 100.0    # Min reward for any validated improvement
+  validation_task_bly: 5.0       # Min reward per validation
+  dataset_contrib_bly: 10.0      # Min reward for dataset contribution
+
+# Feature Flags
+features:
+  active_balancing: true          # Enable dynamic budget balancing
+  difficulty_scaling: true        # Enable difficulty multipliers
+  quality_adjustment: true        # Enable quality-based adjustments
+  backpay_queue: true            # Enable backpay functionality
+  hourly_distribution: true       # Enable automatic hourly payouts
+
+# Distribution Settings
+distribution:
+  interval_seconds: 3600          # Distribute rewards every hour
+  batch_threshold_bly: 0.5        # Minimum payout threshold
+  max_batch_size: 1000            # Max recipients per batch
+  idempotency_window_hours: 48   # Prevent double-pays within 48h
+
+# Monitoring and Alerts
+monitoring:
+  alert_thresholds:
+    learning_utilization_min: 0.15  # Alert if learning < 15% for 3 hours
+    backpay_queue_max: 100000       # Alert if backpay > 100k BLY
+    budget_exhaustion_hours: 6      # Alert if any bucket empty for 6 hours
+  
+  metrics_enabled: true
+  prometheus_port: 9090
+  grafana_dashboard: true
+
+# Validation Requirements
+validation:
+  min_improvement_pct: 0.1         # Minimum 0.1% improvement to qualify
+  confidence_threshold: 0.95       # Statistical confidence required
+  verification_nodes: 3             # Number of nodes to verify improvement
+  challenge_period_hours: 24       # Time window for challenges
+
+# Anti-Gaming Measures
+anti_gaming:
+  max_claims_per_hour: 10          # Max reward claims per node per hour
+  cooldown_minutes: 30              # Cooldown between claims
+  diversity_requirement: true       # Require diverse validation sources
+  anomaly_detection: true           # Flag suspicious patterns
