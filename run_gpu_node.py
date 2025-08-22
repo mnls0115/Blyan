@@ -847,26 +847,46 @@ class BlyanGPUNode:
                                 
                                 if hasattr(expert, 'gate_proj') and hasattr(expert.gate_proj, 'weight'):
                                     weight = expert.gate_proj.weight.detach().cpu().contiguous()
-                                    # Check for NaN/Inf values
-                                    if torch.isnan(weight).any() or torch.isinf(weight).any():
-                                        logger.warning(f"Expert {expert_idx} layer {layer_idx} gate_proj has NaN/Inf values - skipping")
-                                        break
+                                    # Check for NaN/Inf values (skip for FP8 and other special dtypes)
+                                    try:
+                                        # Only check for standard float types
+                                        if weight.dtype in [torch.float32, torch.float16, torch.bfloat16]:
+                                            if torch.isnan(weight).any() or torch.isinf(weight).any():
+                                                logger.warning(f"Expert {expert_idx} layer {layer_idx} gate_proj has NaN/Inf values - skipping")
+                                                break
+                                    except (RuntimeError, NotImplementedError):
+                                        # Skip NaN/Inf check for unsupported dtypes (like FP8)
+                                        logger.debug(f"Skipping NaN/Inf check for dtype {weight.dtype}")
                                     expert_state['gate_proj.weight'] = weight
                                     has_weights = True
                                     
                                 if hasattr(expert, 'up_proj') and hasattr(expert.up_proj, 'weight'):
                                     weight = expert.up_proj.weight.detach().cpu().contiguous()
-                                    if torch.isnan(weight).any() or torch.isinf(weight).any():
-                                        logger.warning(f"Expert {expert_idx} layer {layer_idx} up_proj has NaN/Inf values - skipping")
-                                        break
+                                    # Check for NaN/Inf values (skip for FP8 and other special dtypes)
+                                    try:
+                                        # Only check for standard float types
+                                        if weight.dtype in [torch.float32, torch.float16, torch.bfloat16]:
+                                            if torch.isnan(weight).any() or torch.isinf(weight).any():
+                                                logger.warning(f"Expert {expert_idx} layer {layer_idx} up_proj has NaN/Inf values - skipping")
+                                                break
+                                    except (RuntimeError, NotImplementedError):
+                                        # Skip NaN/Inf check for unsupported dtypes (like FP8)
+                                        logger.debug(f"Skipping NaN/Inf check for dtype {weight.dtype}")
                                     expert_state['up_proj.weight'] = weight
                                     has_weights = True
                                     
                                 if hasattr(expert, 'down_proj') and hasattr(expert.down_proj, 'weight'):
                                     weight = expert.down_proj.weight.detach().cpu().contiguous()
-                                    if torch.isnan(weight).any() or torch.isinf(weight).any():
-                                        logger.warning(f"Expert {expert_idx} layer {layer_idx} down_proj has NaN/Inf values - skipping")
-                                        break
+                                    # Check for NaN/Inf values (skip for FP8 and other special dtypes)
+                                    try:
+                                        # Only check for standard float types
+                                        if weight.dtype in [torch.float32, torch.float16, torch.bfloat16]:
+                                            if torch.isnan(weight).any() or torch.isinf(weight).any():
+                                                logger.warning(f"Expert {expert_idx} layer {layer_idx} down_proj has NaN/Inf values - skipping")
+                                                break
+                                    except (RuntimeError, NotImplementedError):
+                                        # Skip NaN/Inf check for unsupported dtypes (like FP8)
+                                        logger.debug(f"Skipping NaN/Inf check for dtype {weight.dtype}")
                                     expert_state['down_proj.weight'] = weight
                                     has_weights = True
                                 
