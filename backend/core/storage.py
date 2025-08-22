@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -30,8 +31,11 @@ class BlockStorage:
         path = self._block_path(block.header.index)
         try:
             block_dict = block.to_dict()
+            # Ensure file is properly closed even on error
             with path.open("w") as fp:
                 json.dump(block_dict, fp)
+                fp.flush()  # Force write to disk
+                # OS will close file when exiting 'with' block
         except (TypeError, ValueError) as e:
             # If JSON serialization fails, try to identify the issue
             import sys
@@ -43,9 +47,21 @@ class BlockStorage:
         path = self._block_path(index)
         if not path.exists():
             return None
-        with path.open() as fp:
-            data = json.load(fp)
-        return Block.from_dict(data)
+        try:
+            with path.open() as fp:
+                content = fp.read()
+                if not content or content.strip() == "":
+                    print(f"WARNING: Block file {path} is empty", file=sys.stderr)
+                    return None
+                data = json.loads(content)
+            return Block.from_dict(data)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Failed to parse block {index} from {path}: {e}", file=sys.stderr)
+            print(f"File size: {path.stat().st_size} bytes", file=sys.stderr)
+            return None
+        except Exception as e:
+            print(f"ERROR: Failed to load block {index}: {e}", file=sys.stderr)
+            return None
 
     def get_latest_block(self) -> Optional[Block]:
         self.ensure_dir()

@@ -899,6 +899,21 @@ class BlyanGPUNode:
                                     pickle.dump(expert_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
                                     payload = buffer.getvalue()
                                     
+                                    # Check payload is valid
+                                    if not payload or len(payload) == 0:
+                                        logger.error(f"Failed to serialize {expert_name} - empty payload")
+                                        break
+                                    
+                                    # Check disk space before writing (every 100 blocks)
+                                    if num_uploaded % 100 == 0:
+                                        import shutil
+                                        total, used, free = shutil.disk_usage("/")
+                                        free_gb = free // (2**30)
+                                        if free_gb < 10:  # Less than 10GB free
+                                            logger.error(f"LOW DISK SPACE: Only {free_gb}GB free")
+                                            logger.error("Cannot continue upload - insufficient disk space")
+                                            return  # Stop the upload
+                                    
                                     # Add with proper error handling
                                     try:
                                         self.chains['B'].add_block(
@@ -914,7 +929,24 @@ class BlyanGPUNode:
                                     except Exception as add_error:
                                         if "Expecting value" in str(add_error):
                                             logger.error(f"JSON serialization error for {expert_name}: {add_error}")
-                                            logger.debug(f"Payload size: {len(payload)} bytes")
+                                            logger.debug(f"Payload size: {len(payload) if payload else 0} bytes")
+                                            
+                                            # Additional diagnostics
+                                            if not payload or len(payload) == 0:
+                                                logger.error(f"ERROR: Empty payload for {expert_name}")
+                                            elif len(payload) < 100:
+                                                logger.error(f"ERROR: Suspiciously small payload for {expert_name}: {len(payload)} bytes")
+                                            
+                                            # Check if the chain is corrupted
+                                            try:
+                                                latest_block = self.chains['B'].get_latest_block()
+                                                if latest_block:
+                                                    logger.debug(f"Last successful block index: {latest_block.header.index}")
+                                                else:
+                                                    logger.error("Chain B appears to be corrupted or reset")
+                                            except Exception as chain_error:
+                                                logger.error(f"Cannot check chain state: {chain_error}")
+                                            
                                             # Skip this expert if JSON error persists
                                             break
                                         else:
@@ -938,6 +970,18 @@ class BlyanGPUNode:
                             gc.collect()
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
+                                
+                                # Check GPU memory usage
+                                try:
+                                    mem_allocated = torch.cuda.memory_allocated() / (1024**3)  # GB
+                                    mem_reserved = torch.cuda.memory_reserved() / (1024**3)   # GB
+                                    if mem_allocated > 40:  # More than 40GB used
+                                        logger.warning(f"High GPU memory usage: {mem_allocated:.1f}GB allocated")
+                                        # Force aggressive cleanup
+                                        torch.cuda.synchronize()
+                                        torch.cuda.empty_cache()
+                                except Exception:
+                                    pass  # Ignore if CUDA not available
                 
                 # Check for shared expert (if present)
                 if hasattr(mlp, 'shared_expert'):
@@ -981,11 +1025,26 @@ class BlyanGPUNode:
             
             logger.info(f"✅ Uploaded {num_uploaded} experts to blockchain")
             
+            # Clean up model from memory after upload
+            logger.info("🧹 Cleaning up model from memory...")
+            del model
+            if 'tokenizer' in locals():
+                del tokenizer
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
             # Reinitialize model manager to use new experts
             self.initialize_model_manager()
             
         except Exception as e:
             logger.error(f"Failed to download/upload model: {e}")
+            # Clean up on error too
+            if 'model' in locals():
+                del model
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     
     async def start_server(self):
         """Start HTTP server for the node."""

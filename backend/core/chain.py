@@ -173,10 +173,16 @@ class Chain:
         layer_id: Optional[str] = None,
     ) -> Block:
         """Create, mine, and persist a new block."""
-        prev_block = self._latest()
-        index = (prev_block.header.index + 1) if prev_block else 0
-        prev_hash = prev_block.compute_hash() if prev_block else "0" * 64
-
+        # Use lock to prevent race conditions (if threading is used)
+        import threading
+        if not hasattr(self, '_add_lock'):
+            self._add_lock = threading.Lock()
+        
+        with self._add_lock:
+            prev_block = self._latest()
+            index = (prev_block.header.index + 1) if prev_block else 0
+            prev_hash = prev_block.compute_hash() if prev_block else "0" * 64
+        
         payload_hash = hashlib.sha256(payload).hexdigest()
         
         # Ensure all non-genesis blocks depend on Genesis Pact (lightweight check)
