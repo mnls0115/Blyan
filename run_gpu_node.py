@@ -1260,14 +1260,33 @@ class BlyanGPUNode:
                     if not hasattr(self, 'model_manager') or self.model_manager is None:
                         return web.json_response({"error": "Model manager not initialized"}, status=500)
 
-                    answer = self.model_manager.generate(prompt, max_new_tokens=max_new_tokens)
+                    # Use correct parameters for BlockchainOnlyModelManager
+                    answer = self.model_manager.generate(prompt)
                     inference_time = time.time() - start_time
+
+                    # Check if it's a blockchain manager to get expert info
+                    expert_usage = {}
+                    used_moe = False
+
+                    if hasattr(self.model_manager, 'validate_blockchain_state'):
+                        # This is a BlockchainOnlyModelManager
+                        state = self.model_manager.validate_blockchain_state()
+                        if state['ready_for_inference']:
+                            # Get expert usage from response if available
+                            if 'Generated using blockchain experts:' in answer:
+                                used_moe = True
+                                # Parse expert names from response
+                                import re
+                                expert_match = re.search(r'Generated using blockchain experts: ([^\\]]+)', answer)
+                                if expert_match:
+                                    expert_names = expert_match.group(1).split(', ')
+                                    expert_usage = {name: 1 for name in expert_names}
 
                     return web.json_response({
                         "response": answer,
-                        "expert_usage": {},
+                        "expert_usage": expert_usage,
                         "inference_time": inference_time,
-                        "used_moe": False
+                        "used_moe": used_moe
                     })
 
             except Exception as exc:
