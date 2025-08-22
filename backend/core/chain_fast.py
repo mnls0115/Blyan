@@ -66,6 +66,7 @@ class FastChain:
         self.manifest: Optional[Manifest] = None
         self.index_cache: Optional[IndexCache] = None
         self.cas: Optional[ContentAddressableStore] = None
+        self.storage = None  # For compatibility with standard chain
         
         # In-memory indexes (lightweight, metadata only)
         self._hash_index: Dict[str, int] = {}
@@ -85,10 +86,18 @@ class FastChain:
     
     def _initialize(self):
         """Initialize chain with fast-sync support."""
-        if self.fast_sync and self.manifest_path.exists():
+        # Check if we have existing JSON blocks
+        json_blocks_exist = any(self.storage_dir.glob("*.json"))
+        
+        if json_blocks_exist:
+            # Use standard boot for existing JSON-based blockchain
+            self._standard_boot()
+        elif self.fast_sync and self.manifest_path.exists():
+            # Use fast boot for sharded format
             self._fast_boot()
         else:
-            self._standard_boot()
+            # Empty chain
+            logger.info(f"No existing blockchain data for chain {self.chain_id}")
     
     def _fast_boot(self):
         """Fast boot using manifest and index cache."""
@@ -130,12 +139,30 @@ class FastChain:
         logger.info(f"Fast-sync complete: {len(self._hash_index)} blocks indexed")
     
     def _standard_boot(self):
-        """Standard boot (fallback when fast-sync unavailable)."""
+        """Standard boot - load from existing JSON files."""
         logger.info(f"Standard boot for chain {self.chain_id}")
         
-        # This would load from JSON files as before
-        # For now, just initialize empty
-        logger.warning("Standard boot not fully implemented in fast-sync chain")
+        # Import the standard storage for compatibility
+        from .storage import BlockStorage
+        self.storage = BlockStorage(self.storage_dir)
+        
+        # Build indexes from existing JSON files
+        logger.info("Building indexes from existing blocks...")
+        block_count = 0
+        for block in self.storage.iter_blocks():
+            block_hash = block.compute_hash()
+            self._hash_index[block_hash] = block.header.index
+            
+            # Build dependency index
+            if block.header.depends_on:
+                for dep_hash in block.header.depends_on:
+                    self._dependency_index[dep_hash].add(block_hash)
+            
+            block_count += 1
+            if block_count % 1000 == 0:
+                logger.info(f"  Indexed {block_count} blocks...")
+        
+        logger.info(f"Standard boot complete: {block_count} blocks indexed")
     
     def _build_fast_indexes(self):
         """Build lightweight indexes from manifest (no block bodies loaded)."""
@@ -365,9 +392,9 @@ class FastChain:
     
     def get_all_blocks(self) -> List[Block]:
         """Get all blocks (loads everything - avoid in fast-sync mode)."""
-        if not self.fast_sync:
-            # Standard mode would load from JSON
-            return []
+        if hasattr(self, 'storage'):
+            # Standard mode - use BlockStorage
+            return list(self.storage.iter_blocks())
         
         logger.warning("get_all_blocks() called in fast-sync mode - this will be slow!")
         
@@ -380,6 +407,22 @@ class FastChain:
                         blocks.append(block)
         
         return blocks
+    
+    def get_blocks_by_type(self, block_type: Literal['meta', 'expert', 'router']) -> List[Block]:
+        """Get all blocks of a specific type."""
+        # For large chains, just estimate
+        if len(self._hash_index) > 1000:
+            logger.info(f"Skipping expensive block type check for {len(self._hash_index)} blocks")
+            return []
+        
+        # For small chains or with storage, load and filter
+        if hasattr(self, 'storage'):
+            return [block for block in self.storage.iter_blocks() 
+                    if block.header.block_type == block_type]
+        
+        # Fast-sync mode - would need to load blocks
+        logger.warning(f"get_blocks_by_type({block_type}) called in fast-sync mode")
+        return []
     
     def verify_chain(self) -> bool:
         """Verify chain integrity (sample-based in fast mode)."""

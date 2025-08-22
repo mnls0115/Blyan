@@ -708,10 +708,14 @@ class BlyanGPUNode:
         
         # Check if we should auto-upload
         if AUTO_UPLOAD:
-            # Check if upload was already completed
+            # Check if upload was already completed (verify blocks exist)
             upload_state_file = DATA_DIR / "upload_completed.json"
-            if upload_state_file.exists():
+            actual_blocks = progress.get('expert_blocks', 0)
+            if upload_state_file.exists() and actual_blocks > 0:
                 logger.info("✅ Upload already completed (found state file)")
+            elif upload_state_file.exists() and actual_blocks == 0:
+                logger.warning("⚠️ State file exists but no blocks found - removing invalid state")
+                upload_state_file.unlink()
             elif progress["progress_percentage"] >= 99.0:
                 # If we're 99%+ complete, consider it done (may have minor discrepancies)
                 logger.info(f"✅ Model upload essentially complete ({progress['progress_percentage']:.1f}%)")
@@ -803,10 +807,13 @@ class BlyanGPUNode:
             else:
                 logger.info(f"📦 No experts in blockchain yet (blocks: {actual_block_count})")
                 if AUTO_UPLOAD:
-                    # Check if upload was already done
-                    upload_state_file = DATA_DIR / "upload_completed.json"
-                    if upload_state_file.exists():
+                    # Check if upload was already done (verify blocks exist)
+                    upload_state_file = DATA_DIR / "upload_completed.json" 
+                    if upload_state_file.exists() and actual_block_count > 0:
                         logger.info("✅ Upload already completed (found state file)")
+                    elif upload_state_file.exists() and actual_block_count == 0:
+                        logger.warning("⚠️ State file exists but no blocks - will upload")
+                        upload_state_file.unlink()
                     else:
                         logger.info("🚀 Auto-uploading model to blockchain...")
                         # Create task to download and upload model
@@ -829,10 +836,20 @@ class BlyanGPUNode:
             try:
                 with open(upload_state_file, 'r') as f:
                     upload_state = json.load(f)
+                
+                # Verify actual blocks exist, not just state file
+                actual_blocks = len(self.chains['B']._hash_index) if hasattr(self.chains['B'], '_hash_index') else 0
+                expected_experts = upload_state.get('num_experts', 0)
+                
                 if upload_state.get("completed") and upload_state.get("model") == MODEL_NAME:
-                    logger.info(f"✅ Model {MODEL_NAME} already uploaded ({upload_state.get('num_experts', 0)} experts)")
-                    logger.info("💡 Delete upload_completed.json to force re-upload")
-                    return
+                    if actual_blocks > 0 and actual_blocks >= expected_experts * 0.99:  # 99% threshold
+                        logger.info(f"✅ Model {MODEL_NAME} already uploaded ({actual_blocks} blocks)")
+                        logger.info("💡 Delete upload_completed.json to force re-upload")
+                        return
+                    else:
+                        logger.warning(f"⚠️ State file exists but only {actual_blocks} blocks found (expected ~{expected_experts})")
+                        logger.info("🔄 Removing invalid state file and continuing upload...")
+                        upload_state_file.unlink()
             except Exception as e:
                 logger.warning(f"Failed to read upload state: {e}")
         
