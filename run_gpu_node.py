@@ -1182,6 +1182,98 @@ class BlyanGPUNode:
                 })
             return web.json_response({"error": "Chain not found"}, status=404)
         
+        # Debug endpoint for MoE status
+        async def debug_moe_status(request):
+            """Debug endpoint to check MoE system status"""
+            return web.json_response({
+                "moe_model_manager_initialized": self.moe_model_manager is not None if hasattr(self, 'moe_model_manager') else False,
+                "distributed_coordinator_initialized": hasattr(self, 'distributed_coordinator') and self.distributed_coordinator is not None,
+                "has_distributed_nodes": bool(self.distributed_coordinator.registry.nodes) if hasattr(self, 'distributed_coordinator') and self.distributed_coordinator else False,
+                "available_experts_count": len(self.distributed_coordinator.registry.expert_to_nodes) if hasattr(self, 'distributed_coordinator') and self.distributed_coordinator else 0,
+                "registered_nodes_count": len(self.distributed_coordinator.registry.nodes) if hasattr(self, 'distributed_coordinator') and self.distributed_coordinator else 0,
+                "model_manager_initialized": self.model_manager is not None if hasattr(self, 'model_manager') else False,
+                "usage_tracker_initialized": hasattr(self, 'usage_tracker') and self.usage_tracker is not None
+            })
+
+        # Chat endpoint with MoE support
+        async def chat(request):
+            """Chat endpoint with MoE inference support"""
+            try:
+                import time
+                start_time = time.time()
+
+                data = await request.json()
+                prompt = data.get("prompt", "")
+                max_new_tokens = data.get("max_new_tokens", 64)
+                use_moe = data.get("use_moe", True)
+                top_k_experts = data.get("top_k_experts", 2)
+
+                # Check if we have MoE available
+                has_distributed_nodes = bool(self.distributed_coordinator.registry.nodes) if hasattr(self, 'distributed_coordinator') and self.distributed_coordinator else False
+                has_moe_manager = hasattr(self, 'moe_model_manager') and self.moe_model_manager is not None
+
+                if use_moe and has_distributed_nodes:
+                    # Use distributed MoE inference
+                    available_experts = list(self.distributed_coordinator.registry.expert_to_nodes.keys())
+                    if available_experts:
+                        selected_experts = available_experts[:top_k_experts]
+
+                        # Prefer donor nodes for free-tier requests
+                        prefer_donor = not data.get("free_tier", False)
+
+                        response_text, routing_info = await self.distributed_coordinator.distribute_inference(
+                            prompt=prompt,
+                            required_experts=selected_experts,
+                            max_new_tokens=max_new_tokens,
+                            prefer_donor=prefer_donor
+                        )
+
+                        inference_time = time.time() - start_time
+
+                        return web.json_response({
+                            "response": response_text,
+                            "expert_usage": routing_info.get('expert_usage', {}),
+                            "inference_time": inference_time,
+                            "used_moe": True,
+                            "expert_count": len(selected_experts)
+                        })
+
+                elif use_moe and has_moe_manager:
+                    # Use local MoE inference
+                    answer, expert_usage = self.moe_model_manager.selective_generate(
+                        prompt=prompt,
+                        max_new_tokens=max_new_tokens,
+                        top_k_experts=top_k_experts
+                    )
+
+                    inference_time = time.time() - start_time
+
+                    return web.json_response({
+                        "response": answer,
+                        "expert_usage": expert_usage,
+                        "inference_time": inference_time,
+                        "used_moe": True
+                    })
+
+                else:
+                    # Fallback to standard model manager
+                    if not hasattr(self, 'model_manager') or self.model_manager is None:
+                        return web.json_response({"error": "Model manager not initialized"}, status=500)
+
+                    answer = self.model_manager.generate(prompt, max_new_tokens=max_new_tokens)
+                    inference_time = time.time() - start_time
+
+                    return web.json_response({
+                        "response": answer,
+                        "expert_usage": {},
+                        "inference_time": inference_time,
+                        "used_moe": False
+                    })
+
+            except Exception as exc:
+                logger.error(f"Chat error: {exc}")
+                return web.json_response({"error": str(exc)}, status=500)
+
         # Inference endpoint - BLOCKCHAIN-FIRST, no local models
         async def inference(request):
             try:
@@ -1351,6 +1443,8 @@ class BlyanGPUNode:
         # Register routes
         app.router.add_get('/', health)
         app.router.add_get('/health', health)
+        app.router.add_get('/debug/moe-status', debug_moe_status)
+        app.router.add_post('/chat', chat)
         app.router.add_get('/chain/{chain_id}', chain_info)
         app.router.add_post('/inference', inference)
         
