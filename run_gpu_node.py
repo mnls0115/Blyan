@@ -192,44 +192,12 @@ class BlyanGPUNode:
         except Exception as e:
             logger.error(f"Failed to create local genesis: {e}")
     
-    async def fetch_genesis_from_main(self) -> Optional[Dict]:
-        """Fetch genesis block from main node."""
-        try:
-            import httpx
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # First get genesis hash
-                response = await client.get(f"{MAIN_NODE_URL}/genesis/hash")
-                if response.status_code == 200:
-                    genesis_info = response.json()
-                    self.genesis_hash = genesis_info.get('genesis_hash')
-                    logger.info(f"Got genesis hash: {self.genesis_hash[:16]}...")
-                    
-                    # Get the full genesis block (index 0) from chain A
-                    response = await client.get(f"{MAIN_NODE_URL}/chain/A/block/0")
-                    if response.status_code == 200:
-                        block = response.json()
-                        if block and block.get('header'):
-                            logger.info("Found genesis block")
-                            return block
-                else:
-                    logger.warning(f"Could not fetch genesis hash: {response.status_code}")
-                    
-        except Exception as e:
-            logger.error(f"Failed to fetch genesis: {e}")
-        
-        return None
-    
     def initialize_chains(self) -> bool:
         """Initialize or sync blockchain chains."""
         try:
-            # Import with fallback to standard chain if optimized not available
-            try:
-                from backend.core.chain_fast import FastChain as Chain
-                logger.info("Using fast-sync chain loading (instant startup with lazy loading)")
-            except ImportError:
-                from backend.core.chain import Chain
-                logger.warning("Optimized chain not available, using standard chain (slower)")
+            # Use standard chain loading (simpler and more reliable)
+            from backend.core.chain import Chain
+            logger.info("Using standard chain loading")
             
             from backend.core.dataset_chain import DatasetChain
             
@@ -293,125 +261,6 @@ class BlyanGPUNode:
         # TODO: Implement GPU-to-GPU peer sync in the future
         return True  # Return success to continue initialization
     
-    async def OLD_sync_from_peers_DEPRECATED(self):
-        """OLD sync code - kept for reference but not used.
-        This tried to sync from main node which doesn't have blockchain."""
-        try:
-            import httpx
-            # Check if main node is reachable
-            try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    response = await client.get(f"{MAIN_NODE_URL}/health")
-                    if response.status_code != 200:
-                        logger.warning(f"Main node unhealthy: {response.status_code}")
-                        return False
-            except Exception as e:
-                logger.warning(f"Main node unreachable: {e}")
-                logger.info("💡 Running in offline mode - will retry sync periodically")
-                return False
-            
-            # First ensure we have genesis
-            genesis_block = await self.fetch_genesis_from_main()
-            chain_a_size = len(self.chains['A']._hash_index) if hasattr(self.chains['A'], '_hash_index') else 0
-            if genesis_block and chain_a_size == 0:
-                logger.info("Adding genesis block to chain A")
-                try:
-                    # Add genesis block first
-                    from backend.core.block import Block, BlockHeader
-                    header_dict = genesis_block.get('header', {})
-                    header = BlockHeader(**header_dict)
-                    payload = genesis_block.get('payload', b'')
-                    if isinstance(payload, str):
-                        payload = payload.encode('utf-8')
-                    elif isinstance(payload, dict):
-                        payload = json.dumps(payload).encode('utf-8')
-                    
-                    block = Block(header=header, payload=payload)
-                    if hasattr(self.chains['A'], 'storage') and self.chains['A'].storage:
-                        self.chains['A'].storage.save_block(block)
-                    else:
-                        # Use add_block instead
-                        self.chains['A'].add_block(payload)
-                    logger.info("Genesis block added successfully")
-                except Exception as e:
-                    logger.warning(f"Could not add genesis block directly: {e}")
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # Try to get chain data from main node
-                for chain_id in ['A', 'B', 'D']:
-                    try:
-                        # First get block metadata
-                        response = await client.get(f"{MAIN_NODE_URL}/chain/{chain_id}/blocks")
-                        if response.status_code == 200:
-                            data = response.json()
-                            # Handle both list and dict responses
-                            if isinstance(data, dict) and 'blocks' in data:
-                                block_metas = data['blocks']
-                            else:
-                                block_metas = data
-                            logger.info(f"Found {len(block_metas)} blocks for chain {chain_id}")
-                            
-                            # Fetch and add each full block
-                            added_count = 0
-                            for block_meta in block_metas:
-                                try:
-                                    block_index = block_meta.get('index', 0)
-                                    
-                                    # Skip genesis if we already have it
-                                    if chain_id == 'A' and block_index == 0:
-                                        chain_size = len(self.chains[chain_id]._hash_index) if hasattr(self.chains[chain_id], '_hash_index') else 0
-                                        if chain_size > 0:
-                                            continue
-                                    
-                                    # Fetch the full block
-                                    block_response = await client.get(f"{MAIN_NODE_URL}/chain/{chain_id}/block/{block_index}")
-                                    if block_response.status_code != 200:
-                                        continue
-                                        
-                                    block_dict = block_response.json()
-                                    
-                                    # Try to add block
-                                    if hasattr(self.chains[chain_id], 'add_block_from_dict'):
-                                        self.chains[chain_id].add_block_from_dict(block_dict)
-                                        added_count += 1
-                                    else:
-                                        # Manual block creation
-                                        from backend.core.block import Block, BlockHeader
-                                        header = BlockHeader(**block_dict.get('header', {}))
-                                        payload = block_dict.get('payload', b'')
-                                        if isinstance(payload, str):
-                                            payload = payload.encode('utf-8')
-                                        elif isinstance(payload, dict):
-                                            payload = json.dumps(payload).encode('utf-8')
-                                        block = Block(header=header, payload=payload)
-                                        if hasattr(self.chains[chain_id], 'storage') and self.chains[chain_id].storage:
-                                            self.chains[chain_id].storage.save_block(block)
-                                        else:
-                                            # Use add_block with raw payload
-                                            self.chains[chain_id].add_block(payload)
-                                        added_count += 1
-                                except Exception as e:
-                                    logger.debug(f"Could not add block {block_index}: {e}")
-                            
-                            if added_count > 0:
-                                logger.info(f"Added {added_count} blocks to chain {chain_id}")
-                        elif response.status_code == 404 and chain_id == 'D':
-                            logger.info(f"Chain {chain_id} not available on main node (expected for dataset chain)")
-                        else:
-                            logger.warning(f"Could not sync chain {chain_id}: {response.status_code}")
-                    except Exception as e:
-                        logger.warning(f"Sync error for chain {chain_id}: {e}")
-            
-            logger.info("✅ Blockchain sync completed")
-            return True
-                        
-        except ImportError:
-            logger.warning("httpx not installed - skipping sync")
-            return False
-        except Exception as e:
-            logger.error(f"Sync failed: {e}")
-            return False
-    
     def check_block_progress(self) -> dict:
         """Check blockchain progress and integrity."""
         progress = {
@@ -462,14 +311,14 @@ class BlyanGPUNode:
                 progress["expert_blocks"] = len(expert_blocks)
             
             # Find missing experts (skip if we have many blocks)
+            existing_experts = set()
             if len(expert_blocks) > 0:
-                existing_experts = set()
                 for block in expert_blocks:
                     if hasattr(block.header, 'expert_name'):
                         existing_experts.add(block.header.expert_name)
             
             # Check which experts are missing (skip for large chains)
-            if PROFILE_AVAILABLE and chain_b_blocks < 1000:
+            if PROFILE_AVAILABLE and chain_b_blocks < 1000 and existing_experts:
                 for layer_idx in range(LAYERS["num_layers"]):
                     for expert_idx in range(MOE["num_experts"]):
                         expert_name = get_expert_naming(layer_idx, expert_idx)
@@ -620,12 +469,8 @@ class BlyanGPUNode:
                         chain_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Reinitialize chain
-                    try:
-                        from backend.core.chain_fast import FastChain as Chain
-                        logger.info("Using fast-sync chain loading (instant startup with lazy loading)")
-                    except ImportError:
-                        from backend.core.chain import Chain
-                        logger.warning("Optimized chain not available, using standard chain (slower)")
+                    from backend.core.chain import Chain
+                    logger.info("Using standard chain loading")
                     
                     self.chains[cid] = Chain(DATA_DIR, cid, skip_pol=True)
                     
@@ -659,18 +504,8 @@ class BlyanGPUNode:
         """Handle blockchain integrity failures."""
         logger.warning("⚠️ Blockchain integrity check failed - attempting recovery")
         
-        # Option 1: Try to sync from main node
-        logger.info("Attempting full resync from main node...")
-        sync_success = await self.sync_from_peers(force_full=True)
-        
-        if sync_success:
-            # Re-check integrity
-            if self.verify_block_integrity():
-                logger.info("✅ Integrity restored after sync")
-                return True
-        
-        # Option 2: Reset and rebuild
-        logger.warning("Sync failed to restore integrity - resetting blockchain")
+        # Reset and rebuild (main node has no blockchain to sync from)
+        logger.warning("Resetting blockchain to restore integrity")
         
         # Save any uploaded experts before reset
         expert_blocks = self.chains['B'].get_blocks_by_type('expert')
@@ -755,6 +590,8 @@ class BlyanGPUNode:
                     json.dump(upload_state, f)
             elif current_count < total_needed:
                 logger.info("🚀 Starting auto-upload of model to blockchain...")
+                # Mark that upload was triggered from block building
+                self._upload_triggered_from_block_building = True
                 asyncio.create_task(self.download_and_upload_model())
             else:
                 logger.info("✅ Model fully uploaded")
@@ -832,17 +669,26 @@ class BlyanGPUNode:
             else:
                 logger.info(f"📦 No experts in blockchain yet (blocks: {actual_block_count})")
                 if AUTO_UPLOAD:
-                    # Check if upload was already done (verify blocks exist)
-                    upload_state_file = DATA_DIR / "upload_completed.json" 
-                    if upload_state_file.exists() and actual_block_count > 0:
-                        logger.info("✅ Upload already completed (found state file)")
-                    elif upload_state_file.exists() and actual_block_count == 0:
-                        logger.warning("⚠️ State file exists but no blocks - will upload")
-                        upload_state_file.unlink()
+                    # Check if upload was already triggered from block building
+                    if hasattr(self, '_upload_triggered_from_block_building') and self._upload_triggered_from_block_building:
+                        logger.info("📋 Upload already triggered from block building phase")
+                    elif hasattr(self, '_upload_in_progress') and self._upload_in_progress:
+                        logger.info("📋 Upload already in progress")
                     else:
-                        logger.info("🚀 Auto-uploading model to blockchain...")
-                        # Create task to download and upload model
-                        asyncio.create_task(self.download_and_upload_model())
+                        # Check if upload was already done (verify blocks exist)
+                        upload_state_file = DATA_DIR / "upload_completed.json" 
+                        if upload_state_file.exists() and actual_block_count > 0:
+                            logger.info("✅ Upload already completed (found state file)")
+                        elif upload_state_file.exists() and actual_block_count == 0:
+                            logger.warning("⚠️ State file exists but no blocks - will upload")
+                            upload_state_file.unlink()
+                            logger.info("🚀 Auto-uploading model to blockchain...")
+                            # Create task to download and upload model
+                            asyncio.create_task(self.download_and_upload_model())
+                        else:
+                            logger.info("🚀 Auto-uploading model to blockchain...")
+                            # Create task to download and upload model
+                            asyncio.create_task(self.download_and_upload_model())
                 else:
                     logger.info("💡 Upload model using: python miner/upload_moe_parameters.py")
             
@@ -854,6 +700,21 @@ class BlyanGPUNode:
     
     async def download_and_upload_model(self):
         """Download model from HuggingFace and upload to blockchain as experts."""
+        
+        # Prevent duplicate uploads
+        if hasattr(self, '_upload_in_progress') and self._upload_in_progress:
+            logger.info("Upload already in progress, skipping duplicate call")
+            return
+        
+        self._upload_in_progress = True
+        
+        try:
+            await self._do_download_and_upload()
+        finally:
+            self._upload_in_progress = False
+    
+    async def _do_download_and_upload(self):
+        """Actual download and upload implementation."""
         
         # Check if upload was already completed
         upload_state_file = DATA_DIR / "upload_completed.json"

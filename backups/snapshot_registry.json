@@ -1,27 +1,4 @@
 {
-  "snapshot_1755777882_195d94b0": {
-    "snapshot_id": "snapshot_1755777882_195d94b0",
-    "timestamp": 1755777882.834343,
-    "size_bytes": 5662,
-    "chains_included": [
-      "A",
-      "B",
-      "D"
-    ],
-    "block_count": {
-      "A": 1,
-      "B": 0,
-      "D": 0
-    },
-    "integrity_hash": "df23cbcd1e4dafe6fa54900f366312ef",
-    "compression_ratio": 3.2908866125044156,
-    "creation_time_seconds": 0.012603044509887695,
-    "description": "Automatic snapshot 2025-08-21 21:04:42",
-    "tags": [
-      "automatic"
-    ],
-    "verified": false
-  },
   "snapshot_1755781482_106b5673": {
     "snapshot_id": "snapshot_1755781482_106b5673",
     "timestamp": 1755781482.9100978,
@@ -339,6 +316,29 @@
     "compression_ratio": 3.2908866125044156,
     "creation_time_seconds": 0.011698007583618164,
     "description": "Automatic snapshot 2025-08-22 20:45:45",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
+  },
+  "snapshot_1755866745_f73bdcc3": {
+    "snapshot_id": "snapshot_1755866745_f73bdcc3",
+    "timestamp": 1755866745.657872,
+    "size_bytes": 5662,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 0,
+      "D": 0
+    },
+    "integrity_hash": "df23cbcd1e4dafe6fa54900f366312ef",
+    "compression_ratio": 3.2908866125044156,
+    "creation_time_seconds": 0.013818025588989258,
+    "description": "Automatic snapshot 2025-08-22 21:45:45",
     "tags": [
       "automatic"
     ],

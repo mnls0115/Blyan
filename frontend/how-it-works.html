@@ -473,15 +473,41 @@
                         <div class="process-number">3</div>
                         <h2 class="process-title">Participation & Rewards</h2>
                         <p class="process-description">
-                            Nodes join the network by registering their available experts and device profiles. When active, they serve inference requests - Node 1 might handle understanding tasks while Node 2 generates responses. During quiet periods, nodes switch to learning mode, improving their experts. As inference demand grows, accumulated rewards flow to contributing nodes based on their actual usage and quality metrics.
+                            Nodes join the network by registering their available experts and device profiles. When active, they serve inference requests - Node 1 might handle understanding tasks while Node 2 generates responses. During quiet periods, nodes switch to idle time PoL training, improving their experts. Rewards are automatically distributed every hour via the AutomaticRewardDistributor to contributing nodes based on their actual usage and quality metrics.
                         </p>
                         <div class="process-details">
                             <ul>
                                 <li>Node registration: Join with specific experts and start receiving appropriate inference requests</li>
                                 <li>Active serving: Process assigned expert computations when selected by the coordinator</li>
-                                <li>Learning mode: Train and improve experts during idle time, preparing for future requests</li>
-                                <li>Reward accumulation: High inference activity generates rewards distributed based on contribution</li>
+                                <li>Idle time PoL training: Train and improve experts during idle time, preparing for future requests</li>
+                                <li>Automatic reward distribution: Hourly distribution via AutomaticRewardDistributor based on actual contribution</li>
                             </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 4: Data Pool & Training Data Flow -->
+                <div class="process-step animate-in">
+                    <div class="process-visual">
+                        <div class="process-icon">📚</div>
+                    </div>
+                    <div class="process-content">
+                        <div class="process-number">4</div>
+                        <h2 class="process-title">Data Pool & Training Data Flow</h2>
+                        <p class="process-description">
+                            The Blyan Data Pool ensures that training data is transparent, deduplicated, and reusable across the network. User uploads (JSON, CSV, PDF, TXT) and curated internet datasets (Wikipedia, C4, BookCorpus, etc.) are ingested through adapters, normalized, and chunked into token-level segments. Each piece of data is verified, scored, and stored as a content-addressed block with Merkle proofs for auditability.
+                        </p>
+                        <div class="process-details">
+                            <ul>
+                                <li><strong>Ingestion & Validation:</strong> Data passes through format adapters, PII redaction, license checks, and deduplication (BLAKE3 + MinHash/SimHash). Quality scoring classifies chunks into Gold, Silver, or Bronze tiers.</li>
+                                <li><strong>Transparent Storage:</strong> Verified chunks are stored in a content-addressed system, with metadata logged to Chain D for integrity. The catalog is dual-layered: a private index for operators and a public version for transparency.</li>
+                                <li><strong>No-Reuse Guarantee:</strong> Each expert tracks its used data via efficient Cuckoo filters, ensuring new epochs always receive fresh, unseen data.</li>
+                                <li><strong>Fair Distribution:</strong> The scheduler balances data across GPU nodes using consistent hashing, guaranteeing coverage across experts while avoiding duplication.</li>
+                                <li><strong>Right-to-be-Forgotten:</strong> Users can request deletion at any time, triggering a full GDPR-compliant removal across catalogs, storage, and usage ledgers.</li>
+                            </ul>
+                            <p style="margin-top: 16px; color: var(--color-text-secondary);">
+                                By combining open internet data and user-contributed datasets into a single verifiable pool, Blyan ensures that every training step is auditable, fair, and reproducible, while contributors retain control over their data.
+                            </p>
                         </div>
                     </div>
                 </div>
