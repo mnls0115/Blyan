@@ -1210,7 +1210,10 @@ async def chat_production(req: ChatRequest, http_request: Request = None):
 async def chat(req: ChatRequest, http_request: Request = None):
     import time
     start_time = time.time()
-    
+
+    # Debug logging for MoE status
+    logger.info(f"Chat request: use_moe={req.use_moe}, has_distributed_nodes={bool(distributed_coordinator and distributed_coordinator.registry.nodes)}, moe_model_manager_exists={moe_model_manager is not None}")
+
     # Prepare request for middleware
     request_dict = req.dict()
     request_dict['request_id'] = str(time.time())
@@ -1409,12 +1412,12 @@ async def chat(req: ChatRequest, http_request: Request = None):
                 composite_key = f"{user_address}|{http_request.client.host}"
                 abuse_system.record_request_outcome(composite_key, success=True)
             
-            return ChatResponse(
-                response=answer,
-                expert_usage={},
-                inference_time=inference_time
-            )
-            
+                return ChatResponse(
+                    response=answer,
+                    expert_usage={},
+                    inference_time=inference_time
+                )
+
     except Exception as exc:
         # Mark request as failed and update quotas
         complete_chat_request(user_address, success=False)
@@ -1426,6 +1429,19 @@ async def chat(req: ChatRequest, http_request: Request = None):
             abuse_system.record_request_outcome(composite_key, success=False)
         
         raise HTTPException(status_code=500, detail=str(exc))
+
+@app.get("/debug/moe-status")
+async def debug_moe_status():
+    """Debug endpoint to check MoE system status"""
+    return {
+        "moe_model_manager_initialized": moe_model_manager is not None,
+        "distributed_coordinator_initialized": distributed_coordinator is not None,
+        "has_distributed_nodes": bool(distributed_coordinator and distributed_coordinator.registry.nodes) if distributed_coordinator else False,
+        "available_experts_count": len(distributed_coordinator.registry.expert_to_nodes) if distributed_coordinator else 0,
+        "registered_nodes_count": len(distributed_coordinator.registry.nodes) if distributed_coordinator else 0,
+        "model_manager_initialized": model_manager is not None,
+        "usage_tracker_initialized": usage_tracker is not None
+    }
 
 
 # ------------------------------ Streaming Chat Endpoints ------------------------------

@@ -1,18 +1,18 @@
 // API Configuration
 const API_CONFIG = {
-    // 🔧 CONFIGURATION OPTIONS - Choose one:
+    // 🔧 CONFIGURATION FOR RUNPOD GPU NODE
 
-    // Option 1: Auto-detect GPU node (if accessing via port 8002)
-    // baseURL: window.location.port === '8002' ? 'http://127.0.0.1:8002' : 'http://127.0.0.1:8000',
+    // Option 1: Direct RunPod IP (replace YOUR_RUNPOD_IP with actual IP)
+    baseURL: 'http://YOUR_RUNPOD_IP:8002',
 
-    // Option 2: Always use GPU node (recommended for testing)
-    baseURL: 'http://127.0.0.1:8002',
+    // Option 2: Environment variable (set RUNPOD_IP in browser console)
+    // baseURL: window.RUNPOD_IP ? `http://${window.RUNPOD_IP}:8002` : 'http://127.0.0.1:8000',
 
-    // Option 3: Always use main node
-    // baseURL: 'http://127.0.0.1:8000',
+    // Option 3: Auto-detect from current domain
+    // baseURL: `${window.location.protocol}//${window.location.hostname}:8002`,
 
-    // Option 4: Environment-based (set NODE_URL in browser console)
-    // baseURL: window.NODE_URL || 'http://127.0.0.1:8000',
+    // Option 4: Local development (uncomment for local testing)
+    // baseURL: 'http://127.0.0.1:8002',
 
     // Individual endpoints
     balance: '/balance/',
