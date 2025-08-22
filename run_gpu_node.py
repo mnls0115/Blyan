@@ -44,9 +44,17 @@ except ImportError:
 
 # Import model configuration
 try:
-    from config.model_config import DEFAULT_MODEL_NAME, get_model_config
+    from config.model_profile import (
+        MODEL_ID, MODEL_NAME, ARCHITECTURE, LAYERS, MOE, 
+        CONTEXT, PRECISION, COMPUTE, BLOCKCHAIN,
+        get_model_config, get_expert_naming, get_total_experts
+    )
+    DEFAULT_MODEL_NAME = MODEL_ID
+    PROFILE_AVAILABLE = True
 except ImportError:
+    logger.warning("Model profile not available, using fallback")
     DEFAULT_MODEL_NAME = 'Qwen/Qwen1.5-MoE-A2.7B'
+    PROFILE_AVAILABLE = False
     def get_model_config(name):
         return {}
 
@@ -495,14 +503,17 @@ class BlyanGPUNode:
             
             # Create meta block if needed
             if len(self.chains['A'].get_all_blocks()) == 0:
-                model_config = get_model_config(MODEL_NAME)
-                meta_spec = {
-                    "model_name": MODEL_NAME,
-                    "architecture": model_config.get('architecture', 'mixture-of-experts'),
-                    "num_layers": model_config.get('num_layers', 48),
-                    "num_experts": model_config.get('num_experts', 128),
-                    "activated_experts": model_config.get('activated_experts', 8),
-                    "routing_strategy": "top-k"
+                if PROFILE_AVAILABLE:
+                    meta_spec = {
+                        "model_name": MODEL_NAME,
+                        "architecture": ARCHITECTURE["type"],
+                        "num_layers": LAYERS["num_layers"],
+                        "num_experts": MOE["num_experts"],
+                        "activated_experts": MOE["num_activated_experts"],
+                        "routing_strategy": MOE["routing_strategy"],
+                        "context_length": CONTEXT["max_length"],
+                        "total_params": ARCHITECTURE["total_params"],
+                        "active_params": ARCHITECTURE["active_params"]
                 }
                 self.chains['A'].add_block(json.dumps(meta_spec).encode(), block_type='meta')
                 logger.info("✅ Created meta block")
@@ -517,14 +528,30 @@ class BlyanGPUNode:
             if layers is None:
                 raise RuntimeError("Model structure unexpected: missing model.layers")
 
-            for layer_idx in range(min(28, len(layers))):  # Qwen1.5-MoE: 28 layers
+            # Use profile-based layer count if available
+            max_layers = LAYERS["num_layers"] if PROFILE_AVAILABLE else 28
+            
+            for layer_idx in range(min(max_layers, len(layers))):
                 layer = layers[layer_idx]
+                
+                # Check for MoE structure
                 mlp = getattr(layer, "mlp", None)
                 if mlp is None:
                     logger.warning(f"Layer {layer_idx} has no MLP; skipping")
                     continue
-
-                expert_name = f"layer{layer_idx}.expert0"
+                
+                # TODO: Extract individual experts from MoE layer
+                # Current implementation treats entire MLP as single expert
+                # Should extract all 128 experts per layer for Qwen3-30B model
+                # Each layer has: mlp.experts[0..127] with their own weights
+                expert_name = get_expert_naming(layer_idx, 0) if PROFILE_AVAILABLE else f"layer{layer_idx}.expert0"
+                
+                # FIXME: Should loop through all experts:
+                # if hasattr(mlp, 'experts'):
+                #     for expert_idx in range(MOE["num_experts"]):
+                #         expert = mlp.experts[expert_idx]
+                #         expert_name = get_expert_naming(layer_idx, expert_idx)
+                #         # Upload individual expert...
 
                 try:
                     # ✅ Build a CPU-only, pickle-safe state_dict
