@@ -20,7 +20,16 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Import blockchain components
 from backend.core.chain import Chain
-from backend.model.blockchain_model_manager import BlockchainOnlyModelManager
+try:
+    from backend.model.blockchain_first_loader import BlockchainFirstModelLoader
+    LOADER_CLASS = BlockchainFirstModelLoader
+except ImportError:
+    try:
+        from backend.model.moe_infer import MoEModelManager
+        LOADER_CLASS = MoEModelManager
+    except ImportError:
+        LOADER_CLASS = None
+        logger.warning("No blockchain model loader found")
 
 app = FastAPI()
 
@@ -65,14 +74,26 @@ async def initialize_blockchain():
     if expert_samples:
         logger.info(f"   Sample experts: {', '.join(expert_samples)}")
     
-    # 3. Initialize BlockchainOnlyModelManager
-    logger.info("Initializing BlockchainOnlyModelManager...")
+    # 3. Initialize Blockchain Model Manager
+    logger.info("Initializing Blockchain Model Manager...")
     try:
-        blockchain_manager = BlockchainOnlyModelManager(
-            chain_manager={'A': chains['A'], 'B': chains['B']},
-            model_name="Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
-        )
-        logger.info("✅ Blockchain model manager initialized")
+        if LOADER_CLASS:
+            if LOADER_CLASS.__name__ == "MoEModelManager":
+                # Use MoEModelManager
+                blockchain_manager = LOADER_CLASS(
+                    chain_A=chains['A'],
+                    chain_B=chains['B']
+                )
+            else:
+                # Use BlockchainFirstModelLoader
+                blockchain_manager = LOADER_CLASS(
+                    chains={'A': chains['A'], 'B': chains['B']},
+                    model_name="Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+                )
+            logger.info(f"✅ {LOADER_CLASS.__name__} initialized")
+        else:
+            logger.error("No blockchain loader available!")
+            blockchain_manager = None
         
         # Check GPU
         if torch.cuda.is_available():
