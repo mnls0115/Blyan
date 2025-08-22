@@ -364,6 +364,122 @@ class BlyanGPUNode:
             logger.error(f"Sync failed: {e}")
             return False
     
+    def check_block_progress(self) -> dict:
+        """Check blockchain progress and integrity."""
+        progress = {
+            "meta_blocks": 0,
+            "expert_blocks": 0,
+            "expected_experts": 0,
+            "missing_experts": [],
+            "integrity_valid": True,
+            "progress_percentage": 0.0
+        }
+        
+        try:
+            # Check meta chain
+            meta_blocks = self.chains['A'].get_all_blocks()
+            progress["meta_blocks"] = len(meta_blocks)
+            
+            # Get expected expert count from profile
+            if PROFILE_AVAILABLE:
+                # Total experts = layers × experts_per_layer  
+                progress["expected_experts"] = LAYERS["num_layers"] * MOE["num_experts"]
+            else:
+                # Fallback estimate
+                progress["expected_experts"] = 28 * 16  # Default for older models
+            
+            # Check expert blocks
+            expert_blocks = self.chains['B'].get_blocks_by_type('expert')
+            progress["expert_blocks"] = len(expert_blocks)
+            
+            # Find missing experts
+            existing_experts = set()
+            for block in expert_blocks:
+                if hasattr(block.header, 'expert_name'):
+                    existing_experts.add(block.header.expert_name)
+            
+            # Check which experts are missing
+            if PROFILE_AVAILABLE:
+                for layer_idx in range(LAYERS["num_layers"]):
+                    for expert_idx in range(MOE["num_experts"]):
+                        expert_name = get_expert_naming(layer_idx, expert_idx)
+                        if expert_name not in existing_experts:
+                            progress["missing_experts"].append(expert_name)
+                            # Only track first 100 missing for performance
+                            if len(progress["missing_experts"]) >= 100:
+                                progress["missing_experts"].append("... and more")
+                                break
+                    if len(progress["missing_experts"]) >= 100:
+                        break
+            
+            # Calculate progress percentage
+            if progress["expected_experts"] > 0:
+                progress["progress_percentage"] = (progress["expert_blocks"] / progress["expected_experts"]) * 100
+            
+            # Verify integrity of existing blocks
+            progress["integrity_valid"] = self.verify_block_integrity()
+            
+            # Log progress summary
+            logger.info(f"📊 Block Progress Report:")
+            logger.info(f"  Meta blocks: {progress['meta_blocks']}")
+            logger.info(f"  Expert blocks: {progress['expert_blocks']}/{progress['expected_experts']} ({progress['progress_percentage']:.1f}%)")
+            logger.info(f"  Integrity: {'✅ Valid' if progress['integrity_valid'] else '❌ Invalid'}")
+            
+            if progress["missing_experts"] and len(progress["missing_experts"]) < 10:
+                logger.info(f"  Missing experts: {progress['missing_experts'][:5]}")
+            
+            return progress
+            
+        except Exception as e:
+            logger.error(f"Failed to check block progress: {e}")
+            progress["integrity_valid"] = False
+            return progress
+    
+    def verify_block_integrity(self) -> bool:
+        """Verify integrity of blockchain blocks."""
+        try:
+            # Verify meta chain
+            if not self.chains['A'].verify_chain():
+                logger.error("Meta chain verification failed")
+                return False
+            
+            # Verify parameter chain
+            if not self.chains['B'].verify_chain():
+                logger.error("Parameter chain verification failed")
+                return False
+            
+            # Check for required meta block
+            meta_blocks = self.chains['A'].get_blocks_by_type('meta')
+            if len(meta_blocks) == 0:
+                logger.warning("No meta blocks found")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Block integrity check failed: {e}")
+            return False
+    
+    def continue_block_building(self, progress: dict):
+        """Continue building missing blocks."""
+        if progress["progress_percentage"] >= 100:
+            logger.info("✅ All blocks already present")
+            return
+        
+        if not progress["integrity_valid"]:
+            logger.error("❌ Cannot continue building - integrity check failed")
+            return
+        
+        missing_count = len([e for e in progress["missing_experts"] if e != "... and more"])
+        logger.info(f"📦 Need to build {missing_count} more expert blocks")
+        
+        # Check if we should auto-upload
+        if AUTO_UPLOAD and progress["expert_blocks"] == 0:
+            logger.info("🚀 Starting auto-upload of missing experts...")
+            asyncio.create_task(self.download_and_upload_model())
+        else:
+            logger.info(f"ℹ️  Manual upload required for remaining {missing_count} experts")
+    
     def initialize_model_manager(self) -> bool:
         """Initialize blockchain-first model manager for inference."""
         try:
@@ -529,7 +645,7 @@ class BlyanGPUNode:
                 raise RuntimeError("Model structure unexpected: missing model.layers")
 
             # Use profile-based layer count if available
-            max_layers = LAYERS["num_layers"] if PROFILE_AVAILABLE else 28
+            max_layers = LAYERS["num_layers"] if PROFILE_AVAILABLE else 48
             
             for layer_idx in range(min(max_layers, len(layers))):
                 layer = layers[layer_idx]
@@ -540,52 +656,114 @@ class BlyanGPUNode:
                     logger.warning(f"Layer {layer_idx} has no MLP; skipping")
                     continue
                 
-                # TODO: Extract individual experts from MoE layer
-                # Current implementation treats entire MLP as single expert
-                # Should extract all 128 experts per layer for Qwen3-30B model
-                # Each layer has: mlp.experts[0..127] with their own weights
-                expert_name = get_expert_naming(layer_idx, 0) if PROFILE_AVAILABLE else f"layer{layer_idx}.expert0"
+                # Extract gate/router weights first
+                if hasattr(mlp, 'gate'):
+                    try:
+                        router_name = f"layer{layer_idx}.router"
+                        router_state = {'weight': mlp.gate.weight.detach().cpu().contiguous()}
+                        
+                        buffer = io.BytesIO()
+                        pickle.dump(router_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
+                        payload = buffer.getvalue()
+                        
+                        self.chains['B'].add_block(
+                            payload,
+                            block_type='router',
+                            expert_name=router_name,
+                            layer_id=f"layer{layer_idx}"
+                        )
+                        logger.info(f"✅ Uploaded {router_name} to blockchain")
+                        num_uploaded += 1
+                        del router_state, buffer, payload
+                        
+                    except Exception as e:
+                        logger.warning(f"Failed to upload router for layer {layer_idx}: {e}")
                 
-                # FIXME: Should loop through all experts:
-                # if hasattr(mlp, 'experts'):
-                #     for expert_idx in range(MOE["num_experts"]):
-                #         expert = mlp.experts[expert_idx]
-                #         expert_name = get_expert_naming(layer_idx, expert_idx)
-                #         # Upload individual expert...
-
-                try:
-                    # ✅ Build a CPU-only, pickle-safe state_dict
-                    cpu_state = {}
-                    for k, v in mlp.state_dict().items():
-                        # move to cpu, detach, and ensure contiguous CPU tensor
-                        if hasattr(v, "to"):
-                            v_cpu = v.detach().to("cpu").contiguous()
-                        else:
-                            v_cpu = v
-                        cpu_state[k] = v_cpu
-
-                    buffer = io.BytesIO()
-                    pickle.dump(cpu_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
-                    payload = buffer.getvalue()
-
-                    # Add expert block with proper parameters
-                    self.chains['B'].add_block(
-                        payload,
-                        block_type='expert',
-                        expert_name=expert_name,
-                        layer_id=f"layer{layer_idx}"
-                    )
-                    logger.info(f"✅ Uploaded {expert_name} to blockchain")
-                    num_uploaded += 1
-
-                except Exception as e:
-                    logger.warning(f"Failed to upload {expert_name}: {e}")
-
-                # periodic memory cleanup
-                del cpu_state, payload, buffer
+                # Extract ALL individual experts (128 per layer for Qwen3-30B)
+                if hasattr(mlp, 'experts'):
+                    num_experts = len(mlp.experts) if hasattr(mlp.experts, '__len__') else 0
+                    logger.info(f"📦 Layer {layer_idx} has {num_experts} experts to upload")
+                    
+                    # Upload each expert individually
+                    for expert_idx in range(num_experts):
+                        try:
+                            expert = mlp.experts[expert_idx]
+                            expert_name = get_expert_naming(layer_idx, expert_idx) if PROFILE_AVAILABLE else f"layer{layer_idx}.expert{expert_idx}"
+                            
+                            # Extract expert weights (gate_proj, up_proj, down_proj)
+                            expert_state = {}
+                            if hasattr(expert, 'gate_proj'):
+                                expert_state['gate_proj.weight'] = expert.gate_proj.weight.detach().cpu().contiguous()
+                            if hasattr(expert, 'up_proj'):
+                                expert_state['up_proj.weight'] = expert.up_proj.weight.detach().cpu().contiguous()
+                            if hasattr(expert, 'down_proj'):
+                                expert_state['down_proj.weight'] = expert.down_proj.weight.detach().cpu().contiguous()
+                            
+                            if expert_state:
+                                buffer = io.BytesIO()
+                                pickle.dump(expert_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
+                                payload = buffer.getvalue()
+                                
+                                self.chains['B'].add_block(
+                                    payload,
+                                    block_type='expert',
+                                    expert_name=expert_name,
+                                    layer_id=f"layer{layer_idx}"
+                                )
+                                logger.info(f"✅ Uploaded {expert_name} to blockchain")
+                                num_uploaded += 1
+                                
+                                # Cleanup after each expert
+                                del expert_state, buffer, payload
+                            
+                        except Exception as e:
+                            logger.warning(f"Failed to upload expert {expert_idx} from layer {layer_idx}: {e}")
+                        
+                        # Memory cleanup every 10 experts
+                        if expert_idx % 10 == 0:
+                            gc.collect()
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                
+                # Check for shared expert (if present)
+                if hasattr(mlp, 'shared_expert'):
+                    try:
+                        shared_name = f"layer{layer_idx}.shared_expert"
+                        shared_expert = mlp.shared_expert
+                        
+                        shared_state = {}
+                        if hasattr(shared_expert, 'gate_proj'):
+                            shared_state['gate_proj.weight'] = shared_expert.gate_proj.weight.detach().cpu().contiguous()
+                        if hasattr(shared_expert, 'up_proj'):
+                            shared_state['up_proj.weight'] = shared_expert.up_proj.weight.detach().cpu().contiguous()
+                        if hasattr(shared_expert, 'down_proj'):
+                            shared_state['down_proj.weight'] = shared_expert.down_proj.weight.detach().cpu().contiguous()
+                        
+                        if shared_state:
+                            buffer = io.BytesIO()
+                            pickle.dump(shared_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
+                            payload = buffer.getvalue()
+                            
+                            self.chains['B'].add_block(
+                                payload,
+                                block_type='expert',
+                                expert_name=shared_name,
+                                layer_id=f"layer{layer_idx}"
+                            )
+                            logger.info(f"✅ Uploaded {shared_name} to blockchain")
+                            num_uploaded += 1
+                            
+                            del shared_state, buffer, payload
+                    
+                    except Exception as e:
+                        logger.warning(f"Failed to upload shared expert for layer {layer_idx}: {e}")
+                
+                # Major memory cleanup after each layer
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+                
+                logger.info(f"📊 Layer {layer_idx} complete. Total uploaded: {num_uploaded}")
             
             logger.info(f"✅ Uploaded {num_uploaded} experts to blockchain")
             
@@ -1025,6 +1203,13 @@ class BlyanGPUNode:
         if not self.initialize_chains():
             logger.error("Failed to initialize chains")
             return
+        
+        # 2.5. Check block progress and integrity
+        logger.info("🔍 Checking blockchain progress...")
+        progress = self.check_block_progress()
+        
+        # Continue building blocks if needed
+        self.continue_block_building(progress)
         
         # 3. Initial sync attempt (non-blocking)
         sync_success = await self.sync_from_peers()

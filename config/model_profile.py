@@ -124,8 +124,12 @@ def get_expert_naming(layer_idx, expert_idx):
     """Generate consistent expert naming."""
     return f"layer{layer_idx}.expert{expert_idx}"
 
-def get_model_config():
-    """Get complete model configuration as dict."""
+def get_model_config(model_name=None):
+    """Get complete model configuration as dict.
+    
+    Args:
+        model_name: Optional model name (for compatibility, ignored as we use the profile)
+    """
     return {
         "model_id": MODEL_ID,
         "model_name": MODEL_NAME,
