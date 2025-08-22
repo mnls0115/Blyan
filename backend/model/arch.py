@@ -245,7 +245,13 @@ class ModelWrapper:
     @torch.inference_mode()
     def generate(self, prompt: str, max_new_tokens: int = 64, **gen_kwargs) -> str:
         if self.model is None or self.tokenizer is None:
-            return f"Mock AI response to: '{prompt}' (using Blyan MoE system)"
+            # Try to load a real model instead of returning mock
+            try:
+                self._load_actual_model()
+                if self.model is None or self.tokenizer is None:
+                    return f"Model not available. Please check GPU and model installation."
+            except:
+                return f"Model not available. Please check GPU and model installation."
         
         try:
             # Format prompt for Mistral/Mixtral models

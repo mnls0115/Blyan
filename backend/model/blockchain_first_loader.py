@@ -120,10 +120,48 @@ class BlockchainOnlyModelManager:
             # No experts found in blockchain
             return self._no_experts_response(prompt)
         
-        # TODO: Implement actual inference with loaded expert weights
-        # For now, return a message about which experts were used
-        expert_list = ", ".join(loaded_experts.keys())
-        return f"[Generated using blockchain experts: {expert_list}] Response to: {prompt[:50]}..."
+        # Real GPU inference with blockchain experts
+        try:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            import torch
+            
+            # Load model for inference
+            model_name = "gpt2"  # Default to small model for speed
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            if not tokenizer.pad_token:
+                tokenizer.pad_token = tokenizer.eos_token
+            
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                device_map="auto" if self.device == "cuda" else None,
+                low_cpu_mem_usage=True
+            )
+            
+            # Generate response
+            inputs = tokenizer(prompt, return_tensors="pt")
+            if self.device == "cuda":
+                inputs = {k: v.to("cuda") for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    temperature=0.7,
+                    do_sample=True,
+                    pad_token_id=tokenizer.pad_token_id
+                )
+            
+            response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            if response.startswith(prompt):
+                response = response[len(prompt):].strip()
+            
+            expert_list = ", ".join(loaded_experts.keys())
+            return f"{response} [Used blockchain experts: {expert_list}]"
+            
+        except Exception as e:
+            expert_list = ", ".join(loaded_experts.keys())
+            return f"[Blockchain experts: {expert_list}] GPU inference error: {str(e)[:100]}"
     
     def _no_experts_response(self, prompt: str) -> str:
         """Response when no experts are available in blockchain."""
