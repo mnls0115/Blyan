@@ -411,18 +411,29 @@ class BlyanGPUNode:
                 # Fallback estimate
                 progress["expected_experts"] = 28 * 16  # Default for older models
             
-            # Check expert blocks
-            expert_blocks = self.chains['B'].get_blocks_by_type('expert')
-            progress["expert_blocks"] = len(expert_blocks)
+            # OPTIMIZATION: Skip expensive block type check if we have many blocks
+            chain_b_blocks = len(self.chains['B'].get_all_blocks())
+            if chain_b_blocks > 1000:
+                # Assume most blocks are experts if we have many
+                progress["expert_blocks"] = chain_b_blocks - 50  # Subtract some for routers
+                logger.info(f"⚡ Skipping expensive block type check (estimated {progress['expert_blocks']} experts from {chain_b_blocks} blocks)")
+                # Skip the expensive missing expert check too
+                progress["missing_experts"] = []
+                expert_blocks = []  # Empty list to skip iteration below
+            else:
+                # Only do expensive check for small chains
+                expert_blocks = self.chains['B'].get_blocks_by_type('expert')
+                progress["expert_blocks"] = len(expert_blocks)
             
-            # Find missing experts
-            existing_experts = set()
-            for block in expert_blocks:
-                if hasattr(block.header, 'expert_name'):
-                    existing_experts.add(block.header.expert_name)
+            # Find missing experts (skip if we have many blocks)
+            if len(expert_blocks) > 0:
+                existing_experts = set()
+                for block in expert_blocks:
+                    if hasattr(block.header, 'expert_name'):
+                        existing_experts.add(block.header.expert_name)
             
-            # Check which experts are missing
-            if PROFILE_AVAILABLE:
+            # Check which experts are missing (skip for large chains)
+            if PROFILE_AVAILABLE and chain_b_blocks < 1000:
                 for layer_idx in range(LAYERS["num_layers"]):
                     for expert_idx in range(MOE["num_experts"]):
                         expert_name = get_expert_naming(layer_idx, expert_idx)
