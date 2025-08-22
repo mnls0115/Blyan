@@ -1568,19 +1568,47 @@ class BlyanGPUNode:
         logger.info("BLYAN GPU NODE - INTEGRATED")
         logger.info("=" * 60)
         
+        # Track startup steps
+        startup_steps = [
+            "Check GPU capabilities",
+            "Initialize blockchains", 
+            "Check block progress",
+            "Verify integrity",
+            "Sync from peers",
+            "Initialize model manager",
+            "Start server"
+        ]
+        
+        total_steps = len(startup_steps)
+        current_step = 0
+        startup_begin = time.time()
+        
+        def log_step(step_name, step_num):
+            elapsed = time.time() - startup_begin
+            mins, secs = divmod(int(elapsed), 60)
+            logger.info(f"\n📍 Step {step_num}/{total_steps}: {step_name} [{mins:02d}:{secs:02d}]")
+            logger.info("-" * 60)
+        
         # 1. Check GPU
+        current_step += 1
+        log_step(startup_steps[current_step-1], current_step)
         self.check_gpu()
         
         # 2. Initialize blockchains
+        current_step += 1
+        log_step(startup_steps[current_step-1], current_step)
         if not self.initialize_chains():
             logger.error("Failed to initialize chains")
             return
         
-        # 2.5. Check block progress and integrity
-        logger.info("🔍 Checking blockchain progress...")
+        # 3. Check block progress
+        current_step += 1
+        log_step(startup_steps[current_step-1], current_step)
         progress = self.check_block_progress()
         
-        # Handle integrity failure if detected
+        # 4. Verify integrity
+        current_step += 1
+        log_step(startup_steps[current_step-1], current_step)
         if not progress["integrity_valid"]:
             logger.warning("⚠️ Blockchain integrity issue detected")
             recovery_success = await self.handle_integrity_failure()
@@ -1590,14 +1618,20 @@ class BlyanGPUNode:
             else:
                 logger.error("Failed to recover blockchain integrity")
                 # Continue anyway but with warnings
+        else:
+            logger.info("✅ Integrity check passed")
         
         # Continue building blocks if needed
         self.continue_block_building(progress)
         
-        # 3. Initial sync attempt (non-blocking)
+        # 5. Initial sync attempt (non-blocking)
+        current_step += 1
+        log_step(startup_steps[current_step-1], current_step)
         sync_success = await self.sync_from_peers()
         
-        # 4. Initialize model manager
+        # 6. Initialize model manager
+        current_step += 1
+        log_step(startup_steps[current_step-1], current_step)
         if not self.initialize_model_manager():
             logger.warning("Running without model manager")
         
@@ -1611,16 +1645,28 @@ class BlyanGPUNode:
             else:
                 logger.error("❌ Failed to reinitialize model manager after upload")
         
-        # 5. Start server
+        # 7. Start server
+        current_step += 1
+        log_step(startup_steps[current_step-1], current_step)
         await self.start_server()
         
-        # 6. Start periodic sync if initial sync failed
+        # Start periodic sync if initial sync failed
         if not sync_success:
             asyncio.create_task(self.periodic_sync())
         
-        # 7. Keep running
-        logger.info("✅ Node ready for requests")
-        logger.info(f"🌐 API available at http://0.0.0.0:{self.port}")
+        # Register with network
+        asyncio.create_task(self.register_with_network())
+        
+        # Final summary
+        total_time = time.time() - startup_begin
+        mins, secs = divmod(int(total_time), 60)
+        logger.info("\n" + "=" * 60)
+        logger.info(f"🚀 NODE STARTUP COMPLETE")
+        logger.info(f"⏱️  Total time: {mins:02d}:{secs:02d}")
+        logger.info(f"📊 Blocks loaded: {len(self.chains['B']._hash_index) if hasattr(self.chains['B'], '_hash_index') else 0}")
+        logger.info(f"🌐 Server: http://0.0.0.0:{self.port}")
+        logger.info(f"✅ Ready for inference requests")
+        logger.info("=" * 60)
         
         if not sync_success:
             logger.info("📡 Running in offline mode - will sync when main node becomes available")
