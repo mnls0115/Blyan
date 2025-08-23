@@ -37,7 +37,7 @@ echo ""
 
 # Start the server
 echo "Starting API server on port 8000..."
-cd /root/dnai || cd /Users/mnls/projects/dnai || exit 1
+cd /root/blyan || cd /Users/mnls/projects/blyan || exit 1
 
 # Use Python directly to avoid any wrapper issues
 python -m api.server

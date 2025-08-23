@@ -53,7 +53,7 @@ try:
     PROFILE_AVAILABLE = True
 except ImportError:
     logger.warning("Model profile not available, using fallback")
-    DEFAULT_MODEL_NAME = 'Qwen/Qwen1.5-MoE-A2.7B'
+    DEFAULT_MODEL_NAME = 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'
     PROFILE_AVAILABLE = False
     def get_model_config(name):
         return {}

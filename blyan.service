@@ -1,17 +1,17 @@
 [Unit]
-Description=DNAI API Server
+Description=BLYAN API Server
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/dnai
-Environment="PATH=/root/dnai/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-Environment="PYTHONPATH=/root/dnai"
+WorkingDirectory=/root/blyan
+Environment="PATH=/root/blyan/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONPATH=/root/blyan"
 Environment="SKIP_DB_INIT=true"
 Environment="P2P_ENABLE=true"
-ExecStart=/root/dnai/.venv/bin/python -m api.server
+ExecStart=/root/blyan/.venv/bin/python -m api.server
 Restart=always
 RestartSec=5
 KillSignal=SIGINT

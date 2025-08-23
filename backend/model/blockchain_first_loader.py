@@ -125,8 +125,8 @@ class BlockchainOnlyModelManager:
             from transformers import AutoModelForCausalLM, AutoTokenizer
             import torch
             
-            # Load model for inference
-            model_name = "gpt2"  # Default to small model for speed
+            # Load Qwen3-30B model for production
+            model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             if not tokenizer.pad_token:
                 tokenizer.pad_token = tokenizer.eos_token

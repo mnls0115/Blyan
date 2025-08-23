@@ -5,7 +5,7 @@
 ### Production Deploy (DigitalOcean)
 ```bash
 # 1. Pull latest code
-cd /root/dnai
+cd /root/blyan
 git pull origin main
 
 # 2. Install/update dependencies
@@ -25,7 +25,7 @@ curl http://localhost:8000/health
 ### Rollback
 ```bash
 # Quick rollback to previous version
-cd /root/dnai
+cd /root/blyan
 git log --oneline -5  # Find previous commit
 git checkout <commit-hash>
 systemctl restart aiblock

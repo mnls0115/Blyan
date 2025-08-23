@@ -100,10 +100,10 @@ from backend.core.chain import Chain
 root_dir = Path('./data')
 meta_chain = Chain(root_dir, 'A')
 spec = {
-    'model_name': 'gpt_oss_20b',
-    'architecture': 'mixture-of-experts', 
-    'num_layers': 24,
-    'num_experts': 16,
+    'model_name': 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8',
+    'architecture': 'mixture-of-experts',
+    'num_layers': 48,
+    'num_experts': 128,
     'routing_strategy': 'top2'
 }
 meta_chain.add_block(json.dumps(spec).encode(), block_type='meta')

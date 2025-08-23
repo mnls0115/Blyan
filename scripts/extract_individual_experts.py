@@ -130,7 +130,7 @@ def create_expert_blocks(experts: dict):
 
 def main():
     """Main function."""
-    model_path = "./models/Qwen1.5-MoE-A2.7B"
+    model_path = "./models/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
     
     if not Path(model_path).exists():
         print(f"❌ Model not found: {model_path}")

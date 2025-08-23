@@ -5,15 +5,15 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/dnai
+WorkingDirectory=/root/blyan
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
-Environment="PYTHONPATH=/root/dnai"
+Environment="PYTHONPATH=/root/blyan"
 Environment="ALLOWED_ORIGINS=https://blyan.com"
 Environment="DATABASE_URL=postgresql://blyan:password@localhost/blyandb"
 Environment="REDIS_URL=redis://localhost:6379"
 Environment="ENABLE_STREAMING=true"
 Environment="MAIN_SERVER_URL=https://blyan.com/api"
-ExecStart=/usr/bin/python3 /root/dnai/api/server.py
+ExecStart=/usr/bin/python3 /root/blyan/api/server.py
 ExecStartPost=/bin/sh -c 'sleep 5 && curl -f http://localhost:8000/health || exit 1'
 Restart=always
 RestartSec=10

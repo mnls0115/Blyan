@@ -250,7 +250,7 @@ class PipelineRoundService:
         if self._model_wrapper is not None and self._optimizer is not None and self._ms_trainer is not None and self._dataloader is not None:
             return True
         # Initialize model/tokenizer
-        model_name = os.getenv('TRAINING_MODEL_NAME', 'Qwen/Qwen1.5-MoE-A2.7B')
+        model_name = os.getenv('TRAINING_MODEL_NAME', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8')
         self._model_wrapper = ModelWrapper(model_name, allow_mock_fallback=False)
         # Optional DDP
         if os.getenv('USE_DDP', '0').lower() in ('1', 'true', 'yes'):

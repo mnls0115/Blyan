@@ -31,7 +31,7 @@ start_server() {
     echo "🚀 Starting $name server on port $port..."
     
     # Set PYTHONPATH for all servers
-    export PYTHONPATH=/Users/mnls/projects/dnai:$PYTHONPATH
+    export PYTHONPATH=/Users/mnls/projects/blyan:$PYTHONPATH
     
     if [ "$name" = "api" ]; then
         # Run API server directly with uvicorn (with PoL enabled)
@@ -40,17 +40,17 @@ start_server() {
         export SKIP_POW=true  # 개발 환경에서는 PoW 스킵
         export BLOCKCHAIN_ONLY=true  # No local model fallback - blockchain only!
         if [ -f "myenv/bin/python3" ]; then
-            PYTHONPATH=/Users/mnls/projects/dnai BLOCKCHAIN_ONLY=true ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true myenv/bin/uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/blyan BLOCKCHAIN_ONLY=true ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true myenv/bin/uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
         else
-            PYTHONPATH=/Users/mnls/projects/dnai BLOCKCHAIN_ONLY=true ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/blyan BLOCKCHAIN_ONLY=true ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
         fi
     else
         echo "Debug: Starting P2P node with command: python3 -m $module server $name $port"
         export BLOCKCHAIN_ONLY=true  # P2P nodes also use blockchain-only mode
         if [ -f "myenv/bin/python3" ]; then
-            PYTHONPATH=/Users/mnls/projects/dnai BLOCKCHAIN_ONLY=true myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/blyan BLOCKCHAIN_ONLY=true myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
         else
-            PYTHONPATH=/Users/mnls/projects/dnai python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/blyan python3 -m $module server $name $port > logs/${name}.log 2>&1 &
         fi
     fi
     

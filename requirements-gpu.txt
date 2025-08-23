@@ -10,6 +10,7 @@
 
 # Core dependencies for GPU nodes
 aiohttp
+aiohttp-cors
 httpx
 pyyaml
 structlog
@@ -34,10 +35,12 @@ scipy
 psutil
 pydantic
 python-dotenv
+cachetools>=5.3.2
 
 # Blockchain/crypto (for node registration)
 ecdsa
 cryptography
+base58>=2.1.0  # For IPFS CID validation
 
 # Data handling
 tiktoken

@@ -3,25 +3,13 @@
 
 echo "Available models:"
 echo "1. Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 (default, 30.5B total/3.3B active, FP8)"
-echo "2. Qwen/Qwen1.5-MoE-A2.7B (14.3B total/2.7B active params)"
-echo "3. EleutherAI/gpt-j-6b (6B params)"
-echo "4. bigscience/bloom-7b1 (7B params)"
 echo ""
 
-read -p "Select model (1-4) or enter custom model name: " choice
+read -p "Select model (1) or enter custom model name: " choice
 
 case $choice in
     1)
         MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
-        ;;
-    2)
-        MODEL="Qwen/Qwen1.5-MoE-A2.7B"
-        ;;
-    3)
-        MODEL="EleutherAI/gpt-j-6b"
-        ;;
-    4)
-        MODEL="bigscience/bloom-7b1"
         ;;
     *)
         MODEL="$choice"
@@ -55,12 +43,6 @@ DEFAULT_MODEL_EXPERTS = 16
 DEFAULT_MODEL_ACTIVE_PARAMS = "2.7B"  # Default
 DEFAULT_MODEL_TOTAL_PARAMS = "14.3B"  # Default
 
-# Fallback models for testing
-FALLBACK_MODELS = [
-    "EleutherAI/gpt-j-6b",
-    "bigscience/bloom-7b1",
-]
-
 # Model-specific settings
 MODEL_CONFIGS = {
     "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8": {
@@ -73,42 +55,6 @@ MODEL_CONFIGS = {
         "precision": "fp8",
         "max_sequence_length": 262144,
         "requires_transformers": ">=4.51.0",
-    },
-    "Qwen/Qwen1.5-MoE-A2.7B": {
-        "architecture": "mixture-of-experts",
-        "num_layers": 28,
-        "num_experts": 16,
-        "active_params": "2.7B",
-        "total_params": "14.3B",
-        "precision": "fp16",
-        "max_sequence_length": 32768,
-    },
-    "openai/gpt-oss-20b": {
-        "architecture": "gpt-neox",
-        "num_layers": 24,
-        "num_experts": 16,
-        "active_params": "20B",
-        "total_params": "20B",
-        "precision": "fp16",
-        "max_sequence_length": 2048,
-    },
-    "EleutherAI/gpt-j-6b": {
-        "architecture": "gpt-j",
-        "num_layers": 28,
-        "num_experts": 1,
-        "active_params": "6B",
-        "total_params": "6B",
-        "precision": "fp16",
-        "max_sequence_length": 2048,
-    },
-    "bigscience/bloom-7b1": {
-        "architecture": "bloom",
-        "num_layers": 30,
-        "num_experts": 1,
-        "active_params": "7.1B",
-        "total_params": "7.1B",
-        "precision": "fp16",
-        "max_sequence_length": 2048,
     },
 }
 
@@ -140,6 +86,6 @@ echo "✅ Model configuration updated"
 echo ""
 echo "To apply changes:"
 echo "1. Clear cache: ./clear_cache.sh"
-echo "2. Restart GPU node: systemctl restart dnai"
+echo "2. Restart GPU node: systemctl restart blyan"
 echo ""
 echo "Or set temporarily: export MODEL_NAME=$MODEL"

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """Model configuration"""
-    model_name: str = "Qwen/Qwen1.5-MoE-A2.7B"  # Use Qwen MoE model
+    model_name: str = "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"  # Use Qwen MoE model
     cache_dir: str = "/data/models"
     device: str = "auto"
     load_in_8bit: bool = True

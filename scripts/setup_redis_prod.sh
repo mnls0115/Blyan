@@ -39,7 +39,7 @@ REDIS
 
 # Copy ACL file
 echo "🔐 Setting up ACL..."
-sudo cp /root/dnai/config/redis-users.acl /etc/redis/users.acl
+sudo cp /root/blyan/config/redis-users.acl /etc/redis/users.acl
 sudo chmod 640 /etc/redis/users.acl
 sudo chown redis:redis /etc/redis/users.acl
 

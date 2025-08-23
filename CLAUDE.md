@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **GPU Nodes**: Distributed compute providers
   - Need `BLYAN_API_KEY` to register with main node
   - Must set `BLOCKCHAIN_ONLY=false` to actually serve models
-  - Use `run_gpu_node.py` as entrypoint (auto-downloads Qwen/Qwen1.5-MoE-A2.7B if no experts exist)
+  - Use `run_gpu_node.py` as entrypoint (auto-downloads Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 if no experts exist)
   - Require public IP/DNS and port forwarding
   - **Memory Optimization**: Uses MXFP4/NF4 quantization to fit model in 16GB GPU memory
   - See [GPU Node Deployment Guide](docs/GPU_NODE_DEPLOYMENT.md) for setup
@@ -45,13 +45,13 @@ Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system 
 ## 🚨 CRITICAL MODEL REQUIREMENTS
 
 **CONSISTENT QUANTIZATION ACROSS ALL NODES:**
-- **Model**: `Qwen/Qwen1.5-MoE-A2.7B` (https://huggingface.co/Qwen/Qwen1.5-MoE-A2.7B)
-- **Architecture**: Mixture-of-Experts (MoE) with 60 experts
-- **Size**: 14.3B total parameters, 2.7B active params per token
-- **Precision**: FP16 - consistent across all GPU nodes
-- **Memory Required**: ~28GB total in FP16 (can distribute across multiple GPUs)
-- **Why FP16**: Better compatibility, no BitsAndBytes dependency
-- **Loading**: `torch_dtype=torch.float16` with transformers library
+- **Model**: `Qwen/Qwen3-30B-A3B-Instruct-2507-FP8` (https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8)
+- **Architecture**: Mixture-of-Experts (MoE) with 128 experts
+- **Size**: 30.5B total parameters, 3.3B active params per token
+- **Precision**: FP8 - consistent across all GPU nodes
+- **Memory Required**: Optimized for 16GB+ GPUs with FP8 quantization
+- **Why FP8**: Better memory efficiency and performance
+- **Loading**: `torch_dtype=auto` with transformers library
 - **NO mock models or hardcoded responses**
 - **Blockchain-first inference** - all weights from blockchain
 
@@ -95,7 +95,7 @@ from backend.core.chain import Chain
 root_dir = Path("./data")
 meta_chain = Chain(root_dir, "A")
 spec = {
-    "model_name": "gpt_oss_20b",  # Must match model in ./models/ directory
+    "model_name": "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",  # Must match model in ./models/ directory
     "architecture": "mixture-of-experts", 
     "num_layers": 24,
     "num_experts": 16,
@@ -134,8 +134,8 @@ apt install -y python3 python3-pip python3-venv git curl wget htop nginx
 
 # 3. Clone repository
 cd /root
-git clone https://github.com/mnls0115/Blyan.git dnai
-cd dnai
+git clone https://github.com/mnls0115/Blyan.git blyan
+cd blyan
 
 # 4. Create and activate virtual environment
 python3 -m venv .venv
@@ -152,20 +152,20 @@ Create a systemd service for automatic startup and management:
 
 ```bash
 # Create service file
-cat > /etc/systemd/system/dnai.service << 'EOF'
+cat > /etc/systemd/system/blyan.service << 'EOF'
 [Unit]
-Description=DNAI API Server
+Description=BLYAN API Server
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/dnai
-Environment="PATH=/root/dnai/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-Environment="PYTHONPATH=/root/dnai"
+WorkingDirectory=/root/blyan
+Environment="PATH=/root/blyan/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PYTHONPATH=/root/blyan"
 Environment="SKIP_DB_INIT=true"
-ExecStart=/root/dnai/.venv/bin/python -m api.server
+ExecStart=/root/blyan/.venv/bin/python -m api.server
 Restart=always
 RestartSec=5
 KillSignal=SIGINT
@@ -178,28 +178,28 @@ EOF
 
 # Enable and start service
 systemctl daemon-reload
-systemctl enable dnai
-systemctl start dnai
-systemctl status dnai --no-pager
+systemctl enable blyan
+systemctl start blyan
+systemctl status blyan --no-pager
 ```
 
 ### Service Management Commands
 ```bash
 # Check service status
-systemctl status dnai
+systemctl status blyan
 
 # View logs
-journalctl -u dnai -f  # Real-time logs
-journalctl -u dnai -n 100  # Last 100 lines
+journalctl -u blyan -f  # Real-time logs
+journalctl -u blyan -n 100  # Last 100 lines
 
 # Restart service (after code changes)
-systemctl restart dnai
+systemctl restart blyan
 
 # Stop service
-systemctl stop dnai
+systemctl stop blyan
 
 # Start service
-systemctl start dnai
+systemctl start blyan
 ```
 
 ### Nginx Configuration (Optional - for domain setup)
@@ -217,7 +217,7 @@ server {
     }
 
     location / {
-        root /root/dnai/frontend;
+        root /root/blyan/frontend;
         index index.html;
         try_files $uri $uri/ /index.html;
     }
@@ -230,9 +230,9 @@ For updating code without losing data:
 #!/bin/bash
 # Save as update.sh
 
-cd /root/dnai
+cd /root/blyan
 git pull origin main
-systemctl restart dnai
+systemctl restart blyan
 echo "✅ Server updated and restarted"
 ```
 
@@ -433,13 +433,13 @@ await coordinator.run_learning_round(
 python3 scripts/extract_individual_experts.py
 
 # Upload full MoE model (requires candidate-loss parameter) - creates single expert block
-python miner/upload_moe_parameters.py --address alice --model-file ./models/gpt_oss_20b --meta-hash <full-meta-hash> --candidate-loss 0.8
+python miner/upload_moe_parameters.py --address alice --model-file ./models/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 --meta-hash <full-meta-hash> --candidate-loss 0.8
 
 # Get correct meta hash
 curl -s http://127.0.0.1:8000/chain/A/blocks | grep -o '"hash":"[^"]*"' | head -1
 
 # Test MoE extraction (dry-run)
-python miner/upload_moe_parameters.py --address alice --model-file ./models/gpt_oss_20b --meta-hash <hash> --candidate-loss 0.8 --dry-run
+python miner/upload_moe_parameters.py --address alice --model-file ./models/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 --meta-hash <hash> --candidate-loss 0.8 --dry-run
 
 # Run distributed demo
 python scripts/demo_distributed_moe.py

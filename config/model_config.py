@@ -11,11 +11,7 @@ DEFAULT_MODEL_EXPERTS = 128  # 128 experts total
 DEFAULT_MODEL_ACTIVE_PARAMS = "3.3B"  # 3.3B activated parameters
 DEFAULT_MODEL_TOTAL_PARAMS = "30.5B"  # 30.5B total parameters
 
-# Fallback models for testing
-FALLBACK_MODELS = [
-    "EleutherAI/gpt-j-6b",
-    "bigscience/bloom-7b1",
-]
+# No fallback models - use only the production model
 
 # Model-specific settings
 MODEL_CONFIGS = {
@@ -37,33 +33,6 @@ MODEL_CONFIGS = {
         "quantization": "fp8",
         "thinking_mode": False,  # Non-thinking mode only
         "enable_thinking": False
-    },
-    "Qwen/Qwen1.5-MoE-A2.7B": {
-        "architecture": "mixture-of-experts",
-        "num_layers": 28,
-        "num_experts": 16,
-        "active_params": "2.7B",
-        "total_params": "14.3B",
-        "precision": "fp16",
-        "max_sequence_length": 32768,
-    },
-    "openai/gpt-oss-20b": {
-        "architecture": "gpt-neox",
-        "num_layers": 24,
-        "num_experts": 16,
-        "active_params": "20B",
-        "total_params": "20B",
-        "precision": "fp16",
-        "max_sequence_length": 2048,
-    },
-    "EleutherAI/gpt-j-6b": {
-        "architecture": "gpt-j",
-        "num_layers": 28,
-        "num_experts": 1,
-        "active_params": "6B",
-        "total_params": "6B",
-        "precision": "fp16",
-        "max_sequence_length": 2048,
     },
 }
 

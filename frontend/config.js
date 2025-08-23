@@ -1,18 +1,19 @@
 // API Configuration
 const API_CONFIG = {
-    // 🔧 CONFIGURATION FOR RUNPOD GPU NODE
+    // 🔧 CONFIGURATION FOR API ENDPOINTS
 
-    // Option 1: Direct RunPod IP (replace YOUR_RUNPOD_IP with actual IP)
-    baseURL: 'http://YOUR_RUNPOD_IP:8002',
+    // Use main server API (Digital Ocean - HTTPS enabled)
+    baseURL: 'https://blyan.com/api',
 
-    // Option 2: Environment variable (set RUNPOD_IP in browser console)
-    // baseURL: window.RUNPOD_IP ? `http://${window.RUNPOD_IP}:8002` : 'http://127.0.0.1:8000',
+    // Alternative configurations:
+    // Option 1: Direct GPU node (requires HTTPS proxy or local dev)
+    // baseURL: 'https://your-gpu-node.com:8002',
 
-    // Option 3: Auto-detect from current domain
-    // baseURL: `${window.location.protocol}//${window.location.hostname}:8002`,
-
-    // Option 4: Local development (uncomment for local testing)
+    // Option 2: Local development (browser must allow mixed content)
     // baseURL: 'http://127.0.0.1:8002',
+
+    // Option 3: Environment variable
+    // baseURL: window.API_URL || 'https://blyan.com/api',
 
     // Individual endpoints
     balance: '/balance/',

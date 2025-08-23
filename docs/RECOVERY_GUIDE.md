@@ -15,7 +15,7 @@ pkill -f uvicorn
 pkill -9 -f "python.*api.server"
 
 # Start in minimal mode
-cd /root/dnai
+cd /root/blyan
 ./scripts/minimal_start.sh
 ```
 
@@ -38,12 +38,12 @@ export ENABLE_POL=false                  # Disable PoL validation
 
 ```bash
 # Restart with minimal mode
-systemctl stop dnai
+systemctl stop blyan
 export BLYAN_MINIMAL_MODE=true
-systemctl start dnai
+systemctl start blyan
 
 # Check logs
-journalctl -u dnai -f
+journalctl -u blyan -f
 
 # Verify health endpoint
 curl http://localhost:8000/health
@@ -55,10 +55,10 @@ curl http://localhost:8000/health
 
 ```bash
 # View recent errors
-tail -n 200 /root/dnai/api.log | grep -E "ERROR|Exception|Traceback"
+tail -n 200 /root/blyan/api.log | grep -E "ERROR|Exception|Traceback"
 
 # Check systemd logs
-journalctl -u dnai -n 100 --no-pager
+journalctl -u blyan -n 100 --no-pager
 
 # Test health endpoint
 curl -v http://localhost:8000/health
@@ -90,19 +90,19 @@ Once the server is running in minimal mode:
 ```bash
 export BLYAN_MINIMAL_MODE=false
 export BLOCKCHAIN_ONLY=true
-systemctl restart dnai
+systemctl restart blyan
 ```
 
 ### Step 2: Enable P2P (if needed)
 ```bash
 export P2P_ENABLE=true
-systemctl restart dnai
+systemctl restart blyan
 ```
 
 ### Step 3: Enable Security Monitoring
 ```bash
 export BLYAN_DISABLE_SECURITY_MONITOR=false
-systemctl restart dnai
+systemctl restart blyan
 ```
 
 ### Step 4: Full Service
@@ -114,7 +114,7 @@ unset DISABLE_PIPELINE_ROUND
 unset DISABLE_GRPC
 unset P2P_ENABLE
 unset BLYAN_DISABLE_SECURITY_MONITOR
-systemctl restart dnai
+systemctl restart blyan
 ```
 
 ## Prevention Measures
@@ -124,12 +124,12 @@ systemctl restart dnai
 Add to monitoring system:
 ```bash
 # Cron job for health monitoring
-*/5 * * * * curl -f http://localhost:8000/health || systemctl restart dnai
+*/5 * * * * curl -f http://localhost:8000/health || systemctl restart blyan
 ```
 
 ### 2. Automatic Recovery Script
 
-Create `/root/dnai/scripts/auto_recovery.sh`:
+Create `/root/blyan/scripts/auto_recovery.sh`:
 ```bash
 #!/bin/bash
 # Auto-recovery script
@@ -148,13 +148,13 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     
     # Progressive degradation
     if [ $RETRY_COUNT -eq 0 ]; then
-        systemctl restart dnai
+        systemctl restart blyan
     elif [ $RETRY_COUNT -eq 1 ]; then
         export P2P_ENABLE=false
-        systemctl restart dnai
+        systemctl restart blyan
     else
         export BLYAN_MINIMAL_MODE=true
-        systemctl restart dnai
+        systemctl restart blyan
     fi
     
     sleep 30
@@ -167,7 +167,7 @@ exit 1
 
 ### 3. Systemd Service Hardening
 
-Update `/etc/systemd/system/dnai.service`:
+Update `/etc/systemd/system/blyan.service`:
 ```ini
 [Service]
 # ... existing config ...
@@ -203,7 +203,7 @@ ExecStartPost=/usr/bin/curl -f http://localhost:8000/health
 
 Run integration tests:
 ```bash
-cd /root/dnai
+cd /root/blyan
 python tests/test_health_endpoint.py
 ```
 
@@ -224,5 +224,5 @@ If recovery fails after all attempts:
    ```bash
    git log --oneline -10
    git checkout <good-commit-hash>
-   systemctl restart dnai
+   systemctl restart blyan
    ```

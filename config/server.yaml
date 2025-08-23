@@ -50,7 +50,7 @@ server:
       default:
         prompt_per_1k: 0.001
         completion_per_1k: 0.003
-      gpt_oss_20b:
+      qwen3-30b-a3b-instruct-2507-fp8:
         prompt_per_1k: 0.001
         completion_per_1k: 0.003
       gpt_oss_120b:
@@ -70,7 +70,7 @@ server:
     
   # Model versioning
   versioning:
-    default_model: gpt_oss_20b
+    default_model: qwen3-30b-a3b-instruct-2507-fp8
     default_version: v1.0.0
     enforce_hash_validation: true
     allow_version_fallback: true

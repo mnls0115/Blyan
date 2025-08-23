@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Secure Qwen1.5-MoE-A2.7B Upload from Runpod to Main Node
+Secure Qwen3-30B-A3B-Instruct-2507-FP8 Upload from Runpod to Main Node
 Handles model processing on GPU nodes and secure upload to main chain
 """
 
@@ -234,7 +234,7 @@ class SecureMoEUploader:
     
     def run_secure_upload(self) -> Dict:
         """Run the complete secure upload process"""
-        logger.info("🚀 Starting secure Qwen1.5-MoE-A2.7B upload...")
+        logger.info("🚀 Starting secure Qwen3-30B-A3B-Instruct-2507-FP8 upload...")
         
         # Step 1: Verify connection
         if not self.verify_main_node_connection():
@@ -288,7 +288,7 @@ def main():
             api_url=os.getenv("AIBLOCK_API_URL", "https://blyan.com/api"),
             node_id=os.getenv("BLYAN_NODE_ID"),
             node_token=os.getenv("BLYAN_MAIN_NODE_TOKEN"),
-            model_path=os.getenv("MODEL_PATH", "./Qwen1.5-MoE-A2.7B/pytorch_model.bin"),
+            model_path=os.getenv("MODEL_PATH", "./Qwen/Qwen3-30B-A3B-Instruct-2507-FP8/pytorch_model.bin"),
             meta_hash=os.getenv("META_HASH")
         )
         

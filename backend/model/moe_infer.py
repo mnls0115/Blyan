@@ -495,7 +495,7 @@ class MoEModelManager:
                     # Load tokenizer only (not the full model)
                     from .arch import ModelWrapper
                     model_spec = self._extract_model_spec()
-                    model_name = model_spec.get('model_name', 'gpt2')
+                    model_name = model_spec.get('model_name', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8')
                     
                     # Create minimal wrapper for tokenizer only
                     import os
@@ -634,10 +634,8 @@ class MoEModelManager:
                 from transformers import AutoModelForCausalLM, AutoTokenizer
                 import torch
                 
-                # Load model and tokenizer
-                model_name = "gpt2"  # Use smaller model for faster testing
-                if os.getenv('USE_FULL_MODEL', 'false').lower() == 'true':
-                    model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+                # Load Qwen3-30B model ONLY
+                model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
                 
                 tokenizer = AutoTokenizer.from_pretrained(model_name)
                 if not tokenizer.pad_token:
@@ -681,7 +679,7 @@ class MoEModelManager:
             # Legacy mode (for development only) - will be removed
             from .arch import ModelWrapper
             model_spec = self._extract_model_spec()
-            model_name = model_spec.get('model_name', 'gpt_oss_20b')
+            model_name = model_spec.get('model_name', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8')
             
             # Create model wrapper with fallback disabled
             wrapper = ModelWrapper(model_name, allow_mock_fallback=False)
@@ -722,19 +720,49 @@ class MoEModelManager:
     
     def _no_experts_available_response(self, prompt: str) -> str:
         """
-        Response when no experts are available in blockchain.
-        This is NOT a fallback - it's an error message prompting upload.
+        When no experts in blockchain, load Qwen3-30B directly and generate.
         """
-        return (
-            "⚠️ No experts found in blockchain. System requires expert upload:\n\n"
-            "1. On RunPod GPU node:\n"
-            "   - Download model: huggingface-cli download <model>\n"
-            "   - Extract experts: python scripts/extract_individual_experts.py\n\n"
-            "2. Upload to blockchain:\n"
-            "   python miner/upload_moe_parameters.py --model-file ./models/gpt_oss_20b\n\n"
-            "3. Experts will be stored as immutable blockchain blocks\n\n"
-            "This ensures true decentralization - no centralized model storage!"
-        )
+        try:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            import torch
+            
+            model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            
+            # Load model
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            if not tokenizer.pad_token:
+                tokenizer.pad_token = tokenizer.eos_token
+                
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype="auto",  # FP8 for Qwen3
+                device_map="auto" if device == "cuda" else None,
+                low_cpu_mem_usage=True
+            )
+            
+            # Generate
+            inputs = tokenizer(prompt, return_tensors="pt")
+            if device == "cuda":
+                inputs = {k: v.to("cuda") for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=100,
+                    temperature=0.7,
+                    do_sample=True,
+                    pad_token_id=tokenizer.pad_token_id
+                )
+            
+            response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            if response.startswith(prompt):
+                response = response[len(prompt):].strip()
+            
+            return response
+            
+        except Exception as e:
+            return f"Error loading model: {str(e)}"
     
     def _simulate_expert_response(self, prompt: str, selected_experts: List[str]) -> str:
         """Simulate expert responses when real model isn't available."""
@@ -800,9 +828,7 @@ class MoEModelManager:
                 from transformers import AutoModelForCausalLM
                 import torch
                 
-                model_name = "gpt2"  # Default to small model
-                if os.getenv('USE_FULL_MODEL', 'false').lower() == 'true':
-                    model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+                model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"  # Production model only
                 
                 device = "cuda" if torch.cuda.is_available() else "cpu"
                 self._base_model = AutoModelForCausalLM.from_pretrained(

@@ -98,8 +98,8 @@ curl -s -X POST http://localhost:8001/inference \
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/blyan-network/dnai.git
-cd dnai
+git clone https://github.com/blyan-network/blyan.git
+cd blyan
 ```
 
 ### 2. Setup Python Environment
