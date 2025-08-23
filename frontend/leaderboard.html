@@ -280,9 +280,9 @@
             }
         }
     </style>
-    <script src="language.js"></script>
-    <script src="config.js"></script>
-    <script src="common-header.js"></script>
+    <script src="language.js?v=3"></script>
+    <script src="config.js?v=3"></script>
+    <script src="common-header.js?v=3"></script>
 </head>
 <body>
     <div id="header-container"></div>
@@ -416,7 +416,7 @@
             if (!userAddress) return;
 
             try {
-                const API_BASE = 'https://blyan.com/api';
+                const API_BASE = API_CONFIG.baseURL;
                 const response = await fetch(`${API_BASE}/leaderboard/me/summary?address=${userAddress}`);
                 
                 if (response.ok) {
@@ -500,7 +500,7 @@
 
         async function loadNodesLeaderboard() {
             try {
-                const API_BASE = 'https://blyan.com/api';
+                const API_BASE = API_CONFIG.baseURL;
                 const response = await fetch(`${API_BASE}/leaderboard/nodes?limit=50`);
                 const data = await response.json();
 
@@ -540,7 +540,7 @@
 
         async function loadExpertsLeaderboard() {
             try {
-                const API_BASE = 'https://blyan.com/api';
+                const API_BASE = API_CONFIG.baseURL;
                 const response = await fetch(`${API_BASE}/leaderboard/experts?limit=50`);
                 const data = await response.json();
 
@@ -576,7 +576,7 @@
 
         async function loadUsersLeaderboard() {
             try {
-                const API_BASE = 'https://blyan.com/api';
+                const API_BASE = API_CONFIG.baseURL;
                 const response = await fetch(`${API_BASE}/leaderboard/users?limit=50`);
                 const data = await response.json();
 
@@ -632,7 +632,7 @@
 
             try {
                 // Refresh cache on server
-                const API_BASE = 'https://blyan.com/api';
+                const API_BASE = API_CONFIG.baseURL;
                 await fetch(`${API_BASE}/leaderboard/refresh`, { method: 'POST' });
                 
                 // Reload data
