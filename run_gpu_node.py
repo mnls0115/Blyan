@@ -59,12 +59,16 @@ except ImportError:
         return {}
 
 # Configuration
-PORT = int(os.environ.get('NODE_PORT', 8002))
+PORT = int(os.environ.get('NODE_PORT', '8001'))
 MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL', 'https://blyan.com/api')
 DATA_DIR = Path(os.environ.get('BLYAN_DATA_DIR', './data'))
-MODEL_NAME = os.environ.get('MODEL_NAME', DEFAULT_MODEL_NAME)  # Use centralized default
+MODEL_NAME = os.environ.get('MODEL_NAME', DEFAULT_MODEL_NAME)
 SKIP_POL = os.environ.get('SKIP_POL', 'true').lower() == 'true'
-AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'true').lower() == 'true'  # Auto-upload by default
+AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'true').lower() == 'true'
+
+# Optional: Use custom public IP/hostname if provided, otherwise auto-detect
+PUBLIC_HOST = os.environ.get('PUBLIC_HOST', '')  # Can be IP, domain, or empty for auto-detect
+PUBLIC_PORT = int(os.environ.get('PUBLIC_PORT', str(PORT)))  # Port accessible from outside (may differ due to NAT/proxy)
 
 # Model precision is now auto-detected from model config
 # FP8 for Qwen3-30B, FP16 for others
@@ -1537,18 +1541,17 @@ class BlyanGPUNode:
         runner = web.AppRunner(app)
         await runner.setup()
         
-        # Find available port
+        # Start server on configured port
         port = self.port
-        for _ in range(10):
-            try:
-                site = web.TCPSite(runner, '0.0.0.0', port)
-                await site.start()
-                self.port = port
-                break
-            except OSError:
-                port += 1
-        
-        logger.info(f"Server running on http://0.0.0.0:{self.port}")
+        logger.info(f"🚀 Starting server on port {port}")
+        try:
+            site = web.TCPSite(runner, '0.0.0.0', port)
+            await site.start()
+            logger.info(f"✅ Server running on http://0.0.0.0:{self.port}")
+        except OSError as e:
+            logger.error(f"❌ Failed to start server on port {port}: {e}")
+            logger.info("💡 Try setting a different port with NODE_PORT environment variable")
+            raise
         
         # Register with main node
         await self.register_with_main()
@@ -1559,12 +1562,20 @@ class BlyanGPUNode:
             import httpx
             
             async with httpx.AsyncClient(timeout=10.0) as client:
-                # Get public IP
-                try:
-                    resp = await client.get("https://api.ipify.org")
-                    public_ip = resp.text.strip() if resp.status_code == 200 else "unknown"
-                except:
-                    public_ip = "unknown"
+                # Determine public host - use provided or auto-detect
+                if PUBLIC_HOST:
+                    # User provided a specific host (IP or domain)
+                    public_host = PUBLIC_HOST
+                    logger.info(f"📡 Using configured public host: {public_host}")
+                else:
+                    # Auto-detect public IP
+                    try:
+                        resp = await client.get("https://api.ipify.org")
+                        public_host = resp.text.strip() if resp.status_code == 200 else "unknown"
+                        logger.info(f"📡 Auto-detected public IP: {public_host}")
+                    except Exception as e:
+                        logger.warning(f"Could not detect public IP: {e}")
+                        public_host = "unknown"
                 
                 # Get available experts for registration
                 available_experts = []
@@ -1579,20 +1590,24 @@ class BlyanGPUNode:
                 except Exception as e:
                     logger.warning(f"Could not enumerate experts for registration: {e}")
                 
-                # Register with precision info
+                # Register with main node
                 data = {
                     "node_id": self.node_id,
-                    "host": public_ip,
-                    "port": self.port,
-                    "available_experts": available_experts,  # This field is required
+                    "host": public_host,
+                    "port": PUBLIC_PORT,  # Use the publicly accessible port
+                    "available_experts": available_experts,
                     "node_type": "gpu",
                     "gpu_info": self.gpu_info,
                     "chains": list(self.chains.keys()),
                     "model_ready": self.model_manager is not None,
-                    "genesis_hash": self.genesis_hash,  # Include genesis hash for verification
-                    "precision": self.precision,  # Report auto-detected precision
-                    "supports_int8": False  # INT8 not used
+                    "genesis_hash": self.genesis_hash,
+                    "precision": self.precision,
+                    "supports_int8": False
                 }
+                
+                logger.info(f"📝 Registering with host={public_host}, port={PUBLIC_PORT}")
+                if PUBLIC_PORT != self.port:
+                    logger.info(f"   (Internal port: {self.port}, Public port: {PUBLIC_PORT})")
                 
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data)
                 if resp.status_code == 200:

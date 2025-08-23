@@ -106,7 +106,7 @@ print("✅ Meta chain initialized with MoE architecture.")
 PY
 ```
 
-**⚠️ Important**: The `model_name` must match a directory in `./models/` (e.g., `./models/gpt-oss-20b/`)
+**⚠️ Important**: The `model_name` must match a directory in `./models/`
 
 **Note**: DAG validation is temporarily optimized for performance with large expert uploads. Cross-chain dependencies between meta-chain (A) and parameter-chain (B) have been resolved.
 

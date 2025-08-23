@@ -23,23 +23,24 @@ sudo install -d -m 755 /etc/blyan
 
 # Create environment file (safer than -e flags)
 sudo tee /etc/blyan/blyan-node.env >/dev/null <<'EOF'
-# REQUIRED - Get from main node admin
-BLYAN_API_KEY=your_api_key_here           # NEVER commit this
-MAIN_SERVER_URL=https://blyan.com/api
-NODE_ID=gpu-$(hostname -s)
-NODE_PORT=8001
+# REQUIRED - Main node connection
+MAIN_NODE_URL=https://blyan.com/api       # Main node API endpoint
+BLYAN_API_KEY=your_api_key_here           # Get from main node admin (if required)
 
-# REQUIRED - Your public IP or DNS
-RUNPOD_PUBLIC_IP=your.public.ip.here      # Use: curl -s https://checkip.amazonaws.com
+# Network Configuration
+NODE_PORT=8001                            # Port to run server on (default: 8001)
+# PUBLIC_HOST=                            # Optional: Your public IP/domain (auto-detected if empty)
+# PUBLIC_PORT=8001                        # Optional: Public-facing port if different (e.g., behind NAT)
 
 # REQUIRED for actual model serving
 BLOCKCHAIN_ONLY=false                     # Must be false to load model
-# MODEL_QUANTIZATION=8bit                 # WARNING: Only for inference nodes, breaks learning!
 
-# OPTIONAL
+# OPTIONAL Configuration
+NODE_ID=gpu-$(hostname -s)                # Unique node identifier
 DONOR_MODE=false                          # true = help free-tier, no rewards
-# AVAILABLE_EXPERT=gpt-oss-20b           # Specify expert to load
+# MODEL_NAME=Qwen/Qwen3-30B-A3B-Instruct-2507-FP8  # Model to load
 # HF_TOKEN=your_huggingface_token        # If using private models
+# BLYAN_DATA_DIR=/workspace/blyan/data   # Data directory path
 EOF
 
 # Secure the file
@@ -146,11 +147,47 @@ python runpod_node.py
 - `requirements-gpu.txt` - GPU node dependencies
 - `.env` - Configuration (optional, can use environment variables directly)
 
+## Network Configuration Scenarios
+
+### Direct Internet Access (Simple)
+```bash
+# Server has public IP, no NAT/proxy
+NODE_PORT=8001
+# PUBLIC_HOST and PUBLIC_PORT not needed (auto-detected)
+```
+
+### Behind NAT/Firewall
+```bash
+# Server behind NAT with port forwarding
+NODE_PORT=8001                    # Internal port
+PUBLIC_HOST=203.0.113.42         # Your public IP
+PUBLIC_PORT=8001                  # External port (must be forwarded)
+```
+
+### Behind Proxy (Cloud Providers)
+```bash
+# Using proxy URL (e.g., cloud provider endpoints)
+NODE_PORT=8001                    # Internal port
+PUBLIC_HOST=node1.proxy.example.com  # Proxy domain
+PUBLIC_PORT=443                   # Proxy's public port
+```
+
+### Dynamic IP with Domain
+```bash
+# Using dynamic DNS
+NODE_PORT=8001
+PUBLIC_HOST=mynode.dyndns.org    # Your dynamic DNS domain
+PUBLIC_PORT=8001
+```
+
 ## Common Issues & Solutions
 
 ### Registration Fails (400 Error)
-- **Cause**: Invalid or unreachable IP
-- **Fix**: Set `RUNPOD_PUBLIC_IP` to actual public IP
+- **Cause**: Invalid or unreachable IP/port
+- **Fix**: 
+  - Leave `PUBLIC_HOST` empty for auto-detection, or
+  - Set `PUBLIC_HOST` to your actual public IP or domain
+  - Set `PUBLIC_PORT` if different from `NODE_PORT` (NAT/proxy scenarios)
 - **Get IP**: `curl -s https://checkip.amazonaws.com`
 
 ### Authentication Error (401)
@@ -226,9 +263,23 @@ docker restart blyan-node
 ## Important Notes
 
 ### Environment Variables
-- **`.env` file support**: Added via python-dotenv (optional)
-- **Direct environment**: Can use `export VAR=value` or Docker `--env-file`
-- **BLOCKCHAIN_ONLY**: Defaults to `true` in code, MUST set to `false` for real model serving
+
+#### Required
+- **`BLOCKCHAIN_ONLY=false`**: Must be false to serve models (defaults to true)
+- **`MAIN_NODE_URL`**: URL of main node API (default: https://blyan.com/api)
+
+#### Network Configuration
+- **`NODE_PORT`**: Port to run server on (default: 8001)
+- **`PUBLIC_HOST`**: Public IP/domain for registration (auto-detected if empty)
+- **`PUBLIC_PORT`**: External port if different from NODE_PORT (default: same as NODE_PORT)
+
+#### Optional
+- **`BLYAN_API_KEY`**: API key if required by main node
+- **`NODE_ID`**: Unique identifier (default: gpu_node_<pid>)
+- **`MODEL_NAME`**: Model to load (default: Qwen/Qwen3-30B-A3B-Instruct-2507-FP8)
+- **`BLYAN_DATA_DIR`**: Data directory (default: ./data)
+- **`DONOR_MODE`**: Enable donor mode (default: false)
+- **`HF_TOKEN`**: HuggingFace token for private models
 
 ### Endpoint Differences
 - GPU node health: `GET /` (not `/health`)
