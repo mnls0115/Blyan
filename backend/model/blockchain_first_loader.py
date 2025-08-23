@@ -12,6 +12,17 @@ from pathlib import Path
 from backend.core.chain import Chain
 from backend.core.param_index import ParameterIndex
 
+try:
+    from config.model_profile import LAYERS, MOE, get_total_experts
+    PROFILE_AVAILABLE = True
+except ImportError:
+    PROFILE_AVAILABLE = False
+    # Fallback values
+    LAYERS = {"num_layers": 48}
+    MOE = {"num_experts": 128}
+    def get_total_experts():
+        return 6144
+
 
 class BlockchainOnlyModelManager:
     """

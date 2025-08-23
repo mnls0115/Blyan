@@ -667,9 +667,14 @@ class BlyanGPUNode:
                 logger.warning(f"    Error getting block count: {e}")
             
             if available_experts or actual_block_count > 100:  # If we have experts OR many blocks
-                logger.info(f"✅ Found {len(available_experts)} experts in blockchain (total blocks: {actual_block_count})")
-                for expert in available_experts[:5]:  # Show first 5
-                    logger.info(f"  - {expert}")
+                logger.info(f"✅ {len(available_experts)} experts loaded from blockchain (total blocks: {actual_block_count})")
+                if len(available_experts) > 5:
+                    logger.info(f"  Showing first 5 experts:")
+                    for expert in available_experts[:5]:
+                        logger.info(f"    - {expert}")
+                else:
+                    for expert in available_experts:
+                        logger.info(f"    - {expert}")
             else:
                 logger.info(f"📦 No experts in blockchain yet (blocks: {actual_block_count})")
                 if AUTO_UPLOAD:
@@ -1735,8 +1740,8 @@ class BlyanGPUNode:
                     logger.info("✅ Sync successful!")
                     retry_interval = 30  # Reset interval
                     
-                    # Try to register if we haven't
-                    await self.register_with_main()
+                    # Registration already happens at startup
+                    pass
                 else:
                     # Exponential backoff
                     retry_interval = min(retry_interval * 2, max_interval)
@@ -1937,16 +1942,23 @@ class BlyanGPUNode:
         if not sync_success:
             asyncio.create_task(self.periodic_sync())
         
-        # Register with network
-        asyncio.create_task(self.register_with_main())
+        # Registration already happens in start_server()
         
         # Final summary
         total_time = time.time() - startup_begin
         mins, secs = divmod(int(total_time), 60)
+        # Get expert count for summary
+        expert_count = 0
+        if self.model_manager and hasattr(self.model_manager, '_available_experts_cache'):
+            if self.model_manager._available_experts_cache:
+                expert_count = len(self.model_manager._available_experts_cache)
+        
         logger.info("\n" + "=" * 60)
         logger.info(f"🚀 NODE STARTUP COMPLETE")
         logger.info(f"⏱️  Total time: {mins:02d}:{secs:02d}")
         logger.info(f"📊 Blocks loaded: {len(self.chains['B']._hash_index) if hasattr(self.chains['B'], '_hash_index') else 0}")
+        if expert_count > 0:
+            logger.info(f"🤖 Experts loaded from blockchain: {expert_count}")
         logger.info(f"🌐 Server: http://0.0.0.0:{self.port}")
         logger.info(f"✅ Ready for inference requests")
         logger.info("=" * 60)
