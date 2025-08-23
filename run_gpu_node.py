@@ -1544,14 +1544,49 @@ class BlyanGPUNode:
         # Start server on configured port
         port = self.port
         logger.info(f"🚀 Starting server on port {port}")
+        
+        # Check what's using the port (diagnostic)
         try:
-            site = web.TCPSite(runner, '0.0.0.0', port)
-            await site.start()
-            logger.info(f"✅ Server running on http://0.0.0.0:{self.port}")
-        except OSError as e:
-            logger.error(f"❌ Failed to start server on port {port}: {e}")
-            logger.info("💡 Try setting a different port with NODE_PORT environment variable")
-            raise
+            import subprocess
+            result = subprocess.run(['lsof', '-i', f':{port}'], capture_output=True, text=True, timeout=2)
+            if result.stdout:
+                logger.warning(f"⚠️ Port {port} is already in use by:")
+                logger.warning(result.stdout)
+        except:
+            pass  # lsof might not be available
+        
+        # Check if we're in RunPod environment
+        if os.path.exists('/runpod') or os.path.exists('/workspace'):
+            logger.info("📍 Detected RunPod/cloud environment")
+            # RunPod HTTP Service uses 8001, we need a different port
+            if port == 8001:
+                logger.warning("⚠️ Port 8001 is reserved for RunPod HTTP Service proxy")
+                logger.info("💡 Using alternative port 8000 for internal server...")
+                port = 8000
+                self.port = 8000
+        
+        # Try to start server
+        max_retries = 3
+        for retry in range(max_retries):
+            try:
+                site = web.TCPSite(runner, '0.0.0.0', port)
+                await site.start()
+                logger.info(f"✅ Server running on http://0.0.0.0:{port}")
+                self.port = port  # Update port if changed
+                break
+            except OSError as e:
+                if "address already in use" in str(e).lower():
+                    if retry < max_retries - 1:
+                        # Try next port
+                        port += 1
+                        logger.warning(f"⚠️ Port {port-1} in use, trying port {port}...")
+                    else:
+                        logger.error(f"❌ Failed to start server after {max_retries} attempts")
+                        logger.info("💡 Set NODE_PORT to an available port (e.g., 8000, 8002, 8003)")
+                        raise
+                else:
+                    logger.error(f"❌ Failed to start server: {e}")
+                    raise
         
         # Register with main node
         await self.register_with_main()
@@ -1591,10 +1626,23 @@ class BlyanGPUNode:
                     logger.warning(f"Could not enumerate experts for registration: {e}")
                 
                 # Register with main node
+                # Format the endpoint URL properly
+                if public_host.startswith('http://') or public_host.startswith('https://'):
+                    # Host already includes protocol
+                    endpoint_url = public_host
+                    if not endpoint_url.endswith(str(PUBLIC_PORT)) and PUBLIC_PORT not in [80, 443]:
+                        endpoint_url = f"{endpoint_url}:{PUBLIC_PORT}"
+                elif 'proxy.runpod.net' in public_host:
+                    # RunPod proxy always uses HTTPS
+                    endpoint_url = f"https://{public_host}"
+                else:
+                    # Default to HTTP for regular hosts
+                    endpoint_url = f"http://{public_host}:{PUBLIC_PORT}"
+                
                 data = {
                     "node_id": self.node_id,
-                    "host": public_host,
-                    "port": PUBLIC_PORT,  # Use the publicly accessible port
+                    "host": endpoint_url,  # Send full URL instead of separate host:port
+                    "port": 443 if 'https://' in endpoint_url else PUBLIC_PORT,
                     "available_experts": available_experts,
                     "node_type": "gpu",
                     "gpu_info": self.gpu_info,
@@ -1605,9 +1653,9 @@ class BlyanGPUNode:
                     "supports_int8": False
                 }
                 
-                logger.info(f"📝 Registering with host={public_host}, port={PUBLIC_PORT}")
+                logger.info(f"📝 Registering with endpoint: {endpoint_url}")
                 if PUBLIC_PORT != self.port:
-                    logger.info(f"   (Internal port: {self.port}, Public port: {PUBLIC_PORT})")
+                    logger.info(f"   (Internal port: {self.port}, Public endpoint: {endpoint_url})")
                 
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data)
                 if resp.status_code == 200:

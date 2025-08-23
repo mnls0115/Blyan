@@ -1765,11 +1765,19 @@ class ExpertNodeServer:
                     )
                     print(f"🧠 Actual expert inference completed for {expert_name}")
                 except Exception as e:
-                    print(f"⚠️ Expert inference failed, falling back to mock: {e}")
-                    result = f"Expert {expert_name} processed: '{prompt[:50]}...'"
+                    print(f"❌ Expert inference failed: {e}")
+                    return web.json_response({
+                        "error": f"Expert inference failed: {str(e)}",
+                        "expert_name": expert_name,
+                        "status": "failed"
+                    }, status=500)
             else:
-                # Fallback to mock if MoE manager not available
-                result = f"Expert {expert_name} processed: '{prompt[:50]}...'"
+                # MoE manager not available - return proper error
+                return web.json_response({
+                    "error": "MoE manager not initialized. Blockchain model not loaded.",
+                    "expert_name": expert_name,
+                    "status": "unavailable"
+                }, status=503)
                 
             processing_time = time.time() - start_time
             
@@ -1834,13 +1842,30 @@ class ExpertNodeServer:
             response.headers['Cache-Control'] = 'no-cache'
             await response.prepare(request)
             
-            # Generate draft tokens quickly with reduced quality
-            # Mock for now - in production use lightweight model config
-            tokens = ["The", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"]
+            # Draft generation requires actual model
+            if not self.moe_manager:
+                await response.write(b"ERROR: Draft model not available - blockchain model not loaded\n")
+                return response
             
-            for i in range(min(draft_tokens, len(tokens))):
-                await response.write(f"TOKEN: {tokens[i]}\n".encode())
-                await asyncio.sleep(0.01)  # Fast generation
+            # Use actual model for draft generation with reduced compute
+            try:
+                # Generate draft tokens with lightweight settings
+                draft_result, _ = self.moe_manager.selective_generate(
+                    prompt=prefix,
+                    max_new_tokens=draft_tokens,
+                    top_k_experts=1,  # Use single expert for speed
+                    temperature=1.2   # Higher temp for draft diversity
+                )
+                
+                # Stream the generated tokens
+                tokens = draft_result.split()[:draft_tokens]
+                for token in tokens:
+                    await response.write(f"TOKEN: {token}\n".encode())
+                    await asyncio.sleep(0.01)
+                
+            except Exception as e:
+                await response.write(f"ERROR: Draft generation failed: {str(e)}\n".encode())
+                return response
             
             await response.write(b"DONE\n")
             return response
@@ -1859,15 +1884,44 @@ class ExpertNodeServer:
             candidate_tokens = data.get('candidate_tokens', [])
             sampling_seed = data.get('sampling_seed')
             
-            # Mock verification - in production, check against full model
-            # For now, accept first 2 tokens, reject rest
-            accepted = min(2, len(candidate_tokens))
+            # Verification requires actual model
+            if not self.moe_manager:
+                return web.json_response({
+                    "error": "Verification model not available - blockchain model not loaded",
+                    "status": "unavailable"
+                }, status=503)
             
-            return web.json_response({
-                "accepted": accepted,
-                "rejected_at": accepted if accepted < len(candidate_tokens) else None,
-                "node_id": self.node_id
-            })
+            # Verify tokens against actual model
+            try:
+                # Generate continuation with full model
+                full_result, _ = self.moe_manager.selective_generate(
+                    prompt=prefix,
+                    max_new_tokens=len(candidate_tokens),
+                    top_k_experts=3,  # Use more experts for accuracy
+                    temperature=0.1,  # Low temp for deterministic verification
+                    seed=sampling_seed
+                )
+                
+                # Compare generated tokens with candidates
+                generated_tokens = full_result.split()[:len(candidate_tokens)]
+                accepted = 0
+                for i, (candidate, generated) in enumerate(zip(candidate_tokens, generated_tokens)):
+                    if candidate.strip() == generated.strip():
+                        accepted += 1
+                    else:
+                        break  # Stop at first mismatch
+                
+                return web.json_response({
+                    "accepted": accepted,
+                    "rejected_at": accepted if accepted < len(candidate_tokens) else None,
+                    "node_id": self.node_id,
+                    "verified": True
+                })
+            except Exception as e:
+                return web.json_response({
+                    "error": f"Token verification failed: {str(e)}",
+                    "status": "failed"
+                }, status=500)
             
         except Exception as e:
             return web.json_response(

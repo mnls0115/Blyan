@@ -52,29 +52,37 @@ class BlockchainOnlyModelManager:
         
         # Get all blocks of type 'expert'
         all_blocks = self.param_chain.get_all_blocks()
+        print(f"   Total blocks in chain: {len(all_blocks)}")
         
+        expert_blocks_found = 0
         for block in all_blocks:
-            if hasattr(block, 'block_type') and block.block_type == 'expert':
-                # Check if this is the expert we're looking for
-                if hasattr(block, 'metadata'):
-                    metadata = json.loads(block.metadata) if isinstance(block.metadata, str) else block.metadata
-                    if metadata.get('expert_name') == expert_name:
-                        print(f"✅ Found {expert_name} in blockchain at block {block.hash[:8]}")
-                        
-                        # Load the expert weights
-                        try:
-                            from backend.model.arch import bytes_to_state_dict
-                            expert_weights = bytes_to_state_dict(block.data)
-                            
-                            # Cache it
-                            self.expert_cache[expert_name] = expert_weights
-                            return expert_weights
-                        except Exception as e:
-                            print(f"❌ Failed to load expert weights: {e}")
-                            return None
+            # Check both block and block.header for attributes
+            block_type = getattr(block, 'block_type', None) or getattr(block.header, 'block_type', None)
+            expert_name_attr = getattr(block, 'expert_name', None) or getattr(block.header, 'expert_name', None)
+            
+            if block_type == 'expert':
+                expert_blocks_found += 1
+                if expert_blocks_found <= 5:  # Show first 5 expert names for debugging
+                    print(f"   Found expert block: {expert_name_attr}")
+            
+            if block_type == 'expert' and expert_name_attr == expert_name:
+                print(f"✅ Found {expert_name} in blockchain at block {block.hash[:8]}")
+                
+                # Load the expert weights
+                try:
+                    from backend.model.arch import bytes_to_state_dict
+                    expert_weights = bytes_to_state_dict(block.data)
+                    
+                    # Cache it
+                    self.expert_cache[expert_name] = expert_weights
+                    return expert_weights
+                except Exception as e:
+                    print(f"❌ Failed to load expert weights: {e}")
+                    return None
         
         print(f"⚠️ Expert {expert_name} not found in blockchain")
-        print(f"   Available experts need to be uploaded via miner/upload_moe_parameters.py")
+        print(f"   Found {expert_blocks_found} total expert blocks, but none matched '{expert_name}'")
+        print(f"   The expert names might be formatted differently in the blockchain")
         return None
     
     def get_available_experts(self) -> List[str]:
@@ -109,12 +117,20 @@ class BlockchainOnlyModelManager:
         Generate response using ONLY blockchain experts.
         No fallback to local models.
         """
+        print(f"🎯 Generate called with experts: {selected_experts}")
+        
         # Load selected experts from blockchain
         loaded_experts = {}
         for expert_name in selected_experts:
+            print(f"  Loading {expert_name}...")
             expert_weights = self.load_expert(expert_name)
             if expert_weights:
                 loaded_experts[expert_name] = expert_weights
+                print(f"  ✅ Loaded {expert_name}")
+            else:
+                print(f"  ❌ Failed to load {expert_name}")
+        
+        print(f"📊 Loaded {len(loaded_experts)} out of {len(selected_experts)} experts")
         
         if not loaded_experts:
             # No experts found in blockchain

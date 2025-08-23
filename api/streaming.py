@@ -325,14 +325,14 @@ class StreamingChatHandler:
             
         except Exception as e:
             logger.error(f"Model generation failed: {e}")
-            # Ultimate fallback: error message
-            response_tokens = [
-                "Error:", "Model", "inference", "is", "currently", 
-                "unavailable.", "Please", "try", "again", "later", ".",
-            "First", ",", "we", "need", "to", "understand", "the", "context", ".",
-            "Then", ",", "we", "can", "explore", "the", "implications", ".",
-            "Finally", ",", "I'll", "provide", "some", "recommendations", "."
-        ]
+            # Properly handle error - don't fake a response
+            error_msg = f"Error: Model inference failed - {str(e)}"
+            await sse_queue.put({
+                "type": "error",
+                "error": error_msg,
+                "timestamp": time.time()
+            })
+            return  # Exit the generation task
         
         for i, token in enumerate(response_tokens):
             if cancel_event.is_set():

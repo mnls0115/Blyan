@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🎯 CRITICAL DEBUGGING PRINCIPLE
+**ALWAYS FIND THE ROOT CAUSE FIRST** before making any changes. Do not jump to solutions without understanding why something is broken. Investigate logs, check configurations, trace execution flow, and understand the actual problem before proposing fixes.
+
+## ⚠️ BLOCKCHAIN INFERENCE REMINDER
+**The user wants BLOCKCHAIN-BASED INFERENCE**, not local model loading:
+- Keep `BLOCKCHAIN_ONLY=true` (or unset, as true is the default)
+- Models should be reconstructed from blockchain blocks, NOT loaded from HuggingFace
+- This is the core principle of Blyan - truly decentralized AI through blockchain
+- GPU nodes should serve inference using expert blocks from the blockchain
+
 ## 🔐 CRITICAL SECURITY REMINDERS
 
 ### Main Node (Service Node) Security
