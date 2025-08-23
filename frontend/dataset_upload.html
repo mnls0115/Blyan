@@ -424,9 +424,7 @@
     <!-- JavaScript -->
     <script>
         let selectedFiles = [];
-        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-            ? 'http://127.0.0.1:8000' 
-            : 'https://blyan.com/api';
+        const API_BASE = 'https://blyan.com/api';
 
         // File upload handling
         const fileUploadArea = document.getElementById('fileUploadArea');

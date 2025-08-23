@@ -64,7 +64,7 @@ uv pip install -r requirements-gpu.txt
 cat > .env << 'EOF'
 # Node Configuration
 NODE_PORT=8002
-MAIN_NODE_URL=http://165.227.221.225:8000
+MAIN_NODE_URL=https://blyan.com/api
 
 # Model Configuration (auto-downloads on first run)
 MODEL_NAME=Qwen/Qwen3-30B-A3B-Instruct-2507-FP8
@@ -211,7 +211,7 @@ export LOAD_IN_4BIT=true  # For 4-bit quantization (requires bitsandbytes)
 ### Connection Issues
 ```bash
 # Check if main node is reachable
-curl http://165.227.221.225:8000/health
+curl https://blyan.com/api/health
 
 # Check firewall
 ufw status
@@ -311,4 +311,4 @@ export BLOCK_RUNTIME_ENABLE_VERIFICATION=true
 
 - **Logs**: Check `/workspace/blyan/gpu_node.log`
 - **GitHub Issues**: https://github.com/mnls0115/blyan/issues
-- **Main Node Status**: http://165.227.221.225:8000/health
+- **Main Node Status**: https://blyan.com/api/health

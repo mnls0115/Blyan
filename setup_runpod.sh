@@ -269,7 +269,7 @@ BLOCKCHAIN_ONLY=false
 SKIP_POL=true
 
 # Network
-MAIN_NODE_URL=https://blyan.com
+MAIN_NODE_URL=https://blyan.com/api
 BLYAN_API_KEY=${BLYAN_API_KEY:-}
 
 # Performance

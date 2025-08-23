@@ -60,7 +60,7 @@ except ImportError:
 
 # Configuration
 PORT = int(os.environ.get('NODE_PORT', 8002))
-MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL', 'http://165.227.221.225:8000')
+MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL', 'https://blyan.com/api')
 DATA_DIR = Path(os.environ.get('BLYAN_DATA_DIR', './data'))
 MODEL_NAME = os.environ.get('MODEL_NAME', DEFAULT_MODEL_NAME)  # Use centralized default
 SKIP_POL = os.environ.get('SKIP_POL', 'true').lower() == 'true'

@@ -73,7 +73,7 @@ docker run -d --name blyan-node \
 |----------|-------------|---------|----------|
 | `JOIN_CODE` | Enrollment code from blyan.com/contribute | - | Yes (first run) |
 | `PUBLIC_IP` | Your public IP address | auto | No |
-| `MAIN_NODE_URL` | Main node endpoint | http://165.227.221.225:8000 | No |
+| `MAIN_NODE_URL` | Main node endpoint | https://blyan.com/api | No |
 | `BLOCKCHAIN_ONLY` | Disable model serving | false | No |
 | `NODE_NAME` | Friendly name for your node | gpu-node | No |
 | `NODE_PORT` | Port for P2P communication | 8001 | No |
@@ -226,7 +226,7 @@ DATA_DIR=/mnt/large-disk/blyan docker-compose up -d
 **Problem**: Cannot connect to main node
 ```bash
 # Test connectivity
-docker exec blyan-node curl http://165.227.221.225:8000/health
+docker exec blyan-node curl https://blyan.com/api/health
 
 # Check firewall
 sudo ufw status

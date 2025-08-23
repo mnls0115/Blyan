@@ -21,7 +21,7 @@ services:
       - PUBLIC_IP=${PUBLIC_IP:-auto}
       
       # Main node URL (default: production)
-      - MAIN_NODE_URL=${MAIN_NODE_URL:-http://165.227.221.225:8000}
+      - MAIN_NODE_URL=${MAIN_NODE_URL:-https://blyan.com/api}
       
       # Enable model serving (not just blockchain)
       - BLOCKCHAIN_ONLY=${BLOCKCHAIN_ONLY:-false}
