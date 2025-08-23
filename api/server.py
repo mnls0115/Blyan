@@ -2048,6 +2048,7 @@ class RegisterNodeRequest(BaseModel):
     host: str
     port: int
     available_experts: List[str]
+    expert_metadata: Optional[Dict] = None  # New metadata system
     node_name: str = "Unnamed Node"
     resource_limit: str = "cpu-50"  # cpu-25, cpu-50, cpu-75, gpu-25, gpu-50, gpu-75
     node_type: str = "user_contributed"

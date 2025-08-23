@@ -1661,31 +1661,59 @@ class BlyanGPUNode:
                         logger.warning(f"Could not detect public IP: {e}")
                         public_host = "unknown"
                 
-                # Get available experts for registration
+                # Generate expert metadata instead of sending full list
                 available_experts = []
+                expert_metadata = None
                 try:
                     if self.model_manager:
-                        if hasattr(self.model_manager, "get_available_experts"):
-                            all_experts = self.model_manager.get_available_experts()
-                            # The main node needs actual expert names, not wildcards
-                            # But we can't send all 6144, so send a representative sample
-                            if len(all_experts) > 500:
-                                # Send a sample: first 2 experts from each layer
-                                logger.info(f"   Node has {len(all_experts)} experts, sending sample...")
-                                available_experts = []
-                                for layer_idx in range(48):
-                                    # Add first 2 experts from each layer as representatives
-                                    layer_experts = [f"layer{layer_idx}.expert{i}" for i in range(2)]
-                                    available_experts.extend(layer_experts)
-                                logger.info(f"   Sending {len(available_experts)} representative experts")
-                            else:
-                                available_experts = all_experts
-                        elif hasattr(self.model_manager, "_get_available_experts_for_layer"):
-                            for layer_id in range(24):
-                                layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
-                                available_experts.extend(layer_experts)
+                        # Check if we have full coverage (all 6144 experts)
+                        block_count = len(self.chains['B']._hash_index) if hasattr(self.chains['B'], '_hash_index') else 0
+                        
+                        if block_count >= 6144:  # Full model uploaded
+                            # Generate metadata for full coverage
+                            from backend.p2p.expert_metadata import ExpertMetadataGenerator
+                            
+                            num_layers = LAYERS["num_layers"] if PROFILE_AVAILABLE else 48
+                            num_experts = MOE["num_experts"] if PROFILE_AVAILABLE else 128
+                            
+                            expert_metadata = ExpertMetadataGenerator.generate_full_coverage(
+                                node_id=self.node_id,
+                                model_name=MODEL_NAME,
+                                num_layers=num_layers,
+                                num_experts_per_layer=num_experts
+                            )
+                            
+                            logger.info(f"   Generated metadata for {expert_metadata.total_experts} experts")
+                            logger.info(f"   Coverage: {expert_metadata.coverage_type.value}")
+                            logger.info(f"   Hash: {expert_metadata.experts_hash[:16]}...")
+                            
+                            # Send representative sample for current main node implementation
+                            # Main node will use metadata for full coverage verification
+                            logger.info("   Generating representative expert sample for registration...")
+
+                            # Sample experts evenly across all layers to show full coverage
+                            experts_per_layer = min(2, num_experts)  # Sample 2 experts per layer
+                            for layer_idx in range(num_layers):
+                                # Sample from different parts of each layer
+                                if num_experts >= 2:
+                                    sample_indices = [0, num_experts//2]  # First and middle
+                                else:
+                                    sample_indices = [0]
+
+                                for expert_idx in sample_indices:
+                                    available_experts.append(f"layer{layer_idx}.expert{expert_idx}")
+
+                            logger.info(f"   Generated {len(available_experts)} expert samples")
+                        else:
+                            # Partial coverage - enumerate what we have
+                            if hasattr(self.model_manager, "get_available_experts"):
+                                all_experts = self.model_manager.get_available_experts()
+                                available_experts = all_experts[:100]  # Limit for backward compat
+                                logger.info(f"   Partial coverage: {len(all_experts)} experts")
                 except Exception as e:
-                    logger.warning(f"Could not enumerate experts for registration: {e}")
+                    logger.warning(f"Could not generate expert metadata: {e}")
+                    # Fall back to empty list
+                    available_experts = []
                 
                 # Register with main node
                 # Format the endpoint URL properly
@@ -1707,7 +1735,7 @@ class BlyanGPUNode:
                     "node_id": self.node_id,
                     "host": endpoint_url,  # Send full URL instead of separate host:port
                     "port": 443 if 'https://' in endpoint_url else PUBLIC_PORT,
-                    "available_experts": available_experts,
+                    "available_experts": available_experts,  # Backward compatibility
                     "node_type": "gpu",
                     "gpu_info": self.gpu_info,
                     "chains": list(self.chains.keys()),
@@ -1716,6 +1744,11 @@ class BlyanGPUNode:
                     "precision": self.precision,
                     "supports_int8": False
                 }
+                
+                # Add metadata if available (new field for upgraded main nodes)
+                if expert_metadata:
+                    data["expert_metadata"] = expert_metadata.to_dict()
+                    logger.info(f"   Including expert metadata in registration")
                 
                 logger.info(f"📝 Registering with endpoint: {endpoint_url}")
                 logger.info(f"   Sending {len(available_experts)} experts to main node")

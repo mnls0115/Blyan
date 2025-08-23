@@ -136,7 +136,8 @@ class ExpertNode:
     node_id: str
     host: str
     port: int
-    available_experts: List[str]
+    available_experts: List[str]  # For backward compatibility
+    expert_metadata: Optional[Dict] = None  # New metadata system
     load_factor: float = 0.0  # Current load (0.0 = idle, 1.0 = fully loaded)
     last_heartbeat: float = 0.0
     donor_mode: bool = False
@@ -221,7 +222,23 @@ class ExpertNodeRegistry:
     
     def get_nodes_for_expert(self, expert_name: str) -> List[ExpertNode]:
         """Get all nodes that can serve a specific expert."""
+        # First check the traditional mapping
         node_ids = self.expert_to_nodes.get(expert_name, [])
+
+        # Also check nodes with metadata for full coverage
+        for node in self.nodes.values():
+            if node.expert_metadata:
+                try:
+                    from backend.p2p.expert_metadata import ExpertMetadata
+                    metadata = ExpertMetadata.from_dict(node.expert_metadata)
+
+                    # Check if metadata indicates this node has the expert
+                    if metadata.has_expert(expert_name) and node.node_id not in node_ids:
+                        node_ids.append(node.node_id)
+                except Exception:
+                    # Fall back to traditional method if metadata parsing fails
+                    pass
+
         return [self.nodes[nid] for nid in node_ids if nid in self.nodes]
     
     def cleanup_stale_nodes(self, ttl_seconds: int = 90):
