@@ -2152,6 +2152,9 @@ async def register_expert_node(req: RegisterNodeRequest):
             detail=f"Invalid host IP: {req.host}. Private, loopback, and reserved IPs are not allowed."
         )
     
+    # Handle hardware_info properly - it might be None or not a dict
+    hw_info = req.hardware_info if isinstance(req.hardware_info, dict) else {}
+    
     node = ExpertNode(
         node_id=req.node_id,
         host=req.host,
@@ -2159,10 +2162,10 @@ async def register_expert_node(req: RegisterNodeRequest):
         available_experts=req.available_experts,
         donor_mode=req.donor_mode,
         device_profile=DeviceProfile(
-            vram_gb=req.vram_gb or float(req.hardware_info.get("vram_gb", 0) or 0),
-            tflops_est=req.tflops_est or float(req.hardware_info.get("tflops", 0) or 0),
-            net_mbps=req.net_mbps or float(req.hardware_info.get("net_mbps", 0) or 0),
-            cuda_capability=req.cuda_capability or req.hardware_info.get("cuda", None)
+            vram_gb=req.vram_gb or float(hw_info.get("vram_gb", 0) if hw_info else 0),
+            tflops_est=req.tflops_est or float(hw_info.get("tflops", 0) if hw_info else 0),
+            net_mbps=req.net_mbps or float(hw_info.get("net_mbps", 0) if hw_info else 0),
+            cuda_capability=req.cuda_capability or (hw_info.get("cuda", None) if hw_info else None)
         )
     )
     
