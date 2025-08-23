@@ -1666,14 +1666,20 @@ class BlyanGPUNode:
                 try:
                     if self.model_manager:
                         if hasattr(self.model_manager, "get_available_experts"):
-                            available_experts = self.model_manager.get_available_experts()
-                            # Limit to a reasonable number for registration
-                            # The main node doesn't need all 6144 expert names
-                            if len(available_experts) > 100:
-                                # Send a representative sample or just indicate we have all experts
-                                logger.info(f"   Node has {len(available_experts)} experts, sending summary...")
-                                # Send layer info instead of all individual experts
-                                available_experts = [f"layer{i}.*" for i in range(48)]  # Indicate all experts for each layer
+                            all_experts = self.model_manager.get_available_experts()
+                            # The main node needs actual expert names, not wildcards
+                            # But we can't send all 6144, so send a representative sample
+                            if len(all_experts) > 500:
+                                # Send a sample: first 2 experts from each layer
+                                logger.info(f"   Node has {len(all_experts)} experts, sending sample...")
+                                available_experts = []
+                                for layer_idx in range(48):
+                                    # Add first 2 experts from each layer as representatives
+                                    layer_experts = [f"layer{layer_idx}.expert{i}" for i in range(2)]
+                                    available_experts.extend(layer_experts)
+                                logger.info(f"   Sending {len(available_experts)} representative experts")
+                            else:
+                                available_experts = all_experts
                         elif hasattr(self.model_manager, "_get_available_experts_for_layer"):
                             for layer_id in range(24):
                                 layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
