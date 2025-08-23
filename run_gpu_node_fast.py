@@ -54,10 +54,20 @@ class FastGPUNode:
         
     async def quick_check_blockchain(self):
         """Quick check if blockchain exists with expected experts."""
+        # Ensure data directory exists
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        
         chain_b_path = DATA_DIR / 'chain_B_storage.pkl'
+        logger.info(f"📂 Looking for blockchain at: {chain_b_path}")
         
         if not chain_b_path.exists():
-            logger.warning("❌ No blockchain found at {DATA_DIR}")
+            logger.warning(f"❌ No blockchain found at {DATA_DIR}")
+            # Still register with some test experts
+            self.blockchain_ready = False
+            self.experts_available = []
+            for layer_idx in range(min(4, NUM_LAYERS)):  # Just first 4 layers
+                self.experts_available.extend([f"layer{layer_idx}.expert{i}" for i in range(2)])
+            logger.info(f"⚠️ Running without blockchain, using {len(self.experts_available)} test experts")
             return False
             
         # Quick check using index file
@@ -228,7 +238,9 @@ class FastGPUNode:
         logger.info("=" * 60)
         logger.info(f"✅ STARTUP COMPLETE in {elapsed:.1f} seconds")
         logger.info(f"🌐 Server: http://0.0.0.0:{self.port}")
-        logger.info(f"🤖 Experts: {TOTAL_EXPERTS if self.blockchain_ready else 0}")
+        logger.info(f"📁 Data directory: {DATA_DIR}")
+        logger.info(f"🤖 Blockchain ready: {self.blockchain_ready}")
+        logger.info(f"📦 Experts registered: {len(self.experts_available)}")
         logger.info("=" * 60)
         
         # Keep running
