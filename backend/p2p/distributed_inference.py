@@ -371,6 +371,7 @@ class DistributedInferenceCoordinator:
         # SLO-based scheduler integration
         self.scheduler = PreemptiveScheduler()
         self.inference_metrics = {"request_count": 0, "total_latency": 0.0, "active_requests": 0}
+        self.start_time = time.time()  # Track coordinator start time
         
         # Node reputation and health monitoring
         from backend.p2p.node_reputation import NodeReputationManager
