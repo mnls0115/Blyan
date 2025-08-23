@@ -4,6 +4,8 @@ Block Runtime Error Definitions
 Custom exceptions for the block runtime layer.
 """
 
+from typing import Any
+
 
 class BlockRuntimeError(Exception):
     """Base exception for block runtime errors."""
