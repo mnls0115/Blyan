@@ -416,7 +416,7 @@
             if (!userAddress) return;
 
             try {
-                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : 'https://blyan.com/api');
                 const response = await fetch(`${API_BASE}/leaderboard/me/summary?address=${userAddress}`);
                 
                 if (response.ok) {
@@ -500,7 +500,7 @@
 
         async function loadNodesLeaderboard() {
             try {
-                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : 'https://blyan.com/api');
                 const response = await fetch(`${API_BASE}/leaderboard/nodes?limit=50`);
                 const data = await response.json();
 
@@ -540,7 +540,7 @@
 
         async function loadExpertsLeaderboard() {
             try {
-                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : 'https://blyan.com/api');
                 const response = await fetch(`${API_BASE}/leaderboard/experts?limit=50`);
                 const data = await response.json();
 
@@ -576,7 +576,7 @@
 
         async function loadUsersLeaderboard() {
             try {
-                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : 'https://blyan.com/api');
                 const response = await fetch(`${API_BASE}/leaderboard/users?limit=50`);
                 const data = await response.json();
 
@@ -632,7 +632,7 @@
 
             try {
                 // Refresh cache on server
-                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : `http://${window.location.hostname}:8000`);
+                const API_BASE = (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '' ? 'http://127.0.0.1:8000' : 'https://blyan.com/api');
                 await fetch(`${API_BASE}/leaderboard/refresh`, { method: 'POST' });
                 
                 // Reload data
