@@ -31,6 +31,7 @@ class BlockchainOnlyModelManager:
         self.param_index = param_index
         self.device = device
         self.expert_cache = {}
+        self._available_experts_cache = None  # Cache for expert list
         
         # NO local model path - we don't use it!
         self.local_model_path = None
@@ -47,94 +48,104 @@ class BlockchainOnlyModelManager:
         if expert_name in self.expert_cache:
             return self.expert_cache[expert_name]
         
-        # Search in blockchain
-        print(f"🔍 Searching blockchain for {expert_name}...")
+        # Search in blockchain efficiently
+        print(f"🔍 Loading {expert_name} from blockchain...")
         
-        # Get all blocks of type 'expert'
-        all_blocks = self.param_chain.get_all_blocks()
-        print(f"   Total blocks in chain: {len(all_blocks)}")
-        
-        expert_blocks_found = 0
-        for block in all_blocks:
-            # Check both block and block.header for attributes
-            block_type = getattr(block, 'block_type', None) or getattr(block.header, 'block_type', None)
-            expert_name_attr = getattr(block, 'expert_name', None) or getattr(block.header, 'expert_name', None)
-            
-            if block_type == 'expert':
-                expert_blocks_found += 1
-                if expert_blocks_found <= 5:  # Show first 5 expert names for debugging
-                    print(f"   Found expert block: {expert_name_attr}")
-            
-            if block_type == 'expert' and expert_name_attr == expert_name:
-                print(f"✅ Found {expert_name} in blockchain at block {block.hash[:8]}")
+        # Parse expert name to get indices
+        try:
+            parts = expert_name.split('.')
+            if len(parts) == 2 and parts[0].startswith('layer') and parts[1].startswith('expert'):
+                layer_idx = int(parts[0].replace('layer', ''))
+                expert_idx = int(parts[1].replace('expert', ''))
                 
-                # Load the expert weights
+                # Calculate expected block index
+                # Assuming experts are stored sequentially: layer0.expert0, layer0.expert1, ...
+                num_experts = MOE["num_experts"] if PROFILE_AVAILABLE else 128
+                expected_index = layer_idx * num_experts + expert_idx
+                
+                # Try to load from expected position first
+                if expected_index < len(self.param_chain._hash_index):
+                    block = self.param_chain.storage.get_block_by_index(expected_index)
+                    if block and block.header.block_type == 'expert' and block.header.expert_name == expert_name:
+                        print(f"✅ Found {expert_name} at expected position {expected_index}")
+                        try:
+                            from backend.model.arch import bytes_to_state_dict
+                            expert_weights = bytes_to_state_dict(block.data)
+                            self.expert_cache[expert_name] = expert_weights
+                            return expert_weights
+                        except Exception as e:
+                            print(f"❌ Failed to load expert weights: {e}")
+                            return None
+        except (ValueError, IndexError) as e:
+            print(f"⚠️ Could not parse expert name {expert_name}: {e}")
+        
+        # Fallback: scan blocks (but this should rarely happen)
+        print(f"⚠️ Expert {expert_name} not at expected position, scanning...")
+        block_count = len(self.param_chain._hash_index) if hasattr(self.param_chain, '_hash_index') else 0
+        
+        for i in range(min(block_count, 10000)):  # Limit scan to avoid full chain traversal
+            block = self.param_chain.storage.get_block_by_index(i)
+            if block and block.header.block_type == 'expert' and block.header.expert_name == expert_name:
+                print(f"✅ Found {expert_name} at position {i}")
                 try:
                     from backend.model.arch import bytes_to_state_dict
                     expert_weights = bytes_to_state_dict(block.data)
-                    
-                    # Cache it
                     self.expert_cache[expert_name] = expert_weights
                     return expert_weights
                 except Exception as e:
                     print(f"❌ Failed to load expert weights: {e}")
                     return None
         
-        print(f"⚠️ Expert {expert_name} not found in blockchain")
-        print(f"   Found {expert_blocks_found} total expert blocks, but none matched '{expert_name}'")
-        print(f"   The expert names might be formatted differently in the blockchain")
+        print(f"❌ Expert {expert_name} not found in blockchain")
         return None
     
-    def get_available_experts(self) -> List[str]:
-        """List all experts available in blockchain."""
-        experts_set = set()
+    def get_available_experts(self, force_refresh: bool = False) -> List[str]:
+        """List all experts available in blockchain.
+        
+        Args:
+            force_refresh: If True, ignore cache and rescan blockchain
+        """
+        # Return cached result if available and not forcing refresh
+        if self._available_experts_cache is not None and not force_refresh:
+            return self._available_experts_cache
         
         # Use index to count blocks first
         block_count = len(self.param_chain._hash_index) if hasattr(self.param_chain, '_hash_index') else 0
         
-        if block_count > 6000:
-            # For MoE models with ~6144 experts, we need to check ALL blocks
-            # to ensure we don't miss any experts
-            logger.info(f"Scanning all {block_count} blocks for experts (this may take a moment)...")
+        # Get expected configuration from model profile
+        num_layers = LAYERS["num_layers"] if PROFILE_AVAILABLE else 48
+        num_experts = MOE["num_experts"] if PROFILE_AVAILABLE else 128
+        expected_total = num_layers * num_experts
+        
+        # Quick check: if we have the expected number of blocks (plus some for meta), assume all experts present
+        if block_count >= expected_total:
+            # We have enough blocks, assume full model is uploaded
+            logger.info(f"✅ Blockchain has {block_count} blocks, expecting {expected_total} experts")
             
-            # Check every block to find all experts
+            # Generate expert names based on model configuration
+            experts = []
+            for layer_idx in range(num_layers):
+                for expert_idx in range(num_experts):
+                    experts.append(f"layer{layer_idx}.expert{expert_idx}")
+            
+            logger.info(f"Generated {len(experts)} expert names from model configuration")
+            logger.info(f"  {num_layers} layers × {num_experts} experts = {expected_total} total")
+        else:
+            # Not enough blocks, need to scan to see what we have
+            logger.info(f"⚠️ Only {block_count} blocks in chain, scanning for available experts...")
+            experts = []
+            experts_set = set()
+            
             for i in range(block_count):
-                if i > 0 and i % 1000 == 0:
-                    logger.info(f"  Scanned {i}/{block_count} blocks...")
-                    
                 block = self.param_chain.storage.get_block_by_index(i)
                 if block and block.header.block_type == 'expert' and block.header.expert_name:
                     experts_set.add(block.header.expert_name)
             
             experts = list(experts_set)
-            
-            # Log statistics
-            layers_found = {}
-            for expert in experts:
-                if 'layer' in expert:
-                    try:
-                        layer_num = int(expert.split('layer')[1].split('.')[0])
-                        layer_key = f"layer{layer_num}"
-                        if layer_key not in layers_found:
-                            layers_found[layer_key] = 0
-                        layers_found[layer_key] += 1
-                    except:
-                        pass
-            
-            logger.info(f"Found {len(experts)} total experts across {len(layers_found)} layers")
-            
-            # Show experts per layer
-            for layer in sorted(layers_found.keys(), key=lambda x: int(x.replace('layer', '')))[:5]:
-                logger.info(f"  {layer}: {layers_found[layer]} experts")
-            if len(layers_found) > 5:
-                logger.info(f"  ... and {len(layers_found) - 5} more layers")
-        else:
-            # For small chains, check all blocks
-            for i in range(block_count):
-                block = self.param_chain.storage.get_block_by_index(i)
-                if block and block.header.block_type == 'expert' and block.header.expert_name:
-                    experts.append(block.header.expert_name)
+            logger.info(f"Found {len(experts)} experts in {block_count} blocks")
         
+        # Cache the result
+        self._available_experts_cache = experts
         return experts
     
     def generate(self, prompt: str, selected_experts: List[str], max_tokens: int = 100) -> str:
