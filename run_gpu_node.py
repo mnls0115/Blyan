@@ -1670,14 +1670,10 @@ class BlyanGPUNode:
                             # The main node needs actual expert names, not wildcards
                             # But we can't send all 6144, so send a representative sample
                             if len(all_experts) > 500:
-                                # Send a sample: first 2 experts from each layer
-                                logger.info(f"   Node has {len(all_experts)} experts, sending sample...")
-                                available_experts = []
-                                for layer_idx in range(48):
-                                    # Add first 2 experts from each layer as representatives
-                                    layer_experts = [f"layer{layer_idx}.expert{i}" for i in range(2)]
-                                    available_experts.extend(layer_experts)
-                                logger.info(f"   Sending {len(available_experts)} representative experts")
+                                # TEMPORARY: Send ALL experts until server is updated
+                                logger.info(f"   Node has {len(all_experts)} experts, sending ALL...")
+                                available_experts = all_experts
+                                logger.info(f"   Sending {len(available_experts)} experts to main node")
                             else:
                                 available_experts = all_experts
                         elif hasattr(self.model_manager, "_get_available_experts_for_layer"):
