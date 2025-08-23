@@ -92,17 +92,34 @@ class BlockchainOnlyModelManager:
         # Use index to count blocks first
         block_count = len(self.param_chain._hash_index) if hasattr(self.param_chain, '_hash_index') else 0
         
-        # For large chains, use sampling to estimate experts
+        # For large chains, get a representative sample across all layers
         if block_count > 1000:
-            # Sample approach - check last 100 blocks
-            for i in range(max(0, block_count - 100), block_count):
+            # Sample evenly across the chain to get experts from all layers
+            # For 6192 blocks with 48 layers * 128 experts = 6144 experts
+            # We want at least one expert from each layer
+            
+            # Use a set to avoid duplicates
+            experts_set = set()
+            
+            # Sample every N blocks to get diversity
+            sample_interval = max(1, block_count // 500)  # Sample ~500 blocks
+            
+            for i in range(0, block_count, sample_interval):
                 block = self.param_chain.storage.get_block_by_index(i)
                 if block and block.header.block_type == 'expert' and block.header.expert_name:
-                    experts.append(block.header.expert_name)
+                    experts_set.add(block.header.expert_name)
             
-            # Estimate total based on sample
-            if experts:
-                logger.info(f"Found {len(experts)} experts in sample (estimated ~{block_count} total blocks)")
+            experts = list(experts_set)
+            
+            # Log what layers we found
+            layers_found = set()
+            for expert in experts:
+                if 'layer' in expert:
+                    layer_num = expert.split('layer')[1].split('.')[0]
+                    layers_found.add(f"layer{layer_num}")
+            
+            logger.info(f"Found {len(experts)} unique experts across {len(layers_found)} layers")
+            logger.info(f"Layers represented: {sorted(layers_found)[:10]}... (showing first 10)")
         else:
             # For small chains, check all blocks
             for i in range(block_count):

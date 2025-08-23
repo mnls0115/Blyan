@@ -144,6 +144,10 @@ class ExpertNode:
     
     @property
     def endpoint(self) -> str:
+        # If host already includes protocol, use it as-is
+        if self.host.startswith('http://') or self.host.startswith('https://'):
+            return self.host
+        # Otherwise construct with http
         return f"http://{self.host}:{self.port}"
 
 

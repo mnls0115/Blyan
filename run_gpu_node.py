@@ -1365,8 +1365,25 @@ class BlyanGPUNode:
                 if not selected_experts:
                     available = self.model_manager.get_available_experts()
                     if available:
-                        # Select top experts for inference
-                        selected_experts = available[:min(4, len(available))]
+                        # Select experts from different layers for proper MoE inference
+                        # Group by layer
+                        experts_by_layer = {}
+                        for expert in available:
+                            if 'layer' in expert:
+                                layer = expert.split('layer')[1].split('.')[0]
+                                if layer not in experts_by_layer:
+                                    experts_by_layer[layer] = []
+                                experts_by_layer[layer].append(expert)
+                        
+                        # Select one expert from each of the first few layers
+                        selected_experts = []
+                        for layer in sorted(experts_by_layer.keys())[:4]:  # Use first 4 layers
+                            if experts_by_layer[layer]:
+                                selected_experts.append(experts_by_layer[layer][0])
+                        
+                        if not selected_experts and available:
+                            # Fallback to first 4 if layer parsing fails
+                            selected_experts = available[:min(4, len(available))]
                     else:
                         return web.json_response({
                             "error": "No experts in blockchain. Upload model first.",
