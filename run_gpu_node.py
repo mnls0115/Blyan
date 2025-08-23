@@ -1667,6 +1667,13 @@ class BlyanGPUNode:
                     if self.model_manager:
                         if hasattr(self.model_manager, "get_available_experts"):
                             available_experts = self.model_manager.get_available_experts()
+                            # Limit to a reasonable number for registration
+                            # The main node doesn't need all 6144 expert names
+                            if len(available_experts) > 100:
+                                # Send a representative sample or just indicate we have all experts
+                                logger.info(f"   Node has {len(available_experts)} experts, sending summary...")
+                                # Send layer info instead of all individual experts
+                                available_experts = [f"layer{i}.*" for i in range(48)]  # Indicate all experts for each layer
                         elif hasattr(self.model_manager, "_get_available_experts_for_layer"):
                             for layer_id in range(24):
                                 layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
@@ -1705,12 +1712,18 @@ class BlyanGPUNode:
                 }
                 
                 logger.info(f"📝 Registering with endpoint: {endpoint_url}")
+                logger.info(f"   Sending {len(available_experts)} experts to main node")
+                if len(available_experts) > 0:
+                    logger.debug(f"   First 3 experts: {available_experts[:3]}")
                 if PUBLIC_PORT != self.port:
                     logger.info(f"   (Internal port: {self.port}, Public endpoint: {endpoint_url})")
                 
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data)
                 if resp.status_code == 200:
-                    logger.info("✅ Registered with main node")
+                    result = resp.json()
+                    logger.info(f"✅ Registered with main node")
+                    if isinstance(result, dict) and 'message' in result:
+                        logger.debug(f"   Response: {result['message']}")
                 elif resp.status_code == 500:
                     # Check if it's because distributed coordinator is not initialized
                     if "distributed coordinator" in resp.text.lower():
