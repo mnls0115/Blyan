@@ -86,40 +86,48 @@ class BlockchainOnlyModelManager:
         return None
     
     def get_available_experts(self) -> List[str]:
-        """List all experts available in blockchain (optimized)."""
-        experts = []
+        """List all experts available in blockchain."""
+        experts_set = set()
         
         # Use index to count blocks first
         block_count = len(self.param_chain._hash_index) if hasattr(self.param_chain, '_hash_index') else 0
         
-        # For large chains, get a representative sample across all layers
-        if block_count > 1000:
-            # Sample evenly across the chain to get experts from all layers
-            # For 6192 blocks with 48 layers * 128 experts = 6144 experts
-            # We want at least one expert from each layer
+        if block_count > 6000:
+            # For MoE models with ~6144 experts, we need to check ALL blocks
+            # to ensure we don't miss any experts
+            logger.info(f"Scanning all {block_count} blocks for experts (this may take a moment)...")
             
-            # Use a set to avoid duplicates
-            experts_set = set()
-            
-            # Sample every N blocks to get diversity
-            sample_interval = max(1, block_count // 500)  # Sample ~500 blocks
-            
-            for i in range(0, block_count, sample_interval):
+            # Check every block to find all experts
+            for i in range(block_count):
+                if i > 0 and i % 1000 == 0:
+                    logger.info(f"  Scanned {i}/{block_count} blocks...")
+                    
                 block = self.param_chain.storage.get_block_by_index(i)
                 if block and block.header.block_type == 'expert' and block.header.expert_name:
                     experts_set.add(block.header.expert_name)
             
             experts = list(experts_set)
             
-            # Log what layers we found
-            layers_found = set()
+            # Log statistics
+            layers_found = {}
             for expert in experts:
                 if 'layer' in expert:
-                    layer_num = expert.split('layer')[1].split('.')[0]
-                    layers_found.add(f"layer{layer_num}")
+                    try:
+                        layer_num = int(expert.split('layer')[1].split('.')[0])
+                        layer_key = f"layer{layer_num}"
+                        if layer_key not in layers_found:
+                            layers_found[layer_key] = 0
+                        layers_found[layer_key] += 1
+                    except:
+                        pass
             
-            logger.info(f"Found {len(experts)} unique experts across {len(layers_found)} layers")
-            logger.info(f"Layers represented: {sorted(layers_found)[:10]}... (showing first 10)")
+            logger.info(f"Found {len(experts)} total experts across {len(layers_found)} layers")
+            
+            # Show experts per layer
+            for layer in sorted(layers_found.keys(), key=lambda x: int(x.replace('layer', '')))[:5]:
+                logger.info(f"  {layer}: {layers_found[layer]} experts")
+            if len(layers_found) > 5:
+                logger.info(f"  ... and {len(layers_found) - 5} more layers")
         else:
             # For small chains, check all blocks
             for i in range(block_count):

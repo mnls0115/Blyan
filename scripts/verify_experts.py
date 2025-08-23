@@ -51,7 +51,8 @@ def verify_experts():
     
     # Check for missing layers
     print("\nMissing layers:")
-    for i in range(48):  # Qwen3-30B has 48 layers
+    num_layers = LAYERS["num_layers"] if PROFILE_AVAILABLE else 48
+    for i in range(num_layers):
         layer_name = f"layer{i}"
         if layer_name not in experts_by_layer:
             print(f"  {layer_name}: MISSING!")

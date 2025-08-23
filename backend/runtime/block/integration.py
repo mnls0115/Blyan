@@ -12,6 +12,15 @@ from .runtime import BlockRuntime
 from .types import RequestSpec, RuntimeConfig, CacheConfig, FetchStrategy
 from .config import get_feature_flags
 
+try:
+    from config.model_profile import LAYERS, MOE
+    PROFILE_AVAILABLE = True
+except ImportError:
+    PROFILE_AVAILABLE = False
+    # Fallback values
+    LAYERS = {"num_layers": 48}
+    MOE = {"num_experts": 128, "num_activated_experts": 8}
+
 logger = logging.getLogger(__name__)
 
 
@@ -221,19 +230,26 @@ class BlockRuntimeAdapter:
         Returns:
             Dict mapping layer index to list of expert indices
         """
-        # Default configuration for Qwen3-30B
-        if "Qwen3" in model_id or "30B" in model_id:
-            # 48 layers, 128 experts per layer, activate top 8
-            return {
-                layer_idx: list(range(min(8, 128)))  # Use first 8 experts per layer
-                for layer_idx in range(48)
-            }
+        # Use model profile configuration
+        if PROFILE_AVAILABLE:
+            num_layers = LAYERS["num_layers"]
+            num_activated = MOE["num_activated_experts"]
+            num_experts = MOE["num_experts"]
+        elif "Qwen3" in model_id or "30B" in model_id:
+            # Qwen3-30B specific
+            num_layers = 48
+            num_activated = 8
+            num_experts = 128
         else:
             # Default fallback
-            return {
-                layer_idx: [0, 1]  # Use first 2 experts per layer
-                for layer_idx in range(24)
-            }
+            num_layers = 24
+            num_activated = 2
+            num_experts = 16
+        
+        return {
+            layer_idx: list(range(min(num_activated, num_experts)))
+            for layer_idx in range(num_layers)
+        }
     
     async def get_metrics(self) -> Dict[str, Any]:
         """Get runtime metrics."""

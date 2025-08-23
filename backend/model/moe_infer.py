@@ -15,6 +15,15 @@ from backend.core.param_index import ParameterIndex
 from .arch import ModelWrapper, bytes_to_state_dict
 from .expert_cache import ExpertLRUCache
 
+try:
+    from config.model_profile import LAYERS, MOE
+    PROFILE_AVAILABLE = True
+except ImportError:
+    PROFILE_AVAILABLE = False
+    # Fallback values
+    LAYERS = {"num_layers": 48}
+    MOE = {"num_experts": 128}
+
 
 @dataclass
 class ExpertUsageStats:
@@ -197,8 +206,8 @@ class MoEModelManager:
         """
         # Get model specification
         model_spec = self._extract_model_spec()
-        num_layers = model_spec.get('num_layers', 48)  # Qwen3-30B has 48 layers
-        num_experts = model_spec.get('num_experts', 128)  # Qwen3-30B has 128 experts
+        num_layers = model_spec.get('num_layers', LAYERS["num_layers"] if PROFILE_AVAILABLE else 48)
+        num_experts = model_spec.get('num_experts', MOE["num_experts"] if PROFILE_AVAILABLE else 128)
         activated_experts = min(top_k, model_spec.get('activated_experts', 8))
         
         # For production: Use actual router logic based on prompt embeddings

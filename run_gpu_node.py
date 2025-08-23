@@ -894,10 +894,20 @@ class BlyanGPUNode:
                     except Exception as e:
                         logger.warning(f"Failed to upload router for layer {layer_idx}: {e}")
                 
-                # Extract ALL individual experts (128 per layer for Qwen3-30B)
+                # Extract ALL individual experts based on model configuration
                 if hasattr(mlp, 'experts'):
                     num_experts = len(mlp.experts) if hasattr(mlp.experts, '__len__') else 0
-                    logger.info(f"📦 Layer {layer_idx} has {num_experts} experts to upload")
+                    expected_experts = MOE["num_experts"] if PROFILE_AVAILABLE else 128
+                    logger.info(f"📦 Layer {layer_idx} has {num_experts} experts to upload (expected: {expected_experts})")
+                    
+                    # Verify we're getting all expected experts
+                    if num_experts < expected_experts:
+                        logger.warning(f"⚠️ Expected {expected_experts} experts but found {num_experts} in layer {layer_idx}")
+                    elif num_experts > expected_experts:
+                        logger.warning(f"⚠️ Found more experts ({num_experts}) than expected ({expected_experts}) in layer {layer_idx}")
+                    
+                    # Track upload progress
+                    successfully_uploaded = 0
                     
                     # Upload each expert individually with retry logic
                     for expert_idx in range(num_experts):
@@ -996,6 +1006,7 @@ class BlyanGPUNode:
                                         )
                                         logger.info(f"✅ Uploaded {expert_name} to blockchain")
                                         num_uploaded += 1
+                                        successfully_uploaded += 1
                                         upload_success = True
                                     except Exception as add_error:
                                         if "Expecting value" in str(add_error):
@@ -1087,6 +1098,13 @@ class BlyanGPUNode:
                     except Exception as e:
                         logger.warning(f"Failed to upload shared expert for layer {layer_idx}: {e}")
                 
+                # Report layer upload results
+                if hasattr(mlp, 'experts'):
+                    if successfully_uploaded < expected_experts:
+                        logger.warning(f"⚠️ Layer {layer_idx}: Only uploaded {successfully_uploaded}/{expected_experts} experts")
+                    else:
+                        logger.info(f"✅ Layer {layer_idx}: Successfully uploaded all {successfully_uploaded} experts")
+                
                 # Major memory cleanup after each layer
                 gc.collect()
                 if torch.cuda.is_available():
@@ -1094,7 +1112,16 @@ class BlyanGPUNode:
                 
                 logger.info(f"📊 Layer {layer_idx} complete. Total uploaded: {num_uploaded}")
             
-            logger.info(f"✅ Uploaded {num_uploaded} experts to blockchain")
+            # Final verification
+            expected_total = LAYERS["num_layers"] * MOE["num_experts"] if PROFILE_AVAILABLE else (48 * 128)
+            logger.info(f"✅ Upload complete: {num_uploaded} blocks uploaded")
+            logger.info(f"📊 Expected {expected_total} experts total ({LAYERS['num_layers'] if PROFILE_AVAILABLE else 48} layers × {MOE['num_experts'] if PROFILE_AVAILABLE else 128} experts)")
+            
+            if num_uploaded < expected_total:
+                logger.warning(f"⚠️ Only uploaded {num_uploaded}/{expected_total} experts ({(num_uploaded/expected_total)*100:.1f}%)")
+                logger.warning("Some experts may be missing. Check logs for failed uploads.")
+            else:
+                logger.info(f"✅ All {expected_total} experts uploaded successfully!")
             
             # Save upload state to prevent re-upload
             upload_state_file = DATA_DIR / "upload_completed.json"
