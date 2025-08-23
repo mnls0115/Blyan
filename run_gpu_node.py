@@ -1645,13 +1645,15 @@ class BlyanGPUNode:
                 # Register with main node
                 # Format the endpoint URL properly
                 if public_host.startswith('http://') or public_host.startswith('https://'):
-                    # Host already includes protocol
+                    # Host already includes protocol - use as-is
                     endpoint_url = public_host
-                    if not endpoint_url.endswith(str(PUBLIC_PORT)) and PUBLIC_PORT not in [80, 443]:
+                    # Don't add port if it's already in the URL or if using standard ports
+                    if ':' not in public_host.split('://')[-1] and PUBLIC_PORT not in [80, 443]:
                         endpoint_url = f"{endpoint_url}:{PUBLIC_PORT}"
                 elif 'proxy.runpod.net' in public_host:
-                    # RunPod proxy always uses HTTPS
+                    # RunPod proxy always uses HTTPS on standard port
                     endpoint_url = f"https://{public_host}"
+                    # RunPod uses standard HTTPS port, don't add port
                 else:
                     # Default to HTTP for regular hosts
                     endpoint_url = f"http://{public_host}:{PUBLIC_PORT}"
