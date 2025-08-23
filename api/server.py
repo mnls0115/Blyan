@@ -2048,7 +2048,6 @@ class RegisterNodeRequest(BaseModel):
     host: str
     port: int
     available_experts: List[str]
-    expert_metadata: Optional[Dict] = None  # New metadata system
     node_name: str = "Unnamed Node"
     resource_limit: str = "cpu-50"  # cpu-25, cpu-50, cpu-75, gpu-25, gpu-50, gpu-75
     node_type: str = "user_contributed"
@@ -2146,19 +2145,42 @@ async def register_expert_node(req: RegisterNodeRequest):
             logger.error(f"Failed to initialize P2P on-demand: {e}")
             raise HTTPException(status_code=500, detail="P2P distributed mode is not available on this server")
     
-    # Validate IP address
-    if not is_valid_node_ip(req.host):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid host IP: {req.host}. Private, loopback, and reserved IPs are not allowed."
-        )
+    # Clean up malformed URLs first
+    host = req.host
+    if "http://https://" in host or "https://http://" in host:
+        # Fix double protocol
+        if "http://https://" in host:
+            host = host.replace("http://https://", "https://")
+        elif "https://http://" in host:
+            host = host.replace("https://http://", "http://")
+        logger.warning(f"Fixed malformed URL: {req.host} -> {host}")
+    
+    # Validate IP address (skip for URLs with protocol)
+    if not (host.startswith('http://') or host.startswith('https://')):
+        if not is_valid_node_ip(host):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid host IP: {host}. Private, loopback, and reserved IPs are not allowed."
+            )
     
     # Handle hardware_info properly - it might be None or not a dict
     hw_info = req.hardware_info if isinstance(req.hardware_info, dict) else {}
     
+    # Check if node has full coverage (6144 experts)
+    has_full_coverage = len(req.available_experts) >= 6144
+    
+    # Check for metadata if provided
+    expert_metadata = None
+    if hasattr(req, 'expert_metadata') and req.expert_metadata:
+        expert_metadata = req.expert_metadata
+        # Check coverage from metadata
+        if expert_metadata.get('coverage_type') == 'full':
+            has_full_coverage = True
+            logger.info(f"Node {req.node_id} has full coverage via metadata")
+    
     node = ExpertNode(
         node_id=req.node_id,
-        host=req.host,
+        host=host,  # Use cleaned host
         port=req.port,
         available_experts=req.available_experts,
         donor_mode=req.donor_mode,
@@ -2167,7 +2189,9 @@ async def register_expert_node(req: RegisterNodeRequest):
             tflops_est=req.tflops_est or float(hw_info.get("tflops", 0) if hw_info else 0),
             net_mbps=req.net_mbps or float(hw_info.get("net_mbps", 0) if hw_info else 0),
             cuda_capability=req.cuda_capability or (hw_info.get("cuda", None) if hw_info else None)
-        )
+        ),
+        has_full_coverage=has_full_coverage,
+        expert_metadata=expert_metadata
     )
     
     distributed_coordinator.registry.register_node(node)

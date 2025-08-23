@@ -136,12 +136,13 @@ class ExpertNode:
     node_id: str
     host: str
     port: int
-    available_experts: List[str]  # For backward compatibility
-    expert_metadata: Optional[Dict] = None  # New metadata system
+    available_experts: List[str]
     load_factor: float = 0.0  # Current load (0.0 = idle, 1.0 = fully loaded)
     last_heartbeat: float = 0.0
     donor_mode: bool = False
     device_profile: Optional[DeviceProfile] = None
+    has_full_coverage: bool = False  # True if node has ALL experts (e.g., 6144)
+    expert_metadata: Optional[Dict] = None  # Metadata for efficient routing
     
     @property
     def endpoint(self) -> str:
@@ -185,21 +186,27 @@ class ExpertNodeRegistry:
         self.nodes[node.node_id] = node
         node.last_heartbeat = time.time()
         
-        # Update expert mappings
-        for expert_name in node.available_experts:
-            if expert_name not in self.expert_to_nodes:
-                self.expert_to_nodes[expert_name] = []
-            if node.node_id not in self.expert_to_nodes[expert_name]:
-                self.expert_to_nodes[expert_name].append(node.node_id)
+        # Check if node has full coverage
+        if hasattr(node, 'has_full_coverage') and node.has_full_coverage:
+            # For full coverage nodes, we don't need to populate expert_to_nodes
+            # They can serve ANY expert request
+            print(f"✅ Registered node {node.node_id} with FULL COVERAGE (all experts available)")
+        else:
+            # Update expert mappings for partial coverage
+            for expert_name in node.available_experts:
+                if expert_name not in self.expert_to_nodes:
+                    self.expert_to_nodes[expert_name] = []
+                if node.node_id not in self.expert_to_nodes[expert_name]:
+                    self.expert_to_nodes[expert_name].append(node.node_id)
+            
+            donor_suffix = " [donor]" if getattr(node, "donor_mode", False) else ""
+            print(f"✓ Registered node {node.node_id}{donor_suffix} with {len(node.available_experts)} experts")
         
         # Register for health monitoring if coordinator available
         if hasattr(self, 'coordinator') and hasattr(self.coordinator, 'reputation_manager'):
             self.coordinator.reputation_manager.register_node_endpoint(
                 node.node_id, node.endpoint
             )
-        
-        donor_suffix = " [donor]" if getattr(node, "donor_mode", False) else ""
-        print(f"✓ Registered node {node.node_id}{donor_suffix} with {len(node.available_experts)} experts")
     
     def unregister_node(self, node_id: str):
         """Remove a node from the registry."""
@@ -222,24 +229,20 @@ class ExpertNodeRegistry:
     
     def get_nodes_for_expert(self, expert_name: str) -> List[ExpertNode]:
         """Get all nodes that can serve a specific expert."""
-        # First check the traditional mapping
-        node_ids = self.expert_to_nodes.get(expert_name, [])
-
-        # Also check nodes with metadata for full coverage
+        nodes = []
+        
+        # First, add any nodes with full coverage (they can serve ANY expert)
         for node in self.nodes.values():
-            if node.expert_metadata:
-                try:
-                    from backend.p2p.expert_metadata import ExpertMetadata
-                    metadata = ExpertMetadata.from_dict(node.expert_metadata)
-
-                    # Check if metadata indicates this node has the expert
-                    if metadata.has_expert(expert_name) and node.node_id not in node_ids:
-                        node_ids.append(node.node_id)
-                except Exception:
-                    # Fall back to traditional method if metadata parsing fails
-                    pass
-
-        return [self.nodes[nid] for nid in node_ids if nid in self.nodes]
+            if hasattr(node, 'has_full_coverage') and node.has_full_coverage:
+                nodes.append(node)
+        
+        # Then add nodes that explicitly have this expert
+        node_ids = self.expert_to_nodes.get(expert_name, [])
+        for nid in node_ids:
+            if nid in self.nodes and self.nodes[nid] not in nodes:
+                nodes.append(self.nodes[nid])
+        
+        return nodes
     
     def cleanup_stale_nodes(self, ttl_seconds: int = 90):
         """Remove nodes that haven't sent heartbeat within TTL."""
