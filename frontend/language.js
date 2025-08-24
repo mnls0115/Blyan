@@ -36,6 +36,8 @@ const translations = {
         distributedGpuDesc: 'A global mesh of independent GPU nodes, not a giant data center, enables AI training and inference.',
         mixtureOfExpertsTitle: 'Mixture-of-Experts + DAG',
         mixtureOfExpertsDesc: 'Dynamic architecture routes tasks to optimal expert models, creating efficient AI that everyone can participate in.',
+        layerChunkedTitle: 'Layer-Chunked Dense LLM',
+        layerChunkedDesc: 'Our LLM model is split into layer chunks distributed across GPUs. Even small 4GB GPUs can participate by handling just a few layers together.',
         
         // Home Page - Additional Sections
         whyItMattersTitle: 'Why Blyan?',
@@ -141,6 +143,8 @@ const translations = {
         distributedGpuDesc: '거대한 데이터센터가 아닌 독립적인 GPU 노드들의 글로벌 메시가 AI 훈련 및 추론을 가능하게 합니다.',
         mixtureOfExpertsTitle: 'Mixture-of-Experts + DAG',
         mixtureOfExpertsDesc: '동적 아키텍처가 최적의 전문가 모델로 작업을 라우팅하여, 모두가 참여할 수 있는 효율적인 AI를 구성합니다.',
+        layerChunkedTitle: '레이어 청킹 밀집 LLM',
+        layerChunkedDesc: 'LLM 모델을 레이어 청크로 분할해 여러 GPU노드에서 처리합니다. 4GB 소형 GPU도 일부 레이어만 처리하며 참여할 수 있습니다.',
         
         // Home Page - Additional Sections
         whyItMattersTitle: '왜 Blyan인가',
