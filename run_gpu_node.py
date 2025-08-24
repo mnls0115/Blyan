@@ -217,7 +217,7 @@ class BlyanGPUNode:
             # Initialize chains (creates or loads existing)
             self.chains['A'] = Chain(DATA_DIR, "A", skip_pol=SKIP_POL)  # Meta chain
             self.chains['B'] = Chain(DATA_DIR, "B", skip_pol=SKIP_POL)  # Parameter chain
-            self.chains['D'] = DatasetChain(DATA_DIR, "D")  # Dataset chain
+            self.chains['D'] = DatasetChain(DATA_DIR, "D", skip_pol=SKIP_POL)  # Dataset chain
             
             # Log chain status (optimized to avoid loading all blocks)
             for chain_id, chain in self.chains.items():

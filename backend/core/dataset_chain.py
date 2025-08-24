@@ -23,10 +23,11 @@ from .block import Block
 class DatasetChain(Chain):
     """Chain D - Dataset governance blockchain extending base Chain functionality."""
     
-    def __init__(self, data_root: Path, chain_id: str = "D"):
+    def __init__(self, data_root: Path, chain_id: str = "D", skip_pol: bool = False):
         """Initialize Dataset-Chain D."""
-        super().__init__(data_root, chain_id)
-        self.chain_id = chain_id
+        # Pass all required parameters to parent Chain class
+        super().__init__(data_root, chain_id, difficulty=1, skip_pol=skip_pol)
+        # chain_id already set by parent, no need to duplicate
         
         # Dataset-specific tracking
         self.pending_audits = {}        # dataset_id -> DatasetBlock

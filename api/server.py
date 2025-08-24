@@ -815,6 +815,10 @@ def _startup():
     global learning_coordinator
     learning_coordinator = None
     
+    # Initialize dense learning coordinator
+    global dense_learning_coordinator
+    dense_learning_coordinator = None
+    
     async def init_learning_coordinator():
         global learning_coordinator
         try:
@@ -868,11 +872,43 @@ def _startup():
     @app.on_event("startup")
     async def startup_learning_coordinator():
         await init_learning_coordinator()
+        
+        # Initialize dense learning coordinator
+        global dense_learning_coordinator
+        try:
+            from api.dense_learning_api import initialize_dense_learning, router as dense_router
+            
+            # Get model config from profile
+            try:
+                from config.model_profile import MODEL_NAME, LAYERS
+                model_name = MODEL_NAME
+                num_layers = LAYERS.get("num_layers", 36)
+            except ImportError:
+                model_name = "Qwen3-8B"
+                num_layers = 36
+            
+            # Initialize coordinator
+            dense_learning_coordinator = initialize_dense_learning(model_name, num_layers)
+            
+            if dense_learning_coordinator:
+                # Mount API routes
+                app.include_router(dense_router)
+                logger.info(f"✅ Dense learning coordinator initialized for {model_name} with {num_layers} layers")
+                logger.info("✅ Dense learning API endpoints mounted at /learning/dense")
+            else:
+                logger.warning("Dense learning coordinator initialization failed")
+                
+        except Exception as e:
+            logger.warning(f"Failed to initialize dense learning: {e}")
     
     @app.on_event("shutdown")
     async def shutdown_learning_coordinator():
         if learning_coordinator and hasattr(learning_coordinator, 'stop'):
             await learning_coordinator.stop()
+        
+        # Shutdown dense learning coordinator
+        if dense_learning_coordinator and hasattr(dense_learning_coordinator, 'cleanup'):
+            await dense_learning_coordinator.cleanup()
     # Provide real device profiles and model structure to partition planner
     def _device_profile_provider(node_ids: List[str]):
         devices = []

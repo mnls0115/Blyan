@@ -3,12 +3,15 @@ Unified Model Manager
 ====================
 Single implementation for all model management and generation.
 Consolidates blockchain_first_loader, real_model_loader, arch, and infer.
+Supports delta composition for learning updates.
 """
 
 import logging
 import torch
+import io
+import numpy as np
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 logger = logging.getLogger(__name__)
@@ -52,13 +55,15 @@ class UnifiedModelManager:
         try:
             from backend.core.chain import Chain
             from backend.core.param_index import ParameterIndex
+            from backend.core.delta_index import DeltaIndex
             
-            # Initialize chains
-            self.meta_chain = Chain(self.root_dir, "A")
-            self.param_chain = Chain(self.root_dir, "B")
+            # Initialize chains with proper parameters
+            self.meta_chain = Chain(self.root_dir, "A", difficulty=1, skip_pol=True)
+            self.param_chain = Chain(self.root_dir, "B", difficulty=1, skip_pol=True)
             self.param_index = ParameterIndex(self.root_dir / "param_index.json")
+            self.delta_index = DeltaIndex(self.root_dir / "delta_index.json")
             
-            logger.info("✅ Blockchain model manager initialized")
+            logger.info("✅ Blockchain model manager initialized with delta support")
         except Exception as e:
             logger.error(f"Failed to init blockchain: {e}")
             # Fallback to local
@@ -93,6 +98,84 @@ class UnifiedModelManager:
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
+    
+    def _apply_lora_delta(self, base_tensor: torch.Tensor, delta: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Apply LoRA delta to base tensor.
+        
+        Args:
+            base_tensor: Base weight tensor
+            delta: LoRA delta with 'lora_A' and 'lora_B' keys
+            
+        Returns:
+            Updated tensor
+        """
+        if 'lora_A' in delta and 'lora_B' in delta:
+            # LoRA update: W' = W + BA where A and B are low-rank matrices
+            lora_A = delta['lora_A']
+            lora_B = delta['lora_B']
+            scaling = delta.get('scaling', 1.0)
+            
+            # Apply LoRA: base + (B @ A) * scaling
+            update = (lora_B @ lora_A) * scaling
+            return base_tensor + update.to(base_tensor.dtype)
+        else:
+            # Direct delta addition
+            return base_tensor + delta.get('delta', torch.zeros_like(base_tensor))
+    
+    def _compose_layer_with_deltas(self, layer_name: str, base_tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Compose a layer by applying all approved deltas.
+        
+        Args:
+            layer_name: Name of the layer
+            base_tensor: Base layer tensor
+            
+        Returns:
+            Composed tensor with deltas applied
+        """
+        if not hasattr(self, 'delta_index'):
+            return base_tensor
+        
+        # Get current base hash for this layer
+        base_hash = self.delta_index.get_current_base(layer_name)
+        if not base_hash:
+            return base_tensor
+        
+        # Get best delta for this base
+        delta_record = self.delta_index.get_best_delta(layer_name, base_hash)
+        if not delta_record:
+            return base_tensor
+        
+        try:
+            # Load delta from blockchain
+            delta_block = None
+            for block in self.param_chain.storage.iter_blocks():
+                if block.compute_hash() == delta_record.delta_hash:
+                    delta_block = block
+                    break
+            
+            if not delta_block:
+                logger.warning(f"Delta block {delta_record.delta_hash[:8]}... not found")
+                return base_tensor
+            
+            # Deserialize delta
+            delta_data = torch.load(io.BytesIO(delta_block.payload), map_location=self.device)
+            
+            # Apply based on compression type
+            if delta_record.compression == 'sparse' or delta_record.sparsity_ratio < 0.1:
+                # LoRA or sparse delta
+                return self._apply_lora_delta(base_tensor, delta_data)
+            else:
+                # Dense delta
+                if 'delta' in delta_data:
+                    return base_tensor + delta_data['delta'].to(base_tensor.dtype)
+                else:
+                    return base_tensor + delta_data.to(base_tensor.dtype)
+                    
+        except Exception as e:
+            logger.error(f"Failed to apply delta for {layer_name}: {e}")
+            return base_tensor
     
     def _load_from_blockchain(self) -> None:
         """Load model weights from blockchain."""
@@ -153,6 +236,13 @@ class UnifiedModelManager:
                     
                     # Load tensor data from block payload
                     tensor_dict = torch.load(io.BytesIO(block.payload), map_location=self.device)
+                    
+                    # Apply deltas if available
+                    if hasattr(self, 'delta_index'):
+                        for key in tensor_dict:
+                            # Check if we have deltas for this specific tensor
+                            layer_key = f"{layer_name}.{key}" if '.' not in key else key
+                            tensor_dict[key] = self._compose_layer_with_deltas(layer_key, tensor_dict[key])
                     
                     # Map blockchain tensors to model state dict
                     model_state = self.model.state_dict()
@@ -345,6 +435,64 @@ class UnifiedModelManager:
             info["gpu_memory_gb"] = torch.cuda.memory_allocated() / 1024**3
         
         return info
+    
+    def get_available_experts(self) -> List[str]:
+        """
+        Get list of available experts from blockchain.
+        
+        Returns:
+            List of expert identifiers available in the blockchain.
+        """
+        available_experts = []
+        
+        if self.use_blockchain and self.param_chain:
+            try:
+                # Get all blocks from parameter chain
+                blocks = list(self.param_chain.get_all_blocks())
+                
+                # Extract expert blocks
+                for block in blocks:
+                    if block.header.block_type == 'expert':
+                        # Extract expert name from block data or metadata
+                        expert_info = block.header.expert_info
+                        if expert_info and 'expert_name' in expert_info:
+                            expert_id = expert_info['expert_name']
+                            if expert_id not in available_experts:
+                                available_experts.append(expert_id)
+                        elif hasattr(block.header, 'expert_name'):
+                            expert_id = block.header.expert_name
+                            if expert_id not in available_experts:
+                                available_experts.append(expert_id)
+                
+                logger.info(f"Found {len(available_experts)} experts in blockchain")
+                
+            except Exception as e:
+                logger.error(f"Error getting available experts: {e}")
+        
+        # If no blockchain experts, check for loaded model layers
+        if not available_experts and self.model:
+            try:
+                # Check if model has expert structure
+                if hasattr(self.model, 'config'):
+                    config = self.model.config
+                    if hasattr(config, 'num_experts'):
+                        num_experts = config.num_experts
+                        num_layers = config.num_hidden_layers if hasattr(config, 'num_hidden_layers') else 36
+                        
+                        # Generate expert list based on model structure
+                        for layer_idx in range(num_layers):
+                            for expert_idx in range(num_experts):
+                                available_experts.append(f"layer{layer_idx}.expert{expert_idx}")
+                    else:
+                        # Non-MoE model - treat layers as experts
+                        num_layers = config.num_hidden_layers if hasattr(config, 'num_hidden_layers') else 36
+                        for layer_idx in range(num_layers):
+                            available_experts.append(f"layer{layer_idx}")
+                            
+            except Exception as e:
+                logger.warning(f"Could not determine expert structure: {e}")
+        
+        return available_experts
 
 
 # Global instance management

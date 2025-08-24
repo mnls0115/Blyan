@@ -7,6 +7,7 @@ const translations = {
     en: {
         // Header Navigation
         home: 'Home',
+        genesis: 'Genesis',
         howItWorks: 'How it Works',
         chat: 'Chat',
         network: 'Network',

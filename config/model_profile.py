@@ -124,31 +124,50 @@ DISTRIBUTION_STRATEGIES = {
         "num_stages": 2,
         "layers_per_stage": [18, 18],
         "min_vram_gb": 8.0,
-        "precision": "int8"
+        "precision": "fp16"
     },
     "triple": {  # 3 GPUs - 12 layers each
         "num_stages": 3,
         "layers_per_stage": [12, 12, 12],
         "min_vram_gb": 4.0,
-        "precision": "int4"
+        "precision": "fp16"
     },
     "quad": {  # 4 GPUs - 9 layers each
         "num_stages": 4,
         "layers_per_stage": [9, 9, 9, 9],
         "min_vram_gb": 3.0,
-        "precision": "int4"
+        "precision": "fp16"
     },
     "hexa": {  # 6 GPUs - 6 layers each
         "num_stages": 6,
         "layers_per_stage": [6, 6, 6, 6, 6, 6],
         "min_vram_gb": 2.0,
-        "precision": "int4"
+        "precision": "fp16"
     },
+    "octa": {  # 9 GPUs - 4 layers each
+        "num_stages": 9,
+        "layers_per_stage": [4, 4, 4, 4, 4, 4, 4, 4, 4],
+        "min_vram_gb": 2.0,
+        "precision": "fp16"
+    }, 
+
+    "dodec": {  # 12 GPUs - 3 layers each
+        "num_stages": 12,
+        "layers_per_stage": [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3],
+        "min_vram_gb": 2.0,
+        "precision": "fp16"
+    }, 
+    "tetra": {  # 18 GPUs - 2 layers each
+        "num_stages": 18,
+        "layers_per_stage": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,2,2],
+        "min_vram_gb": 2.0,
+        "precision": "fp16"
+    }, 
     "per_layer": {  # 36 GPUs - 1 layer each
         "num_stages": 36,
         "layers_per_stage": [1] * 36,
         "min_vram_gb": 1.0,
-        "precision": "int4"
+        "precision": "fp16"
     }
 }
 

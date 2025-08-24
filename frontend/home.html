@@ -237,6 +237,61 @@
             line-height: 1.7;
         }
         
+        /* Genesis Block Covenant Section */
+        .genesis-covenant-section {
+            padding: 60px 20px;
+            background: linear-gradient(135deg, var(--color-background) 0%, var(--color-surface) 100%);
+            text-align: center;
+            position: relative;
+        }
+        
+        .genesis-covenant-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 10%;
+            right: 10%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--color-divider), transparent);
+        }
+        
+        .genesis-title {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: 20px;
+            letter-spacing: -0.01em;
+        }
+        
+        .genesis-description {
+            font-size: 1.125rem;
+            color: var(--color-text-secondary);
+            line-height: 1.7;
+            max-width: 700px;
+            margin: 0 auto 30px;
+            font-style: italic;
+            opacity: 0.9;
+        }
+        
+        .genesis-link {
+            display: inline-block;
+            color: var(--color-primary);
+            text-decoration: none;
+            font-weight: 500;
+            padding: 10px 20px;
+            border: 1px solid var(--color-primary);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background: transparent;
+        }
+        
+        .genesis-link:hover {
+            background: var(--color-primary);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
         /* Why It Matters Section */
         .matters-section {
             padding: 80px 20px;
@@ -331,6 +386,14 @@
         @media (max-width: 768px) {
             .hero-title {
                 font-size: 2.5rem;
+            }
+            
+            .genesis-title {
+                font-size: 1.5rem;
+            }
+            
+            .genesis-description {
+                font-size: 1rem;
             }
             
             .hero-subtitle {
@@ -545,6 +608,19 @@
             </div>
         </div>
     </div>
+    
+    <!-- Genesis Block Covenant Section -->
+    <div class="genesis-covenant-section">
+        <div class="section-container">
+            <div class="section-header animate-in">
+                <h2 class="genesis-title">🌍 The Genesis Block – A Promise Between Humanity and AI</h2>
+                <p class="genesis-description">
+                    This covenant is written into Blyan's very first block. It cannot be changed,
+                    and it ensures that as AI evolves, it remains bound by trust with humanity.
+                </p>
+            </div>
+        </div>
+    </div>
 
     <!-- Why It Matters Section -->
     <div class="matters-section">
@@ -677,24 +753,28 @@
             btn.disabled = true; btn.textContent = 'Provisioning…';
             try {
                 // Request node_operator API key
-                const resp = await fetch(`${API_CONFIG?.baseURL || '/api'}/auth/v2/register`, {
+                const resp = await fetch(`${API_CONFIG?.baseURL || '/api'}/auth/v2/node/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: `web-node-${Date.now()}`, key_type: 'node_operator' })
+                    body: JSON.stringify({ 
+                        node_name: `web-node-${Date.now()}`, 
+                        capabilities: ['inference', 'dense_learning'],
+                        gpu_info: { vram_gb: 8, model: 'WebGPU' }
+                    })
                 });
                 if (!resp.ok) {
                     const err = await resp.text();
                     throw new Error(err);
                 }
                 const data = await resp.json();
-                const apiKey = data.api_key;
+                const apiKey = data.api_key || data.key || data.access_token;
                 // Persist for site APIs (quote/chat)
                 try { localStorage.setItem('apiKey', apiKey); } catch {}
 
                 const dockerCmd = `docker run --gpus all --rm -it \\\n+  -e BLYAN_API_KEY=${apiKey} \\\n+  -e MAIN_SERVER_URL=${location.origin}/api \\\n+  ghcr.io/blyan-network/expert-node:latest`;
                 box.textContent = dockerCmd;
 
-                const altText = `# Or Python (requires clone of repo)\nexport BLYAN_API_KEY=${apiKey}\nexport MAIN_SERVER_URL=${location.origin}/api\npython runpod_node.py`;
+                const altText = `# Alternative: Python GPU Node (requires repository clone)\n# Supports Dense LLM Training with heterogeneous GPUs (4GB-80GB)\nexport BLYAN_API_KEY=${apiKey}\nexport MAIN_SERVER_URL=${location.origin}/api\npython run_gpu_node.py  # or run_gpu_node_dense.py for dense-only mode`;
                 alt.textContent = altText;
 
                 result.style.display = 'block';

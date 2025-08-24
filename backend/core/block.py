@@ -23,13 +23,21 @@ class BlockHeader:
     
     # DAG and Dense Model extensions
     depends_on: List[str] = None  # list of block hashes this block depends on
-    block_type: Literal['meta', 'layer', 'dense_layer', 'expert', 'router', 'code', 'architecture', 'migration', 'genesis_pact', 'dataset'] = 'meta'  # block type for dense model
+    block_type: Literal['meta', 'layer', 'dense_layer', 'expert', 'router', 'code', 'architecture', 'migration', 'genesis_pact', 'dataset', 'layer_delta', 'layer_checkpoint', 'training_round'] = 'meta'  # block type for dense model
     layer_name: Optional[str] = None  # layer identifier for dense model (e.g., "layer_0", "embedding", "lm_head")
     layer_id: Optional[str] = None  # layer identifier for model architecture
     
     # Legacy MoE fields for backward compatibility
     expert_name: Optional[str] = None  # Legacy MoE expert identifier
     target_expert: Optional[str] = None  # Legacy MoE target expert field
+    
+    # Learning-specific fields for dense model training
+    training_round_id: Optional[str] = None  # Round identifier for coordinated training
+    base_layer_hash: Optional[str] = None  # Parent layer hash for delta blocks
+    delta_metadata: Optional[Dict[str, Any]] = None  # Compression, sparsity, LoRA config
+    validation_scores: Optional[Dict[str, float]] = None  # Consensus validation scores
+    trainer_signature: Optional[str] = None  # GPU node attestation for authenticity
+    learning_metrics: Optional[Dict[str, Any]] = None  # Loss, perplexity, eval scores
     
     # TensorBlock format extensions
     payload_type: Optional[str] = None  # "pickle", "tensorblock", "eeb", "tile_stream", "json", "code"
@@ -125,6 +133,30 @@ class BlockHeader:
     def is_moe_expert(self) -> bool:
         """Check if this is a legacy MoE expert block."""
         return self.block_type == 'expert' or self.expert_name is not None
+    
+    def is_learning_block(self) -> bool:
+        """Check if this is a learning-related block."""
+        return self.block_type in ['layer_delta', 'layer_checkpoint', 'training_round']
+    
+    def is_delta_block(self) -> bool:
+        """Check if this is a layer delta block."""
+        return self.block_type == 'layer_delta'
+    
+    def is_checkpoint_block(self) -> bool:
+        """Check if this is a layer checkpoint block."""
+        return self.block_type == 'layer_checkpoint'
+    
+    def get_delta_info(self) -> Optional[Dict[str, Any]]:
+        """Get delta metadata if this is a delta block."""
+        if self.is_delta_block() and self.delta_metadata:
+            return {
+                'base_hash': self.base_layer_hash,
+                'compression': self.delta_metadata.get('compression', 'none'),
+                'sparsity': self.delta_metadata.get('sparsity_ratio', 0),
+                'lora_rank': self.delta_metadata.get('rank'),
+                'quantization': self.delta_metadata.get('quantization', 'none')
+            }
+        return None
     
     def is_compatible_with_version(self, target_version: str) -> bool:
         """Check if this block is compatible with a target version"""
