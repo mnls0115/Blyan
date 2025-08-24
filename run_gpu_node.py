@@ -45,15 +45,15 @@ except ImportError:
 # Import model configuration
 try:
     from config.model_profile import (
-        MODEL_ID, MODEL_NAME, ARCHITECTURE, LAYERS, MOE, 
+        MODEL_ID, MODEL_NAME, ARCHITECTURE, LAYERS,
         CONTEXT, PRECISION, COMPUTE, BLOCKCHAIN,
-        get_model_config, get_expert_naming, get_total_experts
+        get_model_config
     )
     DEFAULT_MODEL_NAME = MODEL_ID
     PROFILE_AVAILABLE = True
 except ImportError:
     logger.warning("Model profile not available, using fallback")
-    DEFAULT_MODEL_NAME = 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8'
+    DEFAULT_MODEL_NAME = 'Qwen/Qwen3-8B-FP8'
     PROFILE_AVAILABLE = False
     def get_model_config(name):
         return {}
@@ -169,10 +169,9 @@ class BlyanGPUNode:
         try:
             spec = {
                 "model_name": MODEL_NAME,
-                "architecture": "mixture-of-experts",
-                "num_layers": 24,
-                "num_experts": 16,
-                "routing_strategy": "top2",
+                "architecture": "dense",
+                "num_layers": 36,
+                "hidden_size": 3584,
                 "created_by": "gpu_node_local",
                 "timestamp": time.time()
             }
@@ -269,9 +268,9 @@ class BlyanGPUNode:
         """Check blockchain progress and integrity."""
         progress = {
             "meta_blocks": 0,
-            "expert_blocks": 0,
-            "expected_experts": 0,
-            "missing_experts": [],
+            "layer_blocks": 0,
+            "expected_layers": 36,  # Dense model has 36 layers
+            "missing_layers": [],
             "integrity_valid": True,
             "progress_percentage": 0.0
         }
@@ -281,13 +280,8 @@ class BlyanGPUNode:
             meta_blocks_count = len(self.chains['A']._hash_index) if hasattr(self.chains['A'], '_hash_index') else 0
             progress["meta_blocks"] = meta_blocks_count
             
-            # Get expected expert count from profile
-            if PROFILE_AVAILABLE:
-                # Total experts = layers × experts_per_layer  
-                progress["expected_experts"] = LAYERS["num_layers"] * MOE["num_experts"]
-            else:
-                # Fallback estimate
-                progress["expected_experts"] = 28 * 16  # Default for older models
+            # Dense model expects 36 layers
+            progress["expected_layers"] = 36
             
             # OPTIMIZATION: Skip expensive block type check if we have many blocks
             logger.info("📊 Counting blocks in chain B...")
@@ -303,41 +297,37 @@ class BlyanGPUNode:
                 logger.info(f"✅ Chain B has {chain_b_blocks} blocks")
             
             if chain_b_blocks > 1000:
-                # Assume most blocks are experts if we have many
-                progress["expert_blocks"] = chain_b_blocks - 50  # Subtract some for routers
-                logger.info(f"⚡ Skipping expensive block type check (estimated {progress['expert_blocks']} experts from {chain_b_blocks} blocks)")
-                # Skip the expensive missing expert check too
-                progress["missing_experts"] = []
-                expert_blocks = []  # Empty list to skip iteration below
+                # Assume most blocks are layers if we have many
+                progress["layer_blocks"] = min(36, chain_b_blocks)  # Dense model has max 36 layers
+                logger.info(f"⚡ Skipping expensive block type check (estimated {progress['layer_blocks']} layers from {chain_b_blocks} blocks)")
+                # Skip the expensive missing layer check too
+                progress["missing_layers"] = []
+                layer_blocks = []  # Empty list to skip iteration below
             else:
                 # Only do expensive check for small chains
-                expert_blocks = self.chains['B'].get_blocks_by_type('expert')
-                progress["expert_blocks"] = len(expert_blocks)
+                layer_blocks = self.chains['B'].get_blocks_by_type('layer')
+                progress["layer_blocks"] = len(layer_blocks)
             
-            # Find missing experts (skip if we have many blocks)
-            existing_experts = set()
-            if len(expert_blocks) > 0:
-                for block in expert_blocks:
-                    if hasattr(block.header, 'expert_name'):
-                        existing_experts.add(block.header.expert_name)
+            # Find missing layers (skip if we have many blocks)
+            existing_layers = set()
+            if len(layer_blocks) > 0:
+                for block in layer_blocks:
+                    if hasattr(block.header, 'layer_id'):
+                        existing_layers.add(block.header.layer_id)
             
-            # Check which experts are missing (skip for large chains)
-            if PROFILE_AVAILABLE and chain_b_blocks < 1000 and existing_experts:
-                for layer_idx in range(LAYERS["num_layers"]):
-                    for expert_idx in range(MOE["num_experts"]):
-                        expert_name = get_expert_naming(layer_idx, expert_idx)
-                        if expert_name not in existing_experts:
-                            progress["missing_experts"].append(expert_name)
-                            # Only track first 100 missing for performance
-                            if len(progress["missing_experts"]) >= 100:
-                                progress["missing_experts"].append("... and more")
-                                break
-                    if len(progress["missing_experts"]) >= 100:
-                        break
+            # Check which layers are missing (skip for large chains)
+            if chain_b_blocks < 1000:
+                for layer_idx in range(36):  # Dense model has 36 layers
+                    if layer_idx not in existing_layers:
+                        progress["missing_layers"].append(f"layer_{layer_idx}")
+                        # Only track first 10 missing for readability
+                        if len(progress["missing_layers"]) >= 10:
+                            progress["missing_layers"].append("... and more")
+                            break
             
             # Calculate progress percentage
-            if progress["expected_experts"] > 0:
-                progress["progress_percentage"] = (progress["expert_blocks"] / progress["expected_experts"]) * 100
+            if progress["expected_layers"] > 0:
+                progress["progress_percentage"] = (progress["layer_blocks"] / progress["expected_layers"]) * 100
             
             # Verify integrity of existing blocks
             progress["integrity_valid"] = self.verify_block_integrity()
@@ -345,11 +335,11 @@ class BlyanGPUNode:
             # Log progress summary
             logger.info(f"📊 Block Progress Report:")
             logger.info(f"  Meta blocks: {progress['meta_blocks']}")
-            logger.info(f"  Expert blocks: {progress['expert_blocks']}/{progress['expected_experts']} ({progress['progress_percentage']:.1f}%)")
+            logger.info(f"  Layer blocks: {progress['layer_blocks']}/{progress['expected_layers']} ({progress['progress_percentage']:.1f}%)")
             logger.info(f"  Integrity: {'✅ Valid' if progress['integrity_valid'] else '❌ Invalid'}")
             
-            if progress["missing_experts"] and len(progress["missing_experts"]) < 10:
-                logger.info(f"  Missing experts: {progress['missing_experts'][:5]}")
+            if progress["missing_layers"] and len(progress["missing_layers"]) < 10:
+                logger.info(f"  Missing layers: {progress['missing_layers'][:5]}")
             
             return progress
             
@@ -511,15 +501,14 @@ class BlyanGPUNode:
         # Reset and rebuild (main node has no blockchain to sync from)
         logger.warning("Resetting blockchain to restore integrity")
         
-        # Save any uploaded experts before reset
-        expert_blocks = self.chains['B'].get_blocks_by_type('expert')
-        saved_experts = []
-        if expert_blocks:
-            logger.info(f"Saving {len(expert_blocks)} expert blocks before reset...")
-            for block in expert_blocks:
-                saved_experts.append({
+        # Save any uploaded layers before reset
+        layer_blocks = self.chains['B'].get_blocks_by_type('layer')
+        saved_layers = []
+        if layer_blocks:
+            logger.info(f"Saving {len(layer_blocks)} layer blocks before reset...")
+            for block in layer_blocks:
+                saved_layers.append({
                     'payload': block.payload,
-                    'expert_name': block.header.expert_name,
                     'layer_id': block.header.layer_id
                 })
         
@@ -531,22 +520,21 @@ class BlyanGPUNode:
             logger.error("Failed to reinitialize chains after reset")
             return False
         
-        # Restore saved experts if any
-        if saved_experts:
-            logger.info(f"Restoring {len(saved_experts)} expert blocks...")
+        # Restore saved layers if any
+        if saved_layers:
+            logger.info(f"Restoring {len(saved_layers)} layer blocks...")
             restored = 0
-            for expert_data in saved_experts:
+            for layer_data in saved_layers:
                 try:
                     self.chains['B'].add_block(
-                        expert_data['payload'],
-                        block_type='expert',
-                        expert_name=expert_data['expert_name'],
-                        layer_id=expert_data['layer_id']
+                        layer_data['payload'],
+                        block_type='layer',
+                        layer_id=layer_data['layer_id']
                     )
                     restored += 1
                 except Exception as e:
-                    logger.warning(f"Could not restore expert {expert_data['expert_name']}: {e}")
-            logger.info(f"✅ Restored {restored}/{len(saved_experts)} expert blocks")
+                    logger.warning(f"Could not restore layer {layer_data['layer_id']}: {e}")
+            logger.info(f"✅ Restored {restored}/{len(saved_layers)} layer blocks")
         
         return True
     
@@ -561,20 +549,20 @@ class BlyanGPUNode:
             # Don't block upload for GPU nodes - they maintain independent chains
         
         # Calculate what's needed
-        total_needed = progress["expected_experts"]
-        current_count = progress["expert_blocks"]
+        total_needed = progress["expected_layers"]
+        current_count = progress["layer_blocks"]
         
         if current_count == 0:
-            logger.info(f"📦 Starting fresh - need to upload {total_needed} experts")
+            logger.info(f"📦 Starting fresh - need to upload {total_needed} layers")
         else:
             remaining = total_needed - current_count
-            logger.info(f"📦 Resuming - need {remaining} more experts ({progress['progress_percentage']:.1f}% complete)")
+            logger.info(f"📦 Resuming - need {remaining} more layers ({progress['progress_percentage']:.1f}% complete)")
         
         # Check if we should auto-upload
         if AUTO_UPLOAD:
             # Check if upload was already completed (verify blocks exist)
             upload_state_file = DATA_DIR / "upload_completed.json"
-            actual_blocks = progress.get('expert_blocks', 0)
+            actual_blocks = progress.get('layer_blocks', 0)
             if upload_state_file.exists() and actual_blocks > 0:
                 logger.info("✅ Upload already completed (found state file)")
             elif upload_state_file.exists() and actual_blocks == 0:
@@ -586,9 +574,10 @@ class BlyanGPUNode:
                 # Mark as complete to prevent re-upload
                 upload_state = {
                     "model": MODEL_NAME,
-                    "num_experts": current_count,
+                    "num_layers": current_count,
                     "timestamp": time.time(),
-                    "completed": True
+                    "completed": True,
+                    "version": "dense-v1"
                 }
                 with open(upload_state_file, 'w') as f:
                     json.dump(upload_state, f)
@@ -608,12 +597,12 @@ class BlyanGPUNode:
             logger.info("📋 Starting model manager initialization...")
             
             # Use blockchain-first loader - NO local models
-            logger.info("  1/5: Importing blockchain model manager...")
+            logger.info("  1/5: Importing unified model manager...")
             try:
-                from backend.model.blockchain_first_loader import BlockchainOnlyModelManager
-                logger.info("    ✓ BlockchainOnlyModelManager imported")
+                from backend.model.manager import UnifiedModelManager
+                logger.info("    ✓ UnifiedModelManager imported")
             except ImportError as e:
-                logger.error(f"    ✗ Failed to import BlockchainOnlyModelManager: {e}")
+                logger.error(f"    ✗ Failed to import UnifiedModelManager: {e}")
                 return False
             
             try:
@@ -634,17 +623,29 @@ class BlyanGPUNode:
             logger.info("  2/5: Loading parameter index...")
             param_index = ParameterIndex(DATA_DIR / "param_index.json")
             
-            # Initialize blockchain-only model manager
-            logger.info("  3/5: Creating blockchain model manager...")
-            self.model_manager = BlockchainOnlyModelManager(
-                meta_chain=self.chains.get('A'),
-                param_chain=self.chains.get('B'),
-                param_index=param_index,
-                device="cuda" if self.gpu_available else "cpu"
+            # Check blockchain compatibility
+            logger.info("  3/5: Checking blockchain compatibility...")
+            try:
+                from backend.core.migration_helper import check_blockchain_compatibility, print_blockchain_status
+                if check_blockchain_compatibility(DATA_DIR):
+                    logger.info("    ✓ Blockchain compatible with dense model")
+                else:
+                    logger.warning("    ⚠️ Blockchain may have compatibility issues")
+                    print_blockchain_status(DATA_DIR)
+            except Exception as e:
+                logger.warning(f"    Could not check compatibility: {e}")
+            
+            # Initialize unified model manager
+            logger.info("  4/5: Creating unified model manager...")
+            self.model_manager = UnifiedModelManager(
+                root_dir=DATA_DIR,
+                model_name=MODEL_NAME,
+                device="cuda" if self.gpu_available else "cpu",
+                use_blockchain=True  # Always use blockchain for inference
             )
             
             # Initialize zero-copy loader for efficient loading
-            logger.info("  4/5: Setting up zero-copy loader...")
+            logger.info("  5/5: Setting up zero-copy loader...")
             self.zero_copy_loader = ZeroCopyTileLoader(
                 chain=self.chains.get('B'),
                 cache_dir=DATA_DIR / "tile_cache"
@@ -723,7 +724,7 @@ class BlyanGPUNode:
             self._upload_in_progress = False
     
     async def _do_download_and_upload(self):
-        """Actual download and upload implementation."""
+        """Download dense model and upload layers to blockchain."""
         
         # Check if upload was already completed
         upload_state_file = DATA_DIR / "upload_completed.json"
@@ -734,15 +735,16 @@ class BlyanGPUNode:
                 
                 # Verify actual blocks exist, not just state file
                 actual_blocks = len(self.chains['B']._hash_index) if hasattr(self.chains['B'], '_hash_index') else 0
-                expected_experts = upload_state.get('num_experts', 0)
+                # Back-compat: old files have num_experts, new have num_layers
+                expected_layers = upload_state.get('num_layers', upload_state.get('num_experts', 0))
                 
                 if upload_state.get("completed") and upload_state.get("model") == MODEL_NAME:
-                    if actual_blocks > 0 and actual_blocks >= expected_experts * 0.99:  # 99% threshold
+                    if actual_blocks > 0 and actual_blocks >= expected_layers * 0.95:  # 95% threshold for layers
                         logger.info(f"✅ Model {MODEL_NAME} already uploaded ({actual_blocks} blocks)")
                         logger.info("💡 Delete upload_completed.json to force re-upload")
                         return
                     else:
-                        logger.warning(f"⚠️ State file exists but only {actual_blocks} blocks found (expected ~{expected_experts})")
+                        logger.warning(f"⚠️ State file exists but only {actual_blocks} blocks found (expected ~{expected_layers})")
                         logger.info("🔄 Removing invalid state file and continuing upload...")
                         upload_state_file.unlink()
             except Exception as e:
@@ -842,299 +844,221 @@ class BlyanGPUNode:
                 if PROFILE_AVAILABLE:
                     meta_spec = {
                         "model_name": MODEL_NAME,
-                        "architecture": ARCHITECTURE["type"],
-                        "num_layers": LAYERS["num_layers"],
-                        "num_experts": MOE["num_experts"],
-                        "activated_experts": MOE["num_activated_experts"],
-                        "routing_strategy": MOE["routing_strategy"],
+                        "architecture": "dense",
+                        "num_layers": 36,
+                        "hidden_size": LAYERS["hidden_size"],
+                        "num_attention_heads": LAYERS["num_attention_heads"],
+                        "num_kv_heads": LAYERS["num_kv_heads"],
                         "context_length": CONTEXT["max_length"],
-                        "total_params": ARCHITECTURE["total_params"],
-                        "active_params": ARCHITECTURE["active_params"]
-                }
+                        "total_params": ARCHITECTURE["total_params"]
+                    }
                 self.chains['A'].add_block(json.dumps(meta_spec).encode(), block_type='meta')
                 logger.info("✅ Created meta block")
             
-            # Extract and upload experts with memory-efficient streaming
-            import io, pickle, gc, torch
+            # Extract and upload dense model layers with zero-copy streaming
+            import io, gc, torch, hashlib
+            from backend.core.param_index import ParameterIndex
 
             num_uploaded = 0
-            layers = getattr(model, "model", None)
-            layers = getattr(layers, "layers", None)
-
-            if layers is None:
-                raise RuntimeError("Model structure unexpected: missing model.layers")
-
-            # Use profile-based layer count if available
-            max_layers = LAYERS["num_layers"] if PROFILE_AVAILABLE else 48
             
-            for layer_idx in range(min(max_layers, len(layers))):
-                layer = layers[layer_idx]
+            # Get model state dict - keep on GPU for zero-copy
+            state_dict = model.state_dict()
+            
+            # Expected number of layers (36 layers + embedding + lm_head)
+            num_layers = 36  # Dense model has 36 layers
+            expected_total = num_layers + 2  # +2 for embedding and lm_head
+            expected_names = ["embedding"] + [f"layer_{i}" for i in range(num_layers)] + ["lm_head"]
+            
+            logger.info(f"📦 Uploading dense model: {num_layers} layers + embedding + lm_head")
+            
+            # Initialize parameter index
+            param_index = ParameterIndex(DATA_DIR / "param_index.json")
+            uploaded_names = []
+            
+            # 1. Upload embedding layer with metadata
+            embedding_keys = [k for k in state_dict.keys() if 'embed_tokens' in k]
+            if embedding_keys:
+                try:
+                    # Stream tensors directly - no CPU copy
+                    buffer = io.BytesIO()
+                    tensors_to_save = {}
+                    for key in embedding_keys:
+                        tensors_to_save[key] = state_dict[key]
+                    
+                    torch.save(tensors_to_save, buffer)
+                    payload = buffer.getvalue()
+                    
+                    # Calculate content hash for integrity
+                    content_hash = hashlib.sha256(payload).hexdigest()[:16]
+                    
+                    # Add block with metadata
+                    metadata = {
+                        "model_id": MODEL_NAME,
+                        "architecture": "dense",
+                        "component": "embedding",
+                        "version": "dense-v1",
+                        "content_hash": content_hash,
+                        "tensor_count": len(embedding_keys)
+                    }
+                    
+                    block = self.chains['B'].add_block(
+                        payload,
+                        block_type='dense_layer',  # Standardized block type
+                        layer_name="embedding"  # Use layer_name instead of expert_name
+                    )
+                    
+                    # Update parameter index with block index (not hash)
+                    param_index.set("embedding", block.header.index)
+                    uploaded_names.append("embedding")
+                    
+                    logger.info(f"✅ Uploaded embedding ({len(payload) / 1024 / 1024:.1f} MB, hash: {content_hash})")
+                    num_uploaded += 1
+                    
+                    # Cleanup
+                    del tensors_to_save, buffer, payload
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    
+                except Exception as e:
+                    logger.error(f"Failed to upload embedding: {e}")
+            
+            # 2. Upload each transformer layer with streaming
+            for layer_idx in range(num_layers):
+                layer_keys = [k for k in state_dict.keys() if f'layers.{layer_idx}.' in k]
                 
-                # Check for MoE structure
-                mlp = getattr(layer, "mlp", None)
-                if mlp is None:
-                    logger.warning(f"Layer {layer_idx} has no MLP; skipping")
+                if not layer_keys:
+                    logger.warning(f"Layer {layer_idx} has no weights - skipping")
                     continue
                 
-                # Extract gate/router weights first
-                if hasattr(mlp, 'gate'):
-                    try:
-                        router_name = f"layer{layer_idx}.router"
-                        router_state = {'weight': mlp.gate.weight.detach().cpu().contiguous()}
-                        
-                        buffer = io.BytesIO()
-                        pickle.dump(router_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
-                        payload = buffer.getvalue()
-                        
-                        self.chains['B'].add_block(
-                            payload,
-                            block_type='router',
-                            expert_name=router_name,
-                            layer_id=f"layer{layer_idx}"
-                        )
-                        logger.info(f"✅ Uploaded {router_name} to blockchain")
-                        num_uploaded += 1
-                        del router_state, buffer, payload
-                        
-                    except Exception as e:
-                        logger.warning(f"Failed to upload router for layer {layer_idx}: {e}")
-                
-                # Extract ALL individual experts based on model configuration
-                if hasattr(mlp, 'experts'):
-                    num_experts = len(mlp.experts) if hasattr(mlp.experts, '__len__') else 0
-                    expected_experts = MOE["num_experts"] if PROFILE_AVAILABLE else 128
-                    logger.info(f"📦 Layer {layer_idx} has {num_experts} experts to upload (expected: {expected_experts})")
+                try:
+                    # Stream layer weights directly from GPU
+                    buffer = io.BytesIO()
+                    tensors_to_save = {}
+                    for key in layer_keys:
+                        tensors_to_save[key] = state_dict[key]  # Keep on GPU
                     
-                    # Verify we're getting all expected experts
-                    if num_experts < expected_experts:
-                        logger.warning(f"⚠️ Expected {expected_experts} experts but found {num_experts} in layer {layer_idx}")
-                    elif num_experts > expected_experts:
-                        logger.warning(f"⚠️ Found more experts ({num_experts}) than expected ({expected_experts}) in layer {layer_idx}")
+                    torch.save(tensors_to_save, buffer)
+                    payload = buffer.getvalue()
                     
-                    # Track upload progress
-                    successfully_uploaded = 0
+                    # Calculate content hash
+                    content_hash = hashlib.sha256(payload).hexdigest()[:16]
                     
-                    # Upload each expert individually with retry logic
-                    for expert_idx in range(num_experts):
-                        upload_success = False
-                        retry_count = 0
-                        max_retries = 3
-                        
-                        while not upload_success and retry_count < max_retries:
-                            try:
-                                expert = mlp.experts[expert_idx]
-                                expert_name = get_expert_naming(layer_idx, expert_idx) if PROFILE_AVAILABLE else f"layer{layer_idx}.expert{expert_idx}"
-                                
-                                # Extract expert weights (gate_proj, up_proj, down_proj)
-                                expert_state = {}
-                                
-                                # Check if expert has any weights at all
-                                has_weights = False
-                                
-                                if hasattr(expert, 'gate_proj') and hasattr(expert.gate_proj, 'weight'):
-                                    weight = expert.gate_proj.weight.detach().cpu().contiguous()
-                                    # Check for NaN/Inf values (skip for FP8 and other special dtypes)
-                                    try:
-                                        # Only check for standard float types
-                                        if weight.dtype in [torch.float32, torch.float16, torch.bfloat16]:
-                                            if torch.isnan(weight).any() or torch.isinf(weight).any():
-                                                logger.warning(f"Expert {expert_idx} layer {layer_idx} gate_proj has NaN/Inf values - skipping")
-                                                break
-                                    except (RuntimeError, NotImplementedError):
-                                        # Skip NaN/Inf check for unsupported dtypes (like FP8)
-                                        logger.debug(f"Skipping NaN/Inf check for dtype {weight.dtype}")
-                                    expert_state['gate_proj.weight'] = weight
-                                    has_weights = True
-                                    
-                                if hasattr(expert, 'up_proj') and hasattr(expert.up_proj, 'weight'):
-                                    weight = expert.up_proj.weight.detach().cpu().contiguous()
-                                    # Check for NaN/Inf values (skip for FP8 and other special dtypes)
-                                    try:
-                                        # Only check for standard float types
-                                        if weight.dtype in [torch.float32, torch.float16, torch.bfloat16]:
-                                            if torch.isnan(weight).any() or torch.isinf(weight).any():
-                                                logger.warning(f"Expert {expert_idx} layer {layer_idx} up_proj has NaN/Inf values - skipping")
-                                                break
-                                    except (RuntimeError, NotImplementedError):
-                                        # Skip NaN/Inf check for unsupported dtypes (like FP8)
-                                        logger.debug(f"Skipping NaN/Inf check for dtype {weight.dtype}")
-                                    expert_state['up_proj.weight'] = weight
-                                    has_weights = True
-                                    
-                                if hasattr(expert, 'down_proj') and hasattr(expert.down_proj, 'weight'):
-                                    weight = expert.down_proj.weight.detach().cpu().contiguous()
-                                    # Check for NaN/Inf values (skip for FP8 and other special dtypes)
-                                    try:
-                                        # Only check for standard float types
-                                        if weight.dtype in [torch.float32, torch.float16, torch.bfloat16]:
-                                            if torch.isnan(weight).any() or torch.isinf(weight).any():
-                                                logger.warning(f"Expert {expert_idx} layer {layer_idx} down_proj has NaN/Inf values - skipping")
-                                                break
-                                    except (RuntimeError, NotImplementedError):
-                                        # Skip NaN/Inf check for unsupported dtypes (like FP8)
-                                        logger.debug(f"Skipping NaN/Inf check for dtype {weight.dtype}")
-                                    expert_state['down_proj.weight'] = weight
-                                    has_weights = True
-                                
-                                if not has_weights:
-                                    logger.warning(f"Expert {expert_idx} layer {layer_idx} has no weights - skipping")
-                                    break
-                                
-                                if expert_state:
-                                    buffer = io.BytesIO()
-                                    pickle.dump(expert_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
-                                    payload = buffer.getvalue()
-                                    
-                                    # Check payload is valid
-                                    if not payload or len(payload) == 0:
-                                        logger.error(f"Failed to serialize {expert_name} - empty payload")
-                                        break
-                                    
-                                    # Check disk space before writing (every 100 blocks)
-                                    if num_uploaded % 100 == 0:
-                                        import shutil
-                                        total, used, free = shutil.disk_usage("/")
-                                        free_gb = free // (2**30)
-                                        if free_gb < 10:  # Less than 10GB free
-                                            logger.error(f"LOW DISK SPACE: Only {free_gb}GB free")
-                                            logger.error("Cannot continue upload - insufficient disk space")
-                                            return  # Stop the upload
-                                    
-                                    # Add with proper error handling
-                                    try:
-                                        self.chains['B'].add_block(
-                                            payload,
-                                            block_type='expert',
-                                            expert_name=expert_name,
-                                            layer_id=f"layer{layer_idx}",
-                                            depends_on=[]  # Explicitly set empty list to avoid None issues
-                                        )
-                                        logger.info(f"✅ Uploaded {expert_name} to blockchain")
-                                        num_uploaded += 1
-                                        successfully_uploaded += 1
-                                        upload_success = True
-                                    except Exception as add_error:
-                                        if "Expecting value" in str(add_error):
-                                            logger.error(f"JSON serialization error for {expert_name}: {add_error}")
-                                            logger.debug(f"Payload size: {len(payload) if payload else 0} bytes")
-                                            
-                                            # Additional diagnostics
-                                            if not payload or len(payload) == 0:
-                                                logger.error(f"ERROR: Empty payload for {expert_name}")
-                                            elif len(payload) < 100:
-                                                logger.error(f"ERROR: Suspiciously small payload for {expert_name}: {len(payload)} bytes")
-                                            
-                                            # Check if the chain is corrupted
-                                            try:
-                                                latest_block = self.chains['B'].get_latest_block()
-                                                if latest_block:
-                                                    logger.debug(f"Last successful block index: {latest_block.header.index}")
-                                                else:
-                                                    logger.error("Chain B appears to be corrupted or reset")
-                                            except Exception as chain_error:
-                                                logger.error(f"Cannot check chain state: {chain_error}")
-                                            
-                                            # Skip this expert if JSON error persists
-                                            break
-                                        else:
-                                            raise
-                                    
-                                    # Cleanup after each expert
-                                    del expert_state, buffer, payload
-                                
-                            except Exception as e:
-                                retry_count += 1
-                                if retry_count < max_retries:
-                                    logger.warning(f"Failed to upload {expert_name} (attempt {retry_count}/{max_retries}): {str(e)[:100]}")
-                                    time.sleep(0.5 * retry_count)  # Exponential backoff
-                                else:
-                                    logger.error(f"Failed to upload {expert_name} after {max_retries} attempts: {str(e)[:100]}")
-                                    import traceback
-                                    logger.debug(f"Full error trace: {traceback.format_exc()}")
-                        
-                        # Memory cleanup every 10 experts
-                        if expert_idx % 10 == 0:
-                            gc.collect()
-                            if torch.cuda.is_available():
-                                torch.cuda.empty_cache()
-                                
-                                # Check GPU memory usage
-                                try:
-                                    mem_allocated = torch.cuda.memory_allocated() / (1024**3)  # GB
-                                    mem_reserved = torch.cuda.memory_reserved() / (1024**3)   # GB
-                                    if mem_allocated > 40:  # More than 40GB used
-                                        logger.warning(f"High GPU memory usage: {mem_allocated:.1f}GB allocated")
-                                        # Force aggressive cleanup
-                                        torch.cuda.synchronize()
-                                        torch.cuda.empty_cache()
-                                except Exception:
-                                    pass  # Ignore if CUDA not available
-                
-                # Check for shared expert (if present)
-                if hasattr(mlp, 'shared_expert'):
-                    try:
-                        shared_name = f"layer{layer_idx}.shared_expert"
-                        shared_expert = mlp.shared_expert
-                        
-                        shared_state = {}
-                        if hasattr(shared_expert, 'gate_proj'):
-                            shared_state['gate_proj.weight'] = shared_expert.gate_proj.weight.detach().cpu().contiguous()
-                        if hasattr(shared_expert, 'up_proj'):
-                            shared_state['up_proj.weight'] = shared_expert.up_proj.weight.detach().cpu().contiguous()
-                        if hasattr(shared_expert, 'down_proj'):
-                            shared_state['down_proj.weight'] = shared_expert.down_proj.weight.detach().cpu().contiguous()
-                        
-                        if shared_state:
-                            buffer = io.BytesIO()
-                            pickle.dump(shared_state, buffer, protocol=pickle.HIGHEST_PROTOCOL)
-                            payload = buffer.getvalue()
-                            
-                            self.chains['B'].add_block(
-                                payload,
-                                block_type='expert',
-                                expert_name=shared_name,
-                                layer_id=f"layer{layer_idx}"
-                            )
-                            logger.info(f"✅ Uploaded {shared_name} to blockchain")
-                            num_uploaded += 1
-                            
-                            del shared_state, buffer, payload
+                    # Metadata for layer
+                    metadata = {
+                        "model_id": MODEL_NAME,
+                        "architecture": "dense",
+                        "component": "layer",
+                        "layer_index": layer_idx,
+                        "version": "dense-v1",
+                        "content_hash": content_hash,
+                        "tensor_count": len(layer_keys)
+                    }
                     
-                    except Exception as e:
-                        logger.warning(f"Failed to upload shared expert for layer {layer_idx}: {e}")
-                
-                # Report layer upload results
-                if hasattr(mlp, 'experts'):
-                    if successfully_uploaded < expected_experts:
-                        logger.warning(f"⚠️ Layer {layer_idx}: Only uploaded {successfully_uploaded}/{expected_experts} experts")
-                    else:
-                        logger.info(f"✅ Layer {layer_idx}: Successfully uploaded all {successfully_uploaded} experts")
-                
-                # Major memory cleanup after each layer
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                
-                logger.info(f"📊 Layer {layer_idx} complete. Total uploaded: {num_uploaded}")
+                    # Upload to blockchain with integer layer_id
+                    layer_name = f"layer_{layer_idx}"
+                    block = self.chains['B'].add_block(
+                        payload,
+                        block_type='dense_layer',  # Standardized block type
+                        layer_name=layer_name  # Use layer_name instead of expert_name
+                    )
+                    
+                    # Update parameter index with block index (not hash)
+                    param_index.set(layer_name, block.header.index)
+                    uploaded_names.append(layer_name)
+                    
+                    logger.info(f"✅ Uploaded layer {layer_idx} ({len(payload) / 1024 / 1024:.1f} MB, hash: {content_hash})")
+                    num_uploaded += 1
+                    
+                    # Cleanup
+                    del tensors_to_save, buffer, payload
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    
+                except Exception as e:
+                    logger.error(f"Failed to upload layer {layer_idx}: {e}")
+                    continue
             
-            # Final verification
-            expected_total = LAYERS["num_layers"] * MOE["num_experts"] if PROFILE_AVAILABLE else (48 * 128)
-            logger.info(f"✅ Upload complete: {num_uploaded} blocks uploaded")
-            logger.info(f"📊 Expected {expected_total} experts total ({LAYERS['num_layers'] if PROFILE_AVAILABLE else 48} layers × {MOE['num_experts'] if PROFILE_AVAILABLE else 128} experts)")
+            # 3. Upload LM head with metadata
+            lm_head_keys = [k for k in state_dict.keys() if 'lm_head' in k]
+            if lm_head_keys:
+                try:
+                    # Stream directly from GPU
+                    buffer = io.BytesIO()
+                    tensors_to_save = {}
+                    for key in lm_head_keys:
+                        tensors_to_save[key] = state_dict[key]  # Keep on GPU
+                    
+                    torch.save(tensors_to_save, buffer)
+                    payload = buffer.getvalue()
+                    
+                    # Calculate content hash
+                    content_hash = hashlib.sha256(payload).hexdigest()[:16]
+                    
+                    # Metadata
+                    metadata = {
+                        "model_id": MODEL_NAME,
+                        "architecture": "dense",
+                        "component": "lm_head",
+                        "version": "dense-v1",
+                        "content_hash": content_hash,
+                        "tensor_count": len(lm_head_keys)
+                    }
+                    
+                    block = self.chains['B'].add_block(
+                        payload,
+                        block_type='dense_layer',  # Standardized block type
+                        layer_name="lm_head"  # Use layer_name instead of expert_name
+                    )
+                    
+                    # Update parameter index with block index (not hash)
+                    param_index.set("lm_head", block.header.index)
+                    uploaded_names.append("lm_head")
+                    
+                    logger.info(f"✅ Uploaded LM head ({len(payload) / 1024 / 1024:.1f} MB, hash: {content_hash})")
+                    num_uploaded += 1
+                    
+                    # Cleanup
+                    del tensors_to_save, buffer, payload
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    
+                except Exception as e:
+                    logger.error(f"Failed to upload LM head: {e}")
             
-            if num_uploaded < expected_total:
-                logger.warning(f"⚠️ Only uploaded {num_uploaded}/{expected_total} experts ({(num_uploaded/expected_total)*100:.1f}%)")
-                logger.warning("Some experts may be missing. Check logs for failed uploads.")
+            # Parameter index auto-saves on each set() call
+            
+            # Verify completeness by names, not percentages
+            missing_components = set(expected_names) - set(uploaded_names)
+            if missing_components:
+                logger.error(f"❌ Missing components: {missing_components}")
+                logger.error("Upload incomplete - some components failed")
             else:
-                logger.info(f"✅ All {expected_total} experts uploaded successfully!")
+                logger.info(f"✅ All expected components uploaded: {len(uploaded_names)}/{len(expected_names)}")
             
-            # Save upload state to prevent re-upload
+            
+            # Final verification - already done above
+            logger.info(f"✅ Upload complete: {num_uploaded} blocks uploaded")
+            logger.info(f"📊 Uploaded components: {uploaded_names}")
+            
+            # Only mark complete if ALL components uploaded
+            upload_complete = len(missing_components) == 0
+            
+            if not upload_complete:
+                logger.error(f"⚠️ Upload incomplete - missing: {missing_components}")
+            
+            # Save upload state with detailed component list
             upload_state_file = DATA_DIR / "upload_completed.json"
             upload_state = {
                 "model": MODEL_NAME,
-                "num_experts": num_uploaded,
+                "num_layers": num_layers,
+                "uploaded_components": uploaded_names,
+                "expected_components": expected_names,
                 "timestamp": time.time(),
-                "completed": True
+                "completed": upload_complete,
+                "version": "dense-v1"
             }
             with open(upload_state_file, 'w') as f:
                 json.dump(upload_state, f)
@@ -1262,7 +1186,7 @@ class BlyanGPUNode:
 
         # Chat endpoint with MoE support
         async def chat(request):
-            """Chat endpoint with MoE inference support"""
+            """Chat endpoint with dense model inference"""
             try:
                 import time
                 start_time = time.time()
@@ -1270,104 +1194,21 @@ class BlyanGPUNode:
                 data = await request.json()
                 prompt = data.get("prompt", "")
                 max_new_tokens = data.get("max_new_tokens", 64)
-                use_moe = data.get("use_moe", True)
-                top_k_experts = data.get("top_k_experts", 2)
 
-                # Check if we have MoE available
-                has_distributed_nodes = bool(self.distributed_coordinator.registry.nodes) if hasattr(self, 'distributed_coordinator') and self.distributed_coordinator else False
-                has_moe_manager = hasattr(self, 'moe_model_manager') and self.moe_model_manager is not None
+                # Use dense model
+                if not hasattr(self, 'model_manager') or self.model_manager is None:
+                    return web.json_response({"error": "Model manager not initialized"}, status=500)
 
-                if use_moe and has_distributed_nodes:
-                    # Use distributed MoE inference
-                    available_experts = list(self.distributed_coordinator.registry.expert_to_nodes.keys())
-                    if available_experts:
-                        selected_experts = available_experts[:top_k_experts]
+                # Generate response using dense model
+                answer = self.model_manager.generate(prompt, max_new_tokens=max_new_tokens)
+                inference_time = time.time() - start_time
 
-                        # Prefer donor nodes for free-tier requests
-                        prefer_donor = not data.get("free_tier", False)
-
-                        response_text, routing_info = await self.distributed_coordinator.distribute_inference(
-                            prompt=prompt,
-                            required_experts=selected_experts,
-                            max_new_tokens=max_new_tokens,
-                            prefer_donor=prefer_donor
-                        )
-
-                        inference_time = time.time() - start_time
-
-                        return web.json_response({
-                            "response": response_text,
-                            "expert_usage": routing_info.get('expert_usage', {}),
-                            "inference_time": inference_time,
-                            "used_moe": True,
-                            "expert_count": len(selected_experts)
-                        })
-
-                elif use_moe and has_moe_manager:
-                    # Use local MoE inference
-                    answer, expert_usage = self.moe_model_manager.selective_generate(
-                        prompt=prompt,
-                        max_new_tokens=max_new_tokens,
-                        top_k_experts=top_k_experts
-                    )
-
-                    inference_time = time.time() - start_time
-
-                    return web.json_response({
-                        "response": answer,
-                        "expert_usage": expert_usage,
-                        "inference_time": inference_time,
-                        "used_moe": True
-                    })
-
-                else:
-                    # Fallback to standard model manager
-                    if not hasattr(self, 'model_manager') or self.model_manager is None:
-                        return web.json_response({"error": "Model manager not initialized"}, status=500)
-
-                    # Use correct parameters for BlockchainOnlyModelManager
-                    if hasattr(self.model_manager, 'validate_blockchain_state'):
-                        # This is a BlockchainOnlyModelManager - get available experts
-                        state = self.model_manager.validate_blockchain_state()
-                        available_experts = state.get('available_experts', [])
-
-                        # Select experts to use (take first few or all if small number)
-                        selected_experts = available_experts[:min(len(available_experts), top_k_experts)]
-                        if not selected_experts:
-                            # No experts available, use fallback
-                            answer = f"⚠️ No experts available in blockchain. Please upload experts first. Prompt: {prompt}"
-                            expert_usage = {}
-                            used_moe = False
-                        else:
-                            # Generate with selected experts
-                            answer = self.model_manager.generate(prompt, selected_experts, max_new_tokens)
-                            inference_time = time.time() - start_time
-
-                            # Parse expert usage from response
-                            expert_usage = {}
-                            used_moe = True
-                            import re
-                            expert_match = re.search(r'Generated using blockchain experts: ([^\\]]+)', answer)
-                            if expert_match:
-                                expert_names = expert_match.group(1).split(', ')
-                                expert_usage = {name: 1 for name in expert_names}
-                            else:
-                                # Fallback: use selected experts
-                                expert_usage = {name: 1 for name in selected_experts}
-                    else:
-                        # Fallback for other model managers
-                        answer = f"Standard model response to: {prompt}"
-                        expert_usage = {}
-                        used_moe = False
-
-                    inference_time = time.time() - start_time
-
-                    return web.json_response({
-                        "response": answer,
-                        "expert_usage": expert_usage,
-                        "inference_time": inference_time,
-                        "used_moe": used_moe
-                    })
+                return web.json_response({
+                    "response": answer,
+                    "inference_time": inference_time,
+                    "model": MODEL_NAME,
+                    "mode": "dense"
+                })
 
             except Exception as exc:
                 logger.error(f"Chat error: {exc}")
@@ -1379,7 +1220,7 @@ class BlyanGPUNode:
                 data = await request.json()
                 prompt = data.get("prompt", "")
                 max_tokens = data.get("max_new_tokens", data.get("max_length", 100))
-                selected_experts = data.get("experts", [])
+                # Dense model doesn't need layer selection - uses all layers
                 required_precision = data.get("precision", self.precision)
                 
                 # Validate precision requirement
@@ -1393,50 +1234,25 @@ class BlyanGPUNode:
                         "error": "Model manager not initialized"
                     }, status=503)
                 
-                # Get available experts if none specified
-                if not selected_experts:
-                    available = self.model_manager.get_available_experts()
-                    if available:
-                        # Select experts from different layers for proper MoE inference
-                        # Group by layer
-                        experts_by_layer = {}
-                        for expert in available:
-                            if 'layer' in expert:
-                                layer = expert.split('layer')[1].split('.')[0]
-                                if layer not in experts_by_layer:
-                                    experts_by_layer[layer] = []
-                                experts_by_layer[layer].append(expert)
-                        
-                        # Select one expert from each of the first few layers
-                        selected_experts = []
-                        for layer in sorted(experts_by_layer.keys())[:4]:  # Use first 4 layers
-                            if experts_by_layer[layer]:
-                                selected_experts.append(experts_by_layer[layer][0])
-                        
-                        if not selected_experts and available:
-                            # Fallback to first 4 if layer parsing fails
-                            selected_experts = available[:min(4, len(available))]
-                    else:
-                        return web.json_response({
-                            "error": "No experts in blockchain. Upload model first.",
-                            "hint": "Run: python miner/upload_moe_parameters.py"
-                        }, status=503)
+                # For dense model, we don't need to select specific components
+                # The model manager will handle the full model inference
+                logger.info(f"Performing dense model inference")
                 
-                logger.info(f"Performing blockchain inference with {len(selected_experts)} experts")
-                
-                # Perform blockchain-first inference
+                # Perform blockchain-first inference with dense model
                 response = await asyncio.to_thread(
                     self.model_manager.generate,
                     prompt,
-                    selected_experts,
                     max_tokens
                 )
+                
+                # Track which layers were used (for dense model, all layers are used)
+                layers_used = [f"layer_{i}" for i in range(36)]  # Dense model has 36 layers
                 
                 return web.json_response({
                     "node_id": self.node_id,
                     "prompt": prompt,
                     "response": response,
-                    "experts_used": selected_experts,
+                    "layers_used": layers_used,  # Changed from experts_used
                     "blockchain_inference": True,
                     "gpu_used": self.gpu_available,
                     "precision": self.precision  # Report precision used

@@ -325,7 +325,7 @@ def integrate_with_moe_manager(moe_manager: Any, chains: Optional[Dict[str, Any]
             top_p = kwargs.get("top_p", 0.9)
             
             # Get model_id from manager and layer experts
-            model_id = getattr(self, 'model_id', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8')
+            model_id = getattr(self, 'model_id', 'Qwen/Qwen3-8B-FP8')
             # Store model_id in adapter for reference
             adapter.model_id = model_id
             layer_experts = adapter._get_layer_experts(model_id)

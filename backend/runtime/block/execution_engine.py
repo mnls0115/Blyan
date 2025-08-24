@@ -11,8 +11,8 @@ import torch
 import torch.nn.functional as F
 import logging
 
-from .types import RequestSpec, ExpertData, StreamToken
-from .expert_store import ExpertStore
+from .types import RequestSpec, LayerData, StreamToken
+from .expert_store import LayerStore
 from .errors import InvalidRequestError, ResourceExhaustedError
 
 logger = logging.getLogger(__name__)
@@ -25,14 +25,14 @@ class ExecutionEngine:
     
     def __init__(
         self,
-        expert_store: ExpertStore,
+        layer_store: LayerStore,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
         max_batch_size: int = 1,
         mixed_precision: bool = True,
         model = None,
         tokenizer = None
     ):
-        self.expert_store = expert_store
+        self.layer_store = layer_store
         self.device = device
         self.max_batch_size = max_batch_size
         self.mixed_precision = mixed_precision
@@ -49,7 +49,7 @@ class ExecutionEngine:
         self.metrics = {
             "tokens_generated": 0,
             "total_generation_time_ms": 0,
-            "expert_loads": 0,
+            "layer_loads": 0,
             "sampling_time_ms": 0
         }
         
@@ -258,29 +258,28 @@ class ExecutionEngine:
         
         return last_logits, expert_usage
     
-    async def _load_experts(
+    async def _load_layers(
         self,
-        layer_id: int,
-        expert_ids: List[int]
-    ) -> List[ExpertData]:
-        """Load multiple experts for a layer."""
+        layer_ids: List[int]
+    ) -> List[LayerData]:
+        """Load multiple layers."""
         tasks = [
-            self.expert_store.get_expert(layer_id, expert_id)
-            for expert_id in expert_ids
+            self.layer_store.get_layer(layer_id)
+            for layer_id in layer_ids
         ]
         
-        experts = await asyncio.gather(*tasks)
-        self.metrics["expert_loads"] += len(experts)
+        layers = await asyncio.gather(*tasks)
+        self.metrics["layer_loads"] += len(layers)
         
-        return experts
+        return layers
     
-    def _apply_expert(
+    def _apply_layer(
         self,
         hidden_states: torch.Tensor,
-        expert_weights: torch.Tensor
+        layer_weights: torch.Tensor
     ) -> torch.Tensor:
-        """Apply expert transformation (simplified)."""
-        # In production, this would be actual expert computation
+        """Apply layer transformation (simplified)."""
+        # In production, this would be actual layer computation
         # For now, just return slightly modified hidden states
         return hidden_states * 1.01
     
@@ -340,7 +339,7 @@ class ExecutionEngine:
             from transformers import AutoModelForCausalLM, AutoTokenizer
             import torch
             
-            model_id = "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+            model_id = "Qwen/Qwen3-8B-FP8"
             # Sanitize model path by replacing slashes
             model_path = f"./models/{model_id.replace('/', '_')}"
             

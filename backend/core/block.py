@@ -21,11 +21,15 @@ class BlockHeader:
     payload_size: int
     nonce: int = 0  # proof-of-work nonce
     
-    # DAG and MoE extensions
+    # DAG and Dense Model extensions
     depends_on: List[str] = None  # list of block hashes this block depends on
-    block_type: Literal['meta', 'expert', 'router', 'code', 'architecture', 'migration', 'genesis_pact', 'dataset'] = 'meta'  # block type for MoE
-    expert_name: Optional[str] = None  # expert identifier for expert blocks
+    block_type: Literal['meta', 'layer', 'dense_layer', 'expert', 'router', 'code', 'architecture', 'migration', 'genesis_pact', 'dataset'] = 'meta'  # block type for dense model
+    layer_name: Optional[str] = None  # layer identifier for dense model (e.g., "layer_0", "embedding", "lm_head")
     layer_id: Optional[str] = None  # layer identifier for model architecture
+    
+    # Legacy MoE fields for backward compatibility
+    expert_name: Optional[str] = None  # Legacy MoE expert identifier
+    target_expert: Optional[str] = None  # Legacy MoE target expert field
     
     # TensorBlock format extensions
     payload_type: Optional[str] = None  # "pickle", "tensorblock", "eeb", "tile_stream", "json", "code"
@@ -45,8 +49,8 @@ class BlockHeader:
     evolution_metadata: Optional[Dict[str, Any]] = None  # Evolution-specific metadata
     
     # Code Block Extensions (for executable evolution)
-    code_type: Optional[str] = None  # "inference_logic", "router", "activation", "layer"
-    target_expert: Optional[str] = None  # Target expert for code application
+    code_type: Optional[str] = None  # "inference_logic", "activation", "layer"
+    target_layer: Optional[str] = None  # Target layer for code application
     language: Optional[str] = None  # "python", "torch_script", "wasm"
     execution_environment: Optional[str] = None  # "torch_2.0", "tensorrt_10"
     dependencies: Optional[List[str]] = None  # Code dependencies
@@ -85,9 +89,9 @@ class BlockHeader:
         """Check if this is an evolution-related block"""
         return self.block_type in ['migration', 'code', 'architecture'] or self.evolution_type is not None
     
-    def is_expert_evolution(self) -> bool:
-        """Check if this is an expert evolution block"""
-        return self.block_type == 'expert' and self.evolution_type is not None
+    def is_layer_evolution(self) -> bool:
+        """Check if this is a layer evolution block"""
+        return self.block_type in ['layer', 'dense_layer'] and self.evolution_type is not None
     
     def is_migration_block(self) -> bool:
         """Check if this is a migration block"""
@@ -104,6 +108,23 @@ class BlockHeader:
     def get_version(self) -> Optional[str]:
         """Get the version of this block"""
         return self.version
+    
+    def get_layer_identifier(self) -> Optional[str]:
+        """Get layer identifier, preferring new dense format over legacy MoE format."""
+        if self.layer_name:
+            return self.layer_name
+        elif self.expert_name:
+            # Convert legacy MoE expert name to layer identifier
+            return f"expert_{self.expert_name}"
+        return None
+    
+    def is_dense_layer(self) -> bool:
+        """Check if this is a dense model layer block."""
+        return self.block_type == 'dense_layer' or (self.block_type == 'layer' and self.layer_name)
+    
+    def is_moe_expert(self) -> bool:
+        """Check if this is a legacy MoE expert block."""
+        return self.block_type == 'expert' or self.expert_name is not None
     
     def is_compatible_with_version(self, target_version: str) -> bool:
         """Check if this block is compatible with a target version"""

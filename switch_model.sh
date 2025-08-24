@@ -2,14 +2,14 @@
 # Script to switch between different models easily
 
 echo "Available models:"
-echo "1. Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 (default, 30.5B total/3.3B active, FP8)"
+echo "1. Qwen/Qwen3-8B-FP8 (default, 30.5B total/3.3B active, FP8)"
 echo ""
 
 read -p "Select model (1) or enter custom model name: " choice
 
 case $choice in
     1)
-        MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+        MODEL="Qwen/Qwen3-8B-FP8"
         ;;
     *)
         MODEL="$choice"
@@ -45,7 +45,7 @@ DEFAULT_MODEL_TOTAL_PARAMS = "14.3B"  # Default
 
 # Model-specific settings
 MODEL_CONFIGS = {
-    "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8": {
+    "Qwen/Qwen3-8B-FP8": {
         "architecture": "mixture-of-experts",
         "num_layers": 48,
         "num_experts": 128,

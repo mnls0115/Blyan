@@ -31,14 +31,8 @@ class OptimizedChat {
             const requestBody = {
                 prompt: prompt,
                 max_new_tokens: options.maxTokens || 100,
-                use_moe: options.useMoE !== false, // Default true
                 stream: options.stream || false
             };
-
-            // Add optional parameters
-            if (options.topKExperts) {
-                requestBody.top_k_experts = options.topKExperts;
-            }
 
             // Send request
             const response = await fetch(`${this.apiUrl}${endpoint}`, {
@@ -139,7 +133,6 @@ class OptimizedChat {
                 body: JSON.stringify({
                     prompt: prompt,
                     max_new_tokens: options.maxTokens || 100,
-                    use_moe: true,
                     stream: true
                 })
             });

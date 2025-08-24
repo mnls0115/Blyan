@@ -34,7 +34,7 @@ services:
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all}
       
       # Model settings (can override via .env.model or environment)
-      - MODEL_NAME=${MODEL_NAME:-Qwen/Qwen3-30B-A3B-Instruct-2507-FP8}
+      - MODEL_NAME=${MODEL_NAME:-Qwen/Qwen3-8B-FP8}
       - MODEL_QUANTIZATION=${MODEL_QUANTIZATION:-fp8}
       
       # Performance settings

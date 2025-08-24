@@ -288,7 +288,7 @@ def main():
             api_url=os.getenv("AIBLOCK_API_URL", "https://blyan.com/api"),
             node_id=os.getenv("BLYAN_NODE_ID"),
             node_token=os.getenv("BLYAN_MAIN_NODE_TOKEN"),
-            model_path=os.getenv("MODEL_PATH", "./Qwen/Qwen3-30B-A3B-Instruct-2507-FP8/pytorch_model.bin"),
+            model_path=os.getenv("MODEL_PATH", "./Qwen/Qwen3-8B-FP8/pytorch_model.bin"),
             meta_hash=os.getenv("META_HASH")
         )
         

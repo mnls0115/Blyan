@@ -1062,7 +1062,6 @@
                     body: JSON.stringify({
                         prompt: message,
                         conversation_id: conversationId,
-                        use_moe: true,
                         free_tier: !apiAuth.hasValidApiKey()  // Indicate free tier usage
                     })
                 });

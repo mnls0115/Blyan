@@ -340,13 +340,13 @@ class ChainValidator:
                 print("❌ Payload size mismatch")
                 return False
             
-            # Check required fields for expert blocks
-            if hasattr(block.header, 'block_type') and block.header.block_type in ('expert', 'router'):
-                if not getattr(block.header, 'expert_name', None):
-                    print("❌ Expert block missing expert_name")
+            # Check required fields for layer blocks
+            if hasattr(block.header, 'block_type') and block.header.block_type in ('layer', 'dense_layer'):
+                if not getattr(block.header, 'layer_name', None):
+                    print("❌ Layer block missing layer_name")
                     return False
                 if not getattr(block.header, 'layer_id', None):
-                    print("❌ Expert block missing layer_id")
+                    print("❌ Layer block missing layer_id")
                     return False
             
             return True

@@ -73,7 +73,6 @@ class StreamingChatHandler:
         prompt: str,
         user_address: str,
         max_new_tokens: int = 100,
-        use_moe: bool = True,
         quote_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -126,11 +125,12 @@ class StreamingChatHandler:
         
         try:
             # Import inference modules
-            from backend.model.moe_infer import get_moe_manager
+            from backend.model.manager import get_model_manager
             from backend.p2p.distributed_inference import get_distributed_coordinator
             
-            model_manager = get_moe_manager()
-            distributed_coordinator = get_distributed_coordinator()
+            from pathlib import Path
+            model_manager = get_model_manager(Path("./data"))
+            distributed_coordinator = None  # Dense model doesn't use distributed
             
             # Start generation
             logger.info(f"Starting stream {stream_id} for user {user_address}")
@@ -151,7 +151,7 @@ class StreamingChatHandler:
                 max_new_tokens,
                 model_manager,
                 distributed_coordinator,
-                use_moe,
+                False,  # Dense model doesn't use MoE
                 cancel_event,
                 prefer_donor=False,  # Can be determined from user tier
                 session_id=stream_id,
@@ -252,72 +252,18 @@ class StreamingChatHandler:
         import os
         import random
         
-        # Check if distributed streaming is enabled
-        enable_streaming = os.getenv("ENABLE_STREAMING", "true").lower() in ("1", "true", "yes")
-        enable_speculative = os.getenv("ENABLE_SPECULATIVE", "false").lower() in ("1", "true", "yes")
+        # Dense model - direct generation without distributed streaming
         
-        # Use distributed streaming if available
-        if use_moe and distributed_coordinator and enable_streaming:
-            try:
-                # Determine required experts based on prompt
-                # For Qwen3-30B, we use top-k routing with 8 activated experts
-                from backend.model.moe_infer import MoEModelManager
-                model_manager = MoEModelManager()
-                required_experts = model_manager.select_experts_for_prompt(prompt, top_k=8)
-                
-                # Choose streaming method
-                if enable_speculative:
-                    # Use speculative decoding
-                    stream_gen = distributed_coordinator.distribute_inference_speculative_streaming(
-                        prompt=prompt,
-                        required_experts=required_experts,
-                        max_new_tokens=max_tokens,
-                        prefer_donor=prefer_donor,
-                        session_id=session_id or f"session_{uuid.uuid4().hex[:12]}",
-                        sampling_seed=sampling_seed or random.randint(0, 2**32)
-                    )
-                else:
-                    # Use regular streaming
-                    stream_gen = distributed_coordinator.distribute_inference_streaming(
-                        prompt=prompt,
-                        required_experts=required_experts,
-                        max_new_tokens=max_tokens,
-                        prefer_donor=prefer_donor,
-                        session_id=session_id or f"session_{uuid.uuid4().hex[:12]}",
-                        sampling_seed=sampling_seed or random.randint(0, 2**32)
-                    )
-                
-                # Stream tokens
-                async for result in stream_gen:
-                    if cancel_event.is_set():
-                        break
-                    
-                    if result.get("type") == "token":
-                        yield result.get("token", "")
-                    elif result.get("type") == "error":
-                        logger.error(f"Streaming error: {result.get('error')}")
-                        # Continue to fallback
-                        break
-                else:
-                    # Successfully completed streaming
-                    return
-                    
-            except Exception as e:
-                logger.error(f"Distributed streaming failed: {e}")
-                # Fall back to actual model generation
-        
-        # Fallback: Use actual model for generation
+        # Fallback: Use dense model for generation
         try:
-            from backend.model.moe_infer import MoEModelManager
-            model_manager = MoEModelManager()
+            from backend.model.manager import get_model_manager
+            from pathlib import Path
+            model_manager = get_model_manager(Path("./data"))
             
-            # Generate response using actual model
-            full_response = await model_manager.generate_text(
+            # Generate response using dense model
+            full_response = model_manager.generate(
                 prompt=prompt,
-                max_length=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                stream=False  # Non-streaming fallback
+                max_new_tokens=max_tokens
             )
             
             # Convert to tokens for streaming simulation

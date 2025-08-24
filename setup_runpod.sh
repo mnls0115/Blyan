@@ -26,7 +26,7 @@ readonly RUN_USER="blyan"
 readonly RUN_GROUP="blyan"
 
 # Model configuration
-readonly MODEL_NAME="Qwen/Qwen3-30B-A3B-Instruct-2507-FP8"
+readonly MODEL_NAME="Qwen/Qwen3-8B-FP8"
 readonly MODEL_CHECKSUM="sha256:xyz789..."  # Update with actual checksum
 
 # Systemd
@@ -208,7 +208,7 @@ import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
 
-model_id = os.environ.get("MODEL_NAME", "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8")
+model_id = os.environ.get("MODEL_NAME", "Qwen/Qwen3-8B-FP8")
 cache_dir = os.environ.get("MODEL_DIR", "/opt/blyan/models")
 
 try:
@@ -264,7 +264,7 @@ DATA_DIR=/opt/blyan/data
 MODEL_DIR=/opt/blyan/models
 
 # Model Configuration
-MODEL_NAME=Qwen/Qwen3-30B-A3B-Instruct-2507-FP8
+MODEL_NAME=Qwen/Qwen3-8B-FP8
 BLOCKCHAIN_ONLY=false
 SKIP_POL=true
 

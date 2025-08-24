@@ -17,25 +17,30 @@ from backend.core.free_tier import get_free_tier_manager
 from backend.security.abuse_prevention import get_abuse_prevention_system, RequestFingerprint
 from backend.api.economy import redis_client as quote_redis
 
+# Use shared utilities
+from backend.common.auth import extract_user_address, get_request_fingerprint
+from backend.common.costs import TokenCostCalculator, verify_chat_request_cost, finalize_request_cost
+from backend.inference.metrics import create_metrics, get_metrics_collector
+
 logger = logging.getLogger(__name__)
 
 class AtomicChatRequest(BaseModel):
     """Enhanced chat request with transaction support."""
     prompt: str
-    use_moe: bool = True
-    top_k_experts: int = 2
     max_new_tokens: int = 100
+    temperature: float = 0.7
+    stream: bool = False
     quote_id: Optional[str] = None
     idempotency_key: Optional[str] = None  # For duplicate prevention
 
 class AtomicChatResponse(BaseModel):
     """Enhanced chat response with transaction details."""
     response: str
-    expert_usage: Dict[str, Any] = {}
+    layers_used: Dict[str, Any] = {}  # Changed from expert_usage
     inference_time: float
     transaction_id: str
-    actual_cost: Optional[Decimal] = None
-    tokens_used: Optional[int] = None
+    actual_cost: float = 0.0
+    tokens_generated: int = 0
 
 class AtomicChatHandler:
     """

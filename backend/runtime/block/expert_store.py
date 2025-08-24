@@ -1,7 +1,7 @@
 """
-Expert Store Implementation
+Layer Store Implementation
 
-Manages expert loading, caching, and verification.
+Manages dense layer loading, caching, and verification.
 """
 
 import asyncio
@@ -14,21 +14,21 @@ import aiohttp
 from cachetools import TTLCache, LRUCache
 import logging
 
-from .types import ExpertMetadata, ExpertData, FetchStrategy, CacheConfig
+from .types import LayerMetadata, LayerData, FetchStrategy, CacheConfig
 from .errors import (
-    ExpertNotFoundError, 
-    ExpertVerificationError,
+    LayerNotFoundError, 
+    LayerVerificationError,
     FetchTimeoutError,
     CacheError
 )
-from .blockchain_fetcher import BlockchainExpertFetcher
+from .blockchain_fetcher import BlockchainLayerFetcher
 
 logger = logging.getLogger(__name__)
 
 
-class ExpertStore:
+class LayerStore:
     """
-    Manages expert storage with CID verification and multi-level caching.
+    Manages layer storage with CID verification and multi-level caching.
     """
     
     def __init__(
@@ -54,17 +54,17 @@ class ExpertStore:
         self.hedged_delay_ms = hedged_delay_ms
         
         # Initialize blockchain fetcher if chain provided
-        self.blockchain_fetcher = BlockchainExpertFetcher(chain_b) if chain_b else None
+        self.blockchain_fetcher = BlockchainLayerFetcher(chain_b) if chain_b else None
         
-        # Memory cache (hot experts)
-        cache_size = int(cache_config.memory_cache_size_mb * 1024 * 1024 / (100 * 1024))  # Estimate 100KB per expert
+        # Memory cache (hot layers)
+        cache_size = int(cache_config.memory_cache_size_mb * 1024 * 1024 / (500 * 1024))  # Estimate 500KB per layer
         self.memory_cache: TTLCache = TTLCache(
             maxsize=cache_size,
             ttl=cache_config.ttl_seconds
         )
         
         # Disk cache path
-        self.disk_cache_path = Path("./cache/experts")
+        self.disk_cache_path = Path("./cache/layers")
         self.disk_cache_path.mkdir(parents=True, exist_ok=True)
         
         # LRU for disk cache tracking
@@ -85,27 +85,26 @@ class ExpertStore:
         # In-flight fetches to prevent duplicate requests
         self.in_flight: Dict[str, asyncio.Future] = {}
     
-    def _expert_key(self, layer_id: int, expert_id: int) -> str:
-        """Generate cache key for an expert."""
-        return f"L{layer_id}_E{expert_id}"
+    def _layer_key(self, layer_id: int) -> str:
+        """Generate cache key for a layer."""
+        return f"L{layer_id}"
     
-    async def get_expert(
+    async def get_layer(
         self, 
-        layer_id: int, 
-        expert_id: int,
-        metadata: Optional[ExpertMetadata] = None
-    ) -> ExpertData:
+        layer_id: int,
+        metadata: Optional[LayerMetadata] = None
+    ) -> LayerData:
         """
-        Get an expert, loading from cache or fetching if needed.
+        Get a layer, loading from cache or fetching if needed.
         """
-        key = self._expert_key(layer_id, expert_id)
+        key = self._layer_key(layer_id)
         start_time = time.time()
         
         # Check memory cache
         if key in self.memory_cache:
             self.metrics["cache_hits"] += 1
             cached_data = self.memory_cache[key]
-            return ExpertData(
+            return LayerData(
                 metadata=cached_data["metadata"],
                 weights=cached_data["weights"],
                 verified=True,
@@ -129,7 +128,7 @@ class ExpertStore:
                 self.metrics["cache_hits"] += 1
                 # Promote to memory cache
                 self.memory_cache[key] = disk_data
-                result = ExpertData(
+                result = LayerData(
                     metadata=disk_data["metadata"],
                     weights=disk_data["weights"],
                     verified=True,
@@ -143,9 +142,9 @@ class ExpertStore:
             self.metrics["cache_misses"] += 1
             
             if not metadata:
-                metadata = await self._lookup_metadata(layer_id, expert_id)
+                metadata = await self._lookup_metadata(layer_id)
             
-            expert_data = await self._fetch_from_network(metadata)
+            layer_data = await self._fetch_from_network(metadata)
             
             # Verify
             if not await self._verify_expert(expert_data, metadata):

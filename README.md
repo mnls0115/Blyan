@@ -100,7 +100,7 @@ from backend.core.chain import Chain
 root_dir = Path('./data')
 meta_chain = Chain(root_dir, 'A')
 spec = {
-    'model_name': 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8',
+    'model_name': 'Qwen/Qwen3-8B-FP8',
     'architecture': 'mixture-of-experts',
     'num_layers': 48,
     'num_experts': 128,

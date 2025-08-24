@@ -430,13 +430,13 @@
                         <div class="process-number">1</div>
                         <h2 class="process-title">Input & Response Flow</h2>
                         <p class="process-description">
-                            When you send a message, multiple GPU nodes collaborate to generate the response. Some experts run on Node 1 (handling language understanding), while others run on Node 2 (generating the response). The coordinator orchestrates this distributed computation - first checking for cached expert combinations, then routing requests to appropriate nodes. Each node loads only its assigned expert weights from the blockchain and streams tokens back in real-time.
+                            When you send a message, GPU nodes collaborate in a pipeline to generate the response. Node 1 handles embedding and first layers, Node 2 processes middle layers, Node 3 handles final layers and output generation. The coordinator orchestrates this pipeline parallelism, routing hidden states between nodes efficiently. Each node loads only its assigned layer weights from the blockchain.
                         </p>
                         <div class="process-details">
                             <ul>
-                                <li>Request routing: Coordinator finds which nodes have required experts and balances load across the network</li>
-                                <li>Distributed execution: Language experts on Node 1 process input, response experts on Node 2 generate output</li>
-                                <li>Real-time streaming: Tokens flow back through the coordinator as they're generated, enabling immediate response</li>
+                                <li>Pipeline setup: Coordinator assigns layer ranges to nodes based on GPU memory capacity</li>
+                                <li>Sequential processing: Hidden states flow through pipeline stages from embedding to output</li>
+                                <li>Zero-copy streaming: Tensor data streams between nodes without CPU transfers</li>
                             </ul>
                         </div>
                     </div>
@@ -451,14 +451,14 @@
                         <div class="process-number">2</div>
                         <h2 class="process-title">Proof-of-Learning (PoL) & Model Updates</h2>
                         <p class="process-description">
-                            Through our Proof-of-Learning (PoL) consensus mechanism, nodes validate model improvements by demonstrating measurable quality gains. When idle, nodes automatically engage in PoL training to improve their experts. Contributors evolve individual experts through delta blocks and migration blocks that track parameter changes and architectural updates. During high inference demand, PoL accelerates as the system accumulates rewards that can be distributed to contributing nodes. The evolution process tracks lineage through parent relationships and version compatibility, enabling the model to grow organically.
+                            Through our Proof-of-Learning (PoL) consensus mechanism, nodes validate model improvements by demonstrating measurable quality gains. When idle, nodes automatically engage in PoL training to improve their assigned layers. Contributors evolve individual layer weights through delta blocks and migration blocks that track parameter changes. During high inference demand, PoL accelerates as the system accumulates rewards that can be distributed to contributing nodes.
                         </p>
                         <div class="process-details">
                             <ul>
                                 <li>Proof-of-Learning validation: Nodes must prove their training improved model quality to earn rewards</li>
-                                <li>Idle time PoL training: Nodes train experts when not serving inference requests, maximizing GPU utilization</li>
-                                <li>Demand-driven evolution: High inference activity generates more rewards, incentivizing rapid PoL improvements</li>
-                                <li>Organic growth: New expert versions branch from existing ones, coexisting until PoL validates superiority</li>
+                                <li>Idle time PoL training: Nodes train their assigned layers when not serving inference requests</li>
+                                <li>Demand-driven evolution: High inference activity generates more rewards, incentivizing rapid improvements</li>
+                                <li>Layer evolution: New layer versions branch from existing ones, validated through PoL consensus</li>
                             </ul>
                         </div>
                     </div>
@@ -473,14 +473,14 @@
                         <div class="process-number">3</div>
                         <h2 class="process-title">Participation & Rewards</h2>
                         <p class="process-description">
-                            Nodes join the network by registering their available experts and device profiles. When active, they serve inference requests - Node 1 might handle understanding tasks while Node 2 generates responses. During quiet periods, nodes switch to idle time PoL training, improving their experts. Rewards are automatically distributed every hour via the AutomaticRewardDistributor to contributing nodes based on their actual usage and quality metrics.
+                            Nodes join the network by registering their GPU capabilities and assigned layer ranges. When active, they serve inference requests as part of the pipeline - Node 1 handles input layers, Node 2 processes middle layers, Node 3 generates output. During quiet periods, nodes switch to idle time PoL training, improving their assigned layers. Rewards are automatically distributed based on actual pipeline participation and layer performance.
                         </p>
                         <div class="process-details">
                             <ul>
-                                <li>Node registration: Join with specific experts and start receiving appropriate inference requests</li>
-                                <li>Active serving: Process assigned expert computations when selected by the coordinator</li>
-                                <li>Idle time PoL training: Train and improve experts during idle time, preparing for future requests</li>
-                                <li>Automatic reward distribution: Hourly distribution via AutomaticRewardDistributor based on actual contribution</li>
+                                <li>Node registration: Join with GPU specs and receive appropriate layer assignments</li>
+                                <li>Pipeline participation: Process assigned layer computations as part of distributed inference</li>
+                                <li>Idle time PoL training: Train and improve assigned layers during idle time</li>
+                                <li>Performance-based rewards: Distribution based on pipeline participation and layer quality</li>
                             </ul>
                         </div>
                     </div>
@@ -538,7 +538,7 @@
                     <div class="tech-icon">🔗</div>
                     <h3 class="tech-title">Dual-Chain Architecture</h3>
                     <p class="tech-description">
-                        Chain A stores architecture specifications, Chain B stores expert weights. Dependency tracking enables parallel evolution branches that merge intelligently.
+                        Chain A stores model architecture specifications, Chain B stores layer weights. Dependency tracking enables parallel layer evolution branches that merge intelligently.
                     </p>
                 </div>
                 <div class="tech-card animate-in">
@@ -550,16 +550,16 @@
                 </div>
                 <div class="tech-card animate-in">
                     <div class="tech-icon">🎯</div>
-                    <h3 class="tech-title">Expert Routing & Caching</h3>
+                    <h3 class="tech-title">Layer Pipeline & Caching</h3>
                     <p class="tech-description">
-                        Router calculates probability scores across all experts, selecting the best ones for each layer. Frequently used experts stay cached in memory with usage statistics tracked for rewards.
+                        Coordinator assigns layer ranges to GPU nodes based on memory capacity and performance. Frequently accessed layers stay cached in GPU memory with usage statistics tracked for rewards.
                     </p>
                 </div>
                 <div class="tech-card animate-in">
                     <div class="tech-icon">🔄</div>
-                    <h3 class="tech-title">Distributed Inference Network</h3>
+                    <h3 class="tech-title">Distributed Pipeline Network</h3>
                     <p class="tech-description">
-                        Nodes register their available experts through the network. The coordinator routes requests to appropriate nodes, monitoring availability and handling automatic failover.
+                        Nodes register their GPU capabilities and assigned layer ranges. The coordinator orchestrates pipeline parallelism, routing hidden states between nodes with automatic failover.
                     </p>
                 </div>
                 <div class="tech-card animate-in">

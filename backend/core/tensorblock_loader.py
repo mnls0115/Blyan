@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TensorBlock loader integration with Blyan's existing blockchain and MoE infrastructure."""
+"""TensorBlock loader integration with Blyan's existing blockchain and dense model infrastructure."""
 
 import os
 import time
@@ -17,8 +17,8 @@ from .tensorblock import (
 )
 
 
-class ExpertBlockLoader:
-    """Universal expert block loader supporting multiple payload formats."""
+class LayerBlockLoader:
+    """Universal layer block loader supporting multiple payload formats."""
     
     def __init__(self, param_chain: Chain, cache_dir: Optional[Path] = None):
         self.param_chain = param_chain
@@ -30,12 +30,12 @@ class ExpertBlockLoader:
         self.cache_hits = 0
         self.cache_misses = 0
         
-    def load_expert(self, 
-                   expert_name: str, 
+    def load_layer(self, 
+                   layer_name: str, 
                    device: str = "cpu",
                    verify_integrity: bool = True,
                    fallback_to_pickle: bool = True) -> torch.Tensor:
-        """Load expert tensor using the optimal format available.
+        """Load layer tensor using the optimal format available.
         
         Priority order:
         1. TensorBlock (zero-copy, fastest)
@@ -45,59 +45,59 @@ class ExpertBlockLoader:
         """
         
         try:
-            # Find expert block
+            # Find layer block
             all_blocks = self.param_chain.get_all_blocks()
-            expert_blocks = [
+            layer_blocks = [
                 block for block in all_blocks
                 if (hasattr(block.header, 'block_type') and 
-                    block.header.block_type == 'expert' and 
-                    hasattr(block.header, 'expert_name') and
-                    block.header.expert_name == expert_name)
+                    block.header.block_type in ['layer', 'dense_layer'] and 
+                    hasattr(block.header, 'layer_name') and
+                    block.header.layer_name == layer_name)
             ]
             
-            if not expert_blocks:
-                raise ValueError(f"Expert {expert_name} not found in blockchain")
+            if not layer_blocks:
+                raise ValueError(f"Layer {layer_name} not found in blockchain")
                 
             # Prioritize TensorBlock format if multiple versions exist
             tensorblock_blocks = [
-                b for b in expert_blocks 
+                b for b in layer_blocks 
                 if getattr(b.header, 'payload_type', None) == 'tensorblock'
             ]
             
             if tensorblock_blocks:
                 # Use latest TensorBlock version
                 latest_block = max(tensorblock_blocks, key=lambda b: b.header.timestamp)
-                print(f"🎯 Using TensorBlock format for {expert_name}")
+                print(f"🎯 Using TensorBlock format for {layer_name}")
             else:
                 # Fall back to latest block of any format
-                latest_block = max(expert_blocks, key=lambda b: b.header.timestamp)
+                latest_block = max(layer_blocks, key=lambda b: b.header.timestamp)
             
             # Route to appropriate loader based on payload type
             payload_type = getattr(latest_block.header, 'payload_type', 'pickle')
             
             if payload_type == "tensorblock":
-                return self._load_tensorblock_expert(latest_block, device, verify_integrity)
+                return self._load_tensorblock_layer(latest_block, device, verify_integrity)
             elif payload_type == "eeb":
-                return self._load_eeb_expert(latest_block, device)
+                return self._load_eeb_layer(latest_block, device)
             elif payload_type == "tile_stream":
-                return self._load_tile_stream_expert(latest_block, device)
+                return self._load_tile_stream_layer(latest_block, device)
             else:
                 # Legacy pickle format
                 if fallback_to_pickle:
-                    print(f"⚠️ Using legacy pickle format for {expert_name}")
-                    return self._load_pickle_expert(latest_block, device)
+                    print(f"⚠️ Using legacy pickle format for {layer_name}")
+                    return self._load_pickle_layer(latest_block, device)
                 else:
-                    raise ValueError(f"TensorBlock format required but not found for {expert_name}")
+                    raise ValueError(f"TensorBlock format required but not found for {layer_name}")
                     
         except Exception as e:
-            print(f"❌ Error loading expert {expert_name}: {e}")
+            print(f"❌ Error loading layer {layer_name}: {e}")
             raise
     
-    def _load_tensorblock_expert(self, 
+    def _load_tensorblock_layer(self, 
                                 block: Block, 
                                 device: str,
                                 verify_integrity: bool) -> torch.Tensor:
-        """Load expert using zero-copy TensorBlock format with enhanced error handling."""
+        """Load layer using zero-copy TensorBlock format with enhanced error handling."""
         import time
         
         start_time = time.time()

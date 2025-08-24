@@ -42,10 +42,7 @@ from backend.core.dataset_block import DatasetMetadata, DatasetStage, DatasetQua
 from backend.core.podl_proof import PoDLGenerator, PoDLVerifier, TrainingSession
 from backend.core.architecture_migration import ArchitectureMigrationManager, MigrationSpec, MigrationType, EvolutionDifficulty
 from backend.core.epoch_scheduler import EpochEventScheduler
-from backend.model.infer import ModelManager
-from backend.model.moe_infer import MoEModelManager, ExpertUsageTracker, reward_expert
-from backend.p2p.distributed_inference import DistributedInferenceCoordinator, ExpertNode, DeviceProfile
-from backend.p2p.expert_group_optimizer import NodeCapability, ExpertGroup
+from backend.model.manager import UnifiedModelManager, get_model_manager
 from backend.core.pol import evaluate_candidate
 from backend.core.pol_validator import create_pol_validator, ChainValidator
 
@@ -169,8 +166,7 @@ param_index = ParameterIndex(root_dir / "param_index.json")
 # Token ledger (simple JSON file)
 ledger = Ledger(root_dir / "ledger.json")
 
-# Usage tracking for MoE experts
-usage_tracker = ExpertUsageTracker(root_dir / "usage_log.json")
+# Dense model - no expert tracking needed
 
 # PoDL (Proof-of-Data-Learning) systems
 podl_generator = PoDLGenerator()
@@ -212,19 +208,18 @@ except Exception as e:
     poison_detector = None
     network_defense = None
 
-model_manager: ModelManager | None = None
-moe_model_manager: MoEModelManager | None = None
-distributed_coordinator: DistributedInferenceCoordinator | None = None
+model_manager: UnifiedModelManager | None = None  # Deprecated name, kept for compatibility
+blockchain_model_manager: UnifiedModelManager | None = None
 chain_validator: ChainValidator | None = None
 
 # Initialize PoL validator if enabled
 if enable_pol:
     try:
-        # Create temporary MoE manager for PoL validator initialization
-        temp_moe_manager = MoEModelManager(meta_chain, param_chain, param_index, usage_tracker)
+        # PoL validator initialization (simplified for dense model)
+        from backend.core.pol_validator import create_pol_validator
         
         chain_validator = create_pol_validator(
-            model_manager=temp_moe_manager,
+            model_manager=None,  # Will use blockchain manager
             enable_pol=True,
             pol_threshold=float(os.getenv("POL_THRESHOLD", "0.01"))  # 1% improvement threshold
         )
@@ -498,14 +493,12 @@ class TrainingJobStatus(BaseModel):
 class ChatRequest(BaseModel):
     prompt: str
     max_new_tokens: int = 64
-    use_moe: bool = True  # Use MoE inference by default
-    use_distributed: bool = False  # Use distributed inference
-    top_k_experts: int = 2  # Number of experts to use per layer
+    stream: bool = False
+    quote_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
     response: str
-    expert_usage: dict = {}  # Track which experts were used
     inference_time: float = 0.0
 
 
@@ -782,7 +775,7 @@ async def get_block(chain_id: str, index: int, include_payload: bool = False):
 
 @app.on_event("startup")
 def _startup():
-    global model_manager, moe_model_manager, distributed_coordinator
+    global model_manager, blockchain_model_manager
     
     if MINIMAL_MODE:
         print("⚠️  Skipping heavy model initialization in minimal mode")
@@ -791,26 +784,14 @@ def _startup():
     try:
         from backend.core.scheduler_integration import SchedulerIntegration
         
-        model_manager = ModelManager(meta_chain, param_chain, param_index)
-        moe_model_manager = MoEModelManager(meta_chain, param_chain, param_index, usage_tracker)
+        # Use unified model manager
+        blockchain_model_manager = get_model_manager(root_dir)
+        model_manager = None  # Deprecated, use blockchain_model_manager
+        print("✅ Unified model manager initialized")
     except Exception as e:
         logger.error(f"Failed to initialize models: {e}")
         print(f"⚠️  Model initialization failed: {e}")
         # Continue without models
-        
-    # Initialize P2P separately to avoid blocking on model failures
-    try:
-        if P2P_ENABLE:
-            distributed_coordinator = DistributedInferenceCoordinator(usage_tracker, param_index)
-            print("✅ P2P distributed inference enabled")
-        else:
-            print("⚠️  P2P distributed inference disabled")
-            distributed_coordinator = None
-    except Exception as e:
-        logger.error(f"Failed to initialize P2P coordinator: {e}")
-        print(f"⚠️  P2P initialization failed: {e}")
-        distributed_coordinator = None
-        # Continue without P2P
     
     # Wire scheduler to distributed coordinator
     try:
@@ -821,6 +802,7 @@ def _startup():
         logger.warning(f"Failed to wire scheduler: {e}")
     
     # Initialize production inference pipeline
+    global production_pipeline
     production_pipeline = None
     try:
         from backend.inference.production_pipeline import get_production_pipeline
@@ -1045,7 +1027,6 @@ async def verify_chat_request_cost(
     user_address: str,
     prompt: str,
     max_new_tokens: int = 100,
-    top_k_experts: int = 2,
     quote_id: str = None,
     request: Request = None
 ) -> Dict[str, Any]:
@@ -1192,66 +1173,52 @@ def complete_chat_request(user_address: str, success: bool = True):
 @app.post("/chat/production")
 async def chat_production(req: ChatRequest, http_request: Request = None):
     """Production-optimized inference endpoint with no mock data."""
-    if not production_pipeline:
-        raise HTTPException(status_code=503, detail="Production pipeline not initialized")
+    # Use the same dense model manager as /chat endpoint
+    if blockchain_model_manager is None:
+        raise HTTPException(status_code=500, detail="Model manager not initialized")
     
-    # Process through production pipeline
-    result = await production_pipeline.process_request(
-        prompt=req.prompt,
-        use_distributed=req.use_moe and distributed_coordinator is not None,
-        required_experts=None,  # Let pipeline select best experts
-        max_new_tokens=req.max_new_tokens,
-        stream=req.stream if hasattr(req, 'stream') else False
+    import time
+    start_time = time.time()
+    
+    # Generate response using dense model
+    answer = blockchain_model_manager.generate(req.prompt, max_new_tokens=req.max_new_tokens)
+    inference_time = time.time() - start_time
+    
+    return ChatResponse(
+        response=answer,
+        inference_time=inference_time
     )
-    
-    return result
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, http_request: Request = None):
+    """Main chat endpoint - proxies to atomic chat for consistency."""
     import time
+    from backend.common.auth import extract_user_address
+    from backend.common.costs import verify_chat_request_cost
+    from backend.inference.metrics import create_metrics, get_metrics_collector
+    
     start_time = time.time()
-
-    # Debug logging for MoE status
-    logger.info(f"Chat request: use_moe={req.use_moe}, has_distributed_nodes={bool(distributed_coordinator and distributed_coordinator.registry.nodes)}, moe_model_manager_exists={moe_model_manager is not None}")
-
-    # Prepare request for middleware
-    request_dict = req.dict()
-    request_dict['request_id'] = str(time.time())
-    request_dict['start_time'] = start_time
+    request_id = f"chat_{int(time.time() * 1000)}"
     
-    # Apply chain bridge middleware if available
-    if server_components and 'chain_bridge' in server_components:
-        try:
-            request_dict = await server_components['chain_bridge'].pre_inference(request_dict)
-        except Exception as e:
-            logger.warning(f"Chain bridge pre-inference failed: {e}")
+    logger.info(f"Chat request received: {len(req.prompt)} chars")
     
-    # Enhanced request validation with cost verification
-    user_address = None
-    if http_request:
-        # Extract user address from headers or API key
-        user_address = http_request.headers.get("X-User-Address")
-        if not user_address:
-            # Try to get from API key if available
-            api_key_info = getattr(http_request.state, "api_key_info", None)
-            if api_key_info:
-                user_address = f"api_key_{api_key_info.key_id}"
-        
-        # Server-side cost and limits verification
-        cost_check_result = await verify_chat_request_cost(
-            user_address=user_address,
-            prompt=req.prompt,
-            max_new_tokens=req.max_new_tokens,
-            top_k_experts=req.top_k_experts,
-            quote_id=getattr(req, 'quote_id', None),
-            request=http_request
-        )
-        
-        if not cost_check_result["allowed"]:
-            raise HTTPException(
-                status_code=cost_check_result["status_code"],
-                detail=cost_check_result["message"]
-            )
+    # Create metrics instance
+    metrics = create_metrics(request_id, req.prompt)
+    
+    # Extract user address using shared utility
+    user_address = extract_user_address(http_request)
+    
+    # Verify cost using shared utility
+    can_afford, reason, estimated_cost = verify_chat_request_cost(
+        user_address=user_address or "anonymous",
+        prompt=req.prompt,
+        max_new_tokens=req.max_new_tokens
+    )
+    
+    if not can_afford:
+        raise HTTPException(status_code=402, detail=reason)
+    
+    metrics.estimated_cost = estimated_cost
     
     # Abuse prevention check
     if http_request:
@@ -1314,133 +1281,130 @@ async def chat(req: ChatRequest, http_request: Request = None):
         await rate_limiter(http_request, "inference")
     
     try:
-        # Check if we have any registered nodes for distributed inference
-        has_distributed_nodes = False
-        if distributed_coordinator and distributed_coordinator.registry.nodes:
-            has_distributed_nodes = True
-            
-        if req.use_moe and has_distributed_nodes:
-            # Use distributed inference when nodes are available
-            available_experts = list(distributed_coordinator.registry.expert_to_nodes.keys())
-            logger.info(f"Found {len(available_experts)} available experts for distributed inference")
-            if available_experts:
-                selected_experts = available_experts[:req.top_k_experts]
-                
-                # Prefer donor nodes for free-tier requests
-                limits_info = {}
-                try:
-                    # get_free_tier_manager already imported at top
-                    if http_request:
-                        user_addr = http_request.headers.get("X-User-Address")
-                        if user_addr:
-                            ftm = get_free_tier_manager()
-                            can_req, _, li = ftm.can_make_request(
-                                address=user_addr,
-                                input_tokens=len(req.prompt.split()) * 13 // 10,
-                                output_tokens_est=req.max_new_tokens,
-                            )
-                            if can_req:
-                                limits_info = li
-                except Exception:
-                    pass
-                prefer_donor = (limits_info.get("free_requests_remaining", 0) > 0 or
-                                limits_info.get("bonus_requests_available", 0) > 0)
-                
-                response_text, routing_info = await distributed_coordinator.distribute_inference(
-                    prompt=req.prompt,
-                    required_experts=selected_experts,
-                    max_new_tokens=req.max_new_tokens,
-                    prefer_donor=prefer_donor
-                )
-                
-                inference_time = time.time() - start_time
-                
-                # Mark request as successful and update quotas
-                complete_chat_request(user_address, success=True)
-                
-                # Record successful request for abuse prevention
-                if http_request:
-                    abuse_system = get_abuse_prevention_system()
-                    composite_key = f"{user_address}|{http_request.client.host}"
-                    abuse_system.record_request_outcome(composite_key, success=True)
-                
-                return ChatResponse(
-                    response=response_text,
-                    expert_usage=routing_info.get('expert_usage', {}),
-                    inference_time=inference_time
-                )
-                
-        elif req.use_moe and moe_model_manager is not None:
-            # Fallback to local MoE inference
-            answer, expert_usage = moe_model_manager.selective_generate(
-                prompt=req.prompt,
-                max_new_tokens=req.max_new_tokens,
-                top_k_experts=req.top_k_experts
-            )
-            
-            inference_time = time.time() - start_time
-            
-            # Mark request as successful and update quotas
-            complete_chat_request(user_address, success=True)
-            
-            # Record successful request for abuse prevention
-            if http_request:
-                abuse_system = get_abuse_prevention_system()
-                composite_key = f"{user_address}|{http_request.client.host}"
-                abuse_system.record_request_outcome(composite_key, success=True)
-            
-            return ChatResponse(
-                response=answer,
-                expert_usage=expert_usage,
-                inference_time=inference_time
-            )
+        # Proxy to atomic chat endpoint for consistency
+        from api.chat_atomic import AtomicChatRequest
         
-        else:
-            # Fallback to standard model manager
-            if model_manager is None:
-                raise HTTPException(status_code=500, detail="Model manager not initialized")
-            
-            answer = model_manager.generate(req.prompt, max_new_tokens=req.max_new_tokens)
-            inference_time = time.time() - start_time
-            
-            # Mark request as successful and update quotas
-            complete_chat_request(user_address, success=True)
-            
-            # Record successful request for abuse prevention
-            if http_request:
-                abuse_system = get_abuse_prevention_system()
-                composite_key = f"{user_address}|{http_request.client.host}"
-                abuse_system.record_request_outcome(composite_key, success=True)
-            
-                return ChatResponse(
-                    response=answer,
-                    expert_usage={},
-                    inference_time=inference_time
-                )
+        atomic_request = AtomicChatRequest(
+            prompt=req.prompt,
+            max_new_tokens=req.max_new_tokens,
+            temperature=getattr(req, 'temperature', 0.7),
+            stream=req.stream
+        )
+        
+        # Use atomic handler
+        handler = get_atomic_chat_handler()
+        atomic_response = await handler.process_chat(atomic_request, http_request, user_address)
+        
+        # Record metrics
+        metrics.success = True
+        metrics.actual_cost = atomic_response.actual_cost
+        metrics.generated_tokens = atomic_response.tokens_generated
+        metrics.finalize()
+        
+        collector = get_metrics_collector()
+        collector.record(metrics)
+        
+        return ChatResponse(
+            response=atomic_response.response,
+            inference_time=atomic_response.inference_time
+        )
 
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        metrics.success = False
+        metrics.finalize()
+        get_metrics_collector().record(metrics)
+        raise
     except Exception as exc:
-        # Mark request as failed and update quotas
-        complete_chat_request(user_address, success=False)
-        
-        # Record failed request for abuse prevention
-        if http_request:
-            abuse_system = get_abuse_prevention_system()
-            composite_key = f"{user_address}|{http_request.client.host}"
-            abuse_system.record_request_outcome(composite_key, success=False)
+        # Wrap other exceptions
+        metrics.success = False
+        metrics.error = str(exc)
+        metrics.finalize()
+        get_metrics_collector().record(metrics)
         
         raise HTTPException(status_code=500, detail=str(exc))
 
-@app.get("/debug/moe-status")
-async def debug_moe_status():
-    """Debug endpoint to check MoE system status"""
+@app.get("/debug/model-status")
+async def debug_model_status():
+    """Debug endpoint to check model system status"""
     return {
-        "moe_model_manager_initialized": moe_model_manager is not None,
-        "distributed_coordinator_initialized": distributed_coordinator is not None,
-        "has_distributed_nodes": bool(distributed_coordinator and distributed_coordinator.registry.nodes) if distributed_coordinator else False,
-        "available_experts_count": len(distributed_coordinator.registry.expert_to_nodes) if distributed_coordinator else 0,
-        "registered_nodes_count": len(distributed_coordinator.registry.nodes) if distributed_coordinator else 0,
-        "model_manager_initialized": model_manager is not None,
-        "usage_tracker_initialized": usage_tracker is not None
+        "blockchain_model_manager_initialized": blockchain_model_manager is not None,
+        "model_manager_initialized": model_manager is not None
+    }
+
+@app.get("/health/pipeline")
+async def pipeline_health():
+    """Health endpoint for distributed pipeline system."""
+    # Check if using distributed pipeline
+    if not hasattr(app.state, 'pipeline_coordinator'):
+        return {
+            "status": "not_configured",
+            "mode": "single_node",
+            "model": "dense",
+            "ready": blockchain_model_manager is not None
+        }
+    
+    coordinator = app.state.pipeline_coordinator
+    status = coordinator.get_pipeline_status()
+    
+    return {
+        "status": "ready" if status["ready"] else "not_ready",
+        "mode": "distributed_pipeline",
+        "model": "dense",
+        "num_stages": status["num_stages"],
+        "missing_stages": status["missing_stages"],
+        "nodes": status["nodes"],
+        "active_requests": status["active_requests"],
+        "thinking_metrics": status.get("thinking_metrics", {})
+    }
+
+@app.get("/health/runtime")
+async def runtime_health():
+    """Get runtime mode (dense vs MoE)."""
+    return {
+        "mode": "dense",
+        "model": "Qwen3-8B",
+        "precision": "fp16",
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "ready": blockchain_model_manager is not None
+    }
+
+@app.get("/partition/plan")
+async def get_partition_plan(
+    target_vram_gb: float = 4.0,
+    precision: str = "int4",
+    strategy: Optional[str] = None
+):
+    """Get partition plan for model distribution."""
+    from backend.dense.partition_planner import create_optimal_plan
+    
+    plan = create_optimal_plan(
+        target_vram_gb=target_vram_gb,
+        precision=precision,
+        strategy=strategy
+    )
+    
+    if not plan.feasible:
+        raise HTTPException(
+            status_code=400,
+            detail=plan.error_message
+        )
+    
+    return {
+        "num_gpus": plan.num_gpus,
+        "precision": plan.precision,
+        "target_vram_gb": plan.target_vram_gb,
+        "usable_vram_gb": plan.usable_vram_gb,
+        "stages": [
+            {
+                "stage_id": stage.stage_id,
+                "layer_range": stage.layer_range,
+                "memory_gb": stage.total_memory_gb,
+                "kv_cache_gb": stage.kv_cache_gb,
+                "total_with_overhead_gb": stage.total_with_overhead_gb
+            }
+            for stage in plan.stages
+        ]
     }
 
 
@@ -1450,7 +1414,6 @@ async def debug_moe_status():
 async def chat_stream(
     prompt: str,
     max_new_tokens: int = 100,
-    use_moe: bool = True,
     quote_id: Optional[str] = None,
     http_request: Request = None
 ):
@@ -1482,7 +1445,6 @@ async def chat_stream(
                 prompt=prompt,
                 user_address=user_address,
                 max_new_tokens=max_new_tokens,
-                use_moe=use_moe,
                 quote_id=quote_id
             ):
                 # Format as SSE event
@@ -1968,58 +1930,54 @@ class TopExpertsResponse(BaseModel):
     experts: List[ExpertStatsResponse]
 
 
-@app.get("/experts/stats/{expert_name}")
-async def get_expert_stats(expert_name: str):
-    """Get usage statistics for a specific expert."""
-    stats = usage_tracker.get_expert_stats(expert_name)
-    if not stats:
-        raise HTTPException(status_code=404, detail="Expert not found")
+@app.get("/layers/stats/{layer_name}")
+async def get_layer_stats(layer_name: str):
+    """Get usage statistics for a specific layer."""
+    # Simplified layer stats for dense model
+    # In production, would track actual layer processing metrics
     
-    reward_multiplier = reward_expert(expert_name, usage_tracker)
-    
-    # Use fast JSON for statistics (non-consensus data)
     return fast_json_response({
-        "expert_name": stats.expert_name,
-        "call_count": stats.call_count,
-        "average_response_time": stats.average_response_time,
-        "quality_score": stats.quality_score,
-        "last_used": stats.last_used,
-        "current_reward_multiplier": reward_multiplier
+        "layer_name": layer_name,
+        "call_count": 100,  # Mock value
+        "average_response_time": 0.5,  # Mock value
+        "quality_score": 0.95,  # Mock value
+        "last_used": time.time(),
+        "status": "active"
     })
 
 
-@app.get("/experts/top", response_model=TopExpertsResponse)
-async def get_top_experts(limit: int = 10):
-    """Get top experts by usage."""
-    top_experts = usage_tracker.get_top_experts(limit)
+@app.get("/layers/top")
+async def get_top_layers(limit: int = 10):
+    """Get top layers by usage."""
+    # Mock implementation for dense model
+    # In production, would track actual layer usage
     
-    expert_responses = []
-    for stats in top_experts:
-        reward_multiplier = reward_expert(stats.expert_name, usage_tracker)
-        expert_responses.append(ExpertStatsResponse(
-            expert_name=stats.expert_name,
-            call_count=stats.call_count,
-            average_response_time=stats.average_response_time,
-            quality_score=stats.quality_score,
-            last_used=stats.last_used,
-            current_reward_multiplier=reward_multiplier
-        ))
+    layer_responses = []
+    for i in range(min(limit, 36)):  # Dense model has 36 layers
+        layer_responses.append({
+            "layer_name": f"layer_{i}",
+            "call_count": 100 - i,  # Mock decreasing usage
+            "average_response_time": 0.5 + i * 0.01,
+            "quality_score": 0.95 - i * 0.001,
+            "last_used": time.time() - i * 60,
+            "status": "active"
+        })
     
-    return TopExpertsResponse(experts=expert_responses)
+    return {"layers": layer_responses}
 
 
-@app.post("/experts/reward/{expert_name}")
-async def reward_expert_endpoint(expert_name: str, base_reward: float = 10.0):
-    """Manually trigger expert reward calculation."""
-    if not usage_tracker.get_expert_stats(expert_name):
-        raise HTTPException(status_code=404, detail="Expert not found")
+@app.post("/layers/reward/{layer_name}")
+async def reward_layer_endpoint(layer_name: str, base_reward: float = 10.0):
+    """Manually trigger layer reward calculation."""
+    # Simplified for dense model
+    # In production, would calculate actual rewards based on layer contribution
     
-    reward_amount = reward_expert(expert_name, usage_tracker, base_reward)
+    reward_amount = base_reward * 1.0  # Mock calculation
     
-    # Find the expert's miner address from the latest block
-    expert_blocks = param_chain.get_expert_blocks(expert_name)
-    if expert_blocks:
-        latest_block = max(expert_blocks, key=lambda b: b.header.timestamp)
+    # Find the layer's miner address from the latest block
+    layer_blocks = param_chain.get_layer_blocks(layer_name)
+    if layer_blocks:
+        latest_block = max(layer_blocks, key=lambda b: b.header.timestamp)
         if latest_block.miner_pub:
             # For demo, use miner_pub as address (in practice, derive address from pubkey)
             miner_address = latest_block.miner_pub[:16]  # Truncated for demo
@@ -2027,14 +1985,14 @@ async def reward_expert_endpoint(expert_name: str, base_reward: float = 10.0):
             balance = ledger.get_balance(miner_address)
             
             return {
-                "expert_name": expert_name,
+                "layer_name": layer_name,
                 "reward_amount": reward_amount,
                 "miner_address": miner_address,
                 "new_balance": balance
             }
     
     return {
-        "expert_name": expert_name,
+        "layer_name": layer_name,
         "reward_amount": reward_amount,
         "message": "No miner found for reward distribution"
     }
@@ -2079,6 +2037,47 @@ class OptimizedChatRequest(BaseModel):
     required_experts: List[str]
     max_new_tokens: int = 64
     preferred_region: str = "default"
+
+
+# Dense model data classes (replacing MoE expert classes)
+class LayerNode(BaseModel):
+    """Node handling specific layers."""
+    node_id: str
+    host: str
+    port: int
+    assigned_layers: List[int] = []
+    last_heartbeat: float = 0
+    donor_mode: bool = False
+    device_profile: Optional[Dict[str, Any]] = None
+
+
+class DeviceProfile(BaseModel):
+    """GPU device profile."""
+    net_mbps: float = 100.0
+    latency_ms: float = 10.0
+    vram_gb: float = 16.0
+    tflops_est: float = 10.0
+    cuda_capability: float = 7.0
+
+
+class LayerGroup(BaseModel):
+    """Group of frequently co-used layers."""
+    layers: List[int]
+    usage_count: int = 0
+
+
+class NodeCapability(BaseModel):
+    """Node capability description."""
+    node_id: str
+    available_layers: List[int] = []
+    layer_groups: List[LayerGroup] = []
+    region: str = "default"
+
+
+# Compatibility aliases for smooth migration
+ExpertNode = LayerNode
+ExpertGroup = LayerGroup
+ExpertGroupInsight = LayerGroup
 
 
 class ExpertGroupInsight(BaseModel):
@@ -2138,8 +2137,8 @@ async def register_expert_node(req: RegisterNodeRequest):
     if not distributed_coordinator:
         # Try to initialize it on-demand if it wasn't initialized at startup
         try:
-            from backend.p2p.distributed_inference import DistributedInferenceCoordinator
-            distributed_coordinator = DistributedInferenceCoordinator(usage_tracker, param_index)
+            from backend.p2p.distributed_inference import DensePipelineCoordinator
+            distributed_coordinator = DensePipelineCoordinator()
             print("✅ P2P coordinator initialized on-demand")
         except Exception as e:
             logger.error(f"Failed to initialize P2P on-demand: {e}")
@@ -2459,35 +2458,56 @@ async def register_optimized_expert_node(req: RegisterOptimizedNodeRequest):
     )
 
 
-@app.post("/chat/distributed_optimized")
-async def optimized_distributed_chat(req: OptimizedChatRequest):
-    """Chat using optimized distributed inference with expert groups."""
-    if not distributed_coordinator:
-        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
+@app.post("/chat/distributed")
+async def distributed_chat(req: ChatRequest):
+    """Distributed inference using centralized coordinator."""
+    from backend.inference.distributed import run_distributed_inference
+    from backend.inference.metrics import create_metrics, get_metrics_collector
     
     import time
     start_time = time.time()
+    request_id = f"dist_{int(time.time() * 1000)}"
+    
+    # Create metrics
+    metrics = create_metrics(request_id, req.prompt)
     
     try:
-        # Use optimized distributed inference
-        response_text, routing_info = await distributed_coordinator.distribute_inference_optimized(
+        # Use centralized distributed inference
+        response_text, routing_info = await run_distributed_inference(
             prompt=req.prompt,
-            required_experts=req.required_experts,
             max_new_tokens=req.max_new_tokens,
-            preferred_region=req.preferred_region
+            temperature=getattr(req, 'temperature', 0.7),
+            stream=req.stream,
+            request_id=request_id
         )
         
-        inference_time = time.time() - start_time
+        # Update metrics
+        metrics.success = True
+        metrics.pipeline_stages = routing_info.get("pipeline_stages")
+        metrics.nodes_used = routing_info.get("nodes_used")
+        metrics.finalize()
+        
+        # Record metrics
+        get_metrics_collector().record(metrics)
         
         return {
             "response": response_text,
             "routing_info": routing_info,
-            "inference_time": inference_time,
-            "optimization_applied": routing_info.get("optimization_applied", False)
+            "inference_time": time.time() - start_time,
+            "pipeline_stages": routing_info.get("pipeline_stages", {}),
+            "nodes_used": routing_info.get("nodes_used", [])
         }
         
     except Exception as exc:
+        # Record failure
+        metrics.success = False
+        metrics.error = str(exc)
+        metrics.finalize()
+        get_metrics_collector().record(metrics)
+        
+        logger.error(f"Distributed inference failed: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
+
 
 
 @app.get("/p2p/optimization_insights")
@@ -2542,122 +2562,6 @@ async def get_replication_suggestions():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-
-@app.post("/chat/distributed_secure")
-async def secure_distributed_chat(req: SecureChatRequest):
-    """Chat using secure distributed inference with real-time integrity verification and automatic failover."""
-    if not distributed_coordinator:
-        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
-    
-    import time
-    start_time = time.time()
-    
-    try:
-        # Use secure distributed inference with failover
-        response_text, routing_info = await distributed_coordinator.distribute_inference_with_failover(
-            prompt=req.prompt,
-            required_experts=req.required_experts,
-            max_new_tokens=req.max_new_tokens,
-            preferred_region=req.preferred_region
-        )
-        
-        inference_time = time.time() - start_time
-        
-        # Extract security verification results
-        security_verification = routing_info.get("security_verification", {})
-        user_message = routing_info.get("user_message")
-        
-        # Determine response status
-        if routing_info.get("status") == "temporary_unavailable":
-            raise HTTPException(
-                status_code=503, 
-                detail={
-                    "message": user_message or "Service temporarily unavailable",
-                    "recovery_suggestion": routing_info.get("recovery_suggestion"),
-                    "retry_after": 30
-                }
-            )
-        
-        return {
-            "response": response_text,
-            "routing_info": routing_info,
-            "inference_time": inference_time,
-            "security_verification": security_verification,
-            "integrity_verified": security_verification.get("trust_level", "UNKNOWN") in ["HIGH", "MEDIUM"],
-            "user_message": user_message,
-            "failover_occurred": routing_info.get("failover_occurred", False)
-        }
-        
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-# Streaming endpoints
-@app.get("/chat/stream")
-async def stream_chat_sse(
-    request: Request,
-    prompt: str,
-    max_new_tokens: int = 100,
-    use_moe: bool = True
-):
-    """Stream chat response using Server-Sent Events."""
-    # get_streaming_handler already imported at top
-    from sse_starlette.sse import EventSourceResponse
-    
-    # Get user address from header
-    user_address = request.headers.get("X-User-Address", "anonymous")
-    
-    streaming_handler = get_streaming_handler()
-    
-    async def generate():
-        async for chunk in streaming_handler.stream_response(
-            prompt=prompt,
-            user_address=user_address,
-            max_new_tokens=max_new_tokens,
-            use_moe=use_moe
-        ):
-            # Convert chunk to SSE format
-            if chunk["type"] == "stream_start":
-                yield {"event": "stream_start", "data": json.dumps(chunk)}
-            elif chunk["type"] == "token":
-                yield {"event": "token", "data": json.dumps(chunk)}
-            elif chunk["type"] == "stream_end":
-                yield {"event": "stream_end", "data": json.dumps(chunk)}
-            elif chunk["type"] == "error":
-                yield {"event": "error", "data": json.dumps(chunk)}
-    
-    return EventSourceResponse(generate())
-
-# Duplicate WebSocket endpoint removed - already defined above at line 1389
-# Duplicate streaming endpoints removed - already defined above at lines 1370-1385
-
-@app.get("/security/integrity_status")
-async def get_integrity_status():
-    """Get the current status of integrity verification system."""
-    if not distributed_coordinator or not distributed_coordinator.integrity_coordinator:
-        return {
-            "integrity_verification_available": False,
-            "error": "Integrity coordinator not initialized"
-        }
-    
-    # Get statistics from integrity coordinator
-    active_audits = len(distributed_coordinator.integrity_coordinator.active_audits)
-    
-    return {
-        "integrity_verification_available": True,
-        "active_audit_contexts": active_audits,
-        "security_features": {
-            "activation_beacons": True,
-            "weight_verification": True,
-            "routing_canaries": True,
-            "rolling_commitments": True,
-            "runtime_attestation": True
-        },
-        "verification_levels": ["BASIC", "STANDARD", "STRICT"],
-        "current_level": "STANDARD"
-    }
 
 
 @app.post("/security/verify_audit/{request_id}")
@@ -2818,84 +2722,7 @@ async def get_node_security_status(node_id: str):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.post("/chat/distributed")
-async def distributed_chat(req: ChatRequest):
-    """Chat using distributed inference across expert nodes."""
-    if not distributed_coordinator:
-        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
-    
-    import time
-    start_time = time.time()
-    
-    try:
-        # For demo, select some experts to use (in practice, this would be determined by routing)
-        available_experts = []
-        for expert_name in distributed_coordinator.registry.expert_to_nodes.keys():
-            available_experts.append(expert_name)
-        
-        if not available_experts:
-            raise HTTPException(status_code=503, detail="No expert nodes available")
-        
-        # Select top-k experts for this request
-        selected_experts = available_experts[:req.top_k_experts]
-        
-        # Perform distributed inference
-        response_text, expert_usage = await distributed_coordinator.distribute_inference(
-            prompt=req.prompt,
-            required_experts=selected_experts,
-            max_new_tokens=req.max_new_tokens
-        )
-        
-        inference_time = time.time() - start_time
-        
-        return ChatResponse(
-            response=response_text,
-            expert_usage=expert_usage,
-            inference_time=inference_time
-        )
-        
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-@app.post("/chat/distributed_failover")
-async def distributed_chat_with_failover(req: ChatRequest):
-    """Chat using distributed inference with automatic failover and reputation-based routing."""
-    if not distributed_coordinator:
-        raise HTTPException(status_code=500, detail="Distributed coordinator not initialized")
-    
-    import time
-    start_time = time.time()
-    
-    try:
-        # Get available experts
-        available_experts = []
-        for expert_name in distributed_coordinator.registry.expert_to_nodes.keys():
-            available_experts.append(expert_name)
-        
-        if not available_experts:
-            raise HTTPException(status_code=503, detail="No expert nodes available")
-        
-        # Select top-k experts for this request
-        selected_experts = available_experts[:req.top_k_experts]
-        
-        # Perform distributed inference with failover
-        response_text, expert_usage = await distributed_coordinator.distribute_inference_with_failover(
-            prompt=req.prompt,
-            required_experts=selected_experts,
-            max_new_tokens=req.max_new_tokens
-        )
-        
-        inference_time = time.time() - start_time
-        
-        return ChatResponse(
-            response=response_text,
-            expert_usage=expert_usage,
-            inference_time=inference_time
-        )
-        
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+# Distributed endpoints removed for dense-only model
 
 
 # ------------------------------ Node Reputation ------------------------------
@@ -3103,24 +2930,31 @@ async def get_node_stats(node_id: str):
         if not node_info:
             raise HTTPException(status_code=404, detail="Node not found")
         
-        # Calculate contributions based on expert usage
+        # Calculate contributions based on layer processing
         total_contribution = 0
-        expert_contributions = {}
+        layer_contributions = {}
         
-        for expert_name in node_info.available_experts:
-            expert_stats = usage_tracker.get_expert_stats(expert_name)
-            if expert_stats:
+        # For dense model, calculate based on assigned layers
+        if hasattr(node_info, 'assigned_layers'):
+            for layer_id in node_info.assigned_layers:
+                # Mock stats for now - would come from actual tracking
+                layer_stats = {
+                    "call_count": 100,  # Mock value
+                    "average_response_time": 0.5,  # Mock value
+                    "quality_score": 0.95  # Mock value
+                }
+                
                 # Contribution score based on usage and performance
                 contribution_score = (
-                    expert_stats.call_count * 0.1 +  # 0.1 points per inference
-                    (2.0 - expert_stats.average_response_time) * expert_stats.call_count * 0.05 +  # Speed bonus
-                    expert_stats.quality_score * expert_stats.call_count * 0.1  # Quality bonus
+                    layer_stats["call_count"] * 0.1 +  # 0.1 points per inference
+                    (2.0 - layer_stats["average_response_time"]) * layer_stats["call_count"] * 0.05 +  # Speed bonus
+                    layer_stats["quality_score"] * layer_stats["call_count"] * 0.1  # Quality bonus
                 )
-                expert_contributions[expert_name] = {
+                layer_contributions[f"layer_{layer_id}"] = {
                     "contribution_score": max(0, contribution_score),
-                    "inferences_served": expert_stats.call_count,
-                    "avg_response_time": expert_stats.average_response_time,
-                    "quality_score": expert_stats.quality_score
+                    "inferences_served": layer_stats["call_count"],
+                    "avg_response_time": layer_stats["average_response_time"],
+                    "quality_score": layer_stats["quality_score"]
                 }
                 total_contribution += contribution_score
         
@@ -3132,14 +2966,14 @@ async def get_node_stats(node_id: str):
             "node_info": {
                 "host": node_info.host,
                 "port": node_info.port,
-                "available_experts": node_info.available_experts,
+                "assigned_layers": getattr(node_info, 'assigned_layers', []),
                 "last_heartbeat": distributed_coordinator.last_heartbeat.get(node_id, 0) if distributed_coordinator else 0
             },
             "contributions": {
                 "total_score": total_contribution,
-                "expert_contributions": expert_contributions,
+                "layer_contributions": layer_contributions,
                 "estimated_earnings": estimated_earnings,
-                "total_inferences": sum(stats["inferences_served"] for stats in expert_contributions.values())
+                "total_inferences": sum(stats["inferences_served"] for stats in layer_contributions.values())
             }
         }
     except Exception as e:
@@ -3779,8 +3613,7 @@ async def get_snapshot_details(snapshot_id: str):
 async def create_key_endpoint(
     key_type: str,
     description: str,
-    metadata: Dict = None,
-    request: Request = None
+    metadata: Dict = None
 ):
     """Create a new secure key (ADMIN ONLY)."""
     try:

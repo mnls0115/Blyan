@@ -38,7 +38,7 @@ BLOCKCHAIN_ONLY=false                     # Must be false to load model
 # OPTIONAL Configuration
 NODE_ID=gpu-$(hostname -s)                # Unique node identifier
 DONOR_MODE=false                          # true = help free-tier, no rewards
-# MODEL_NAME=Qwen/Qwen3-30B-A3B-Instruct-2507-FP8  # Model to load
+# MODEL_NAME=Qwen/Qwen3-8B-FP8  # Model to load
 # HF_TOKEN=your_huggingface_token        # If using private models
 # BLYAN_DATA_DIR=/workspace/blyan/data   # Data directory path
 EOF
@@ -276,7 +276,7 @@ docker restart blyan-node
 #### Optional
 - **`BLYAN_API_KEY`**: API key if required by main node
 - **`NODE_ID`**: Unique identifier (default: gpu_node_<pid>)
-- **`MODEL_NAME`**: Model to load (default: Qwen/Qwen3-30B-A3B-Instruct-2507-FP8)
+- **`MODEL_NAME`**: Model to load (default: Qwen/Qwen3-8B-FP8)
 - **`BLYAN_DATA_DIR`**: Data directory (default: ./data)
 - **`DONOR_MODE`**: Enable donor mode (default: false)
 - **`HF_TOKEN`**: HuggingFace token for private models

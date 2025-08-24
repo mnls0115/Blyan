@@ -1,7 +1,7 @@
 """
-Blockchain Expert Fetcher
+Blockchain Layer Fetcher
 
-Real implementation for fetching experts from blockchain storage.
+Real implementation for fetching dense model layers from blockchain storage.
 """
 
 import pickle
@@ -14,41 +14,40 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class BlockchainExpertFetcher:
-    """Fetches expert weights from blockchain storage."""
+class BlockchainLayerFetcher:
+    """Fetches layer weights from blockchain storage."""
     
     def __init__(self, chain_b, storage_path: Path = None):
         """
         Initialize fetcher with blockchain chain.
         
         Args:
-            chain_b: The parameter chain containing expert blocks
+            chain_b: The parameter chain containing layer blocks
             storage_path: Path to blockchain storage directory
         """
         self.chain = chain_b
         self.storage_path = storage_path or Path("./data/chain_B")
         
-    def fetch_expert(self, layer_id: int, expert_id: int) -> Optional[Dict[str, torch.Tensor]]:
+    def fetch_layer(self, layer_id: int) -> Optional[Dict[str, torch.Tensor]]:
         """
-        Fetch expert from blockchain.
+        Fetch layer from blockchain.
         
         Args:
             layer_id: Layer index
-            expert_id: Expert index within layer
             
         Returns:
-            Dict containing expert weights or None if not found
+            Dict containing layer weights or None if not found
         """
-        expert_name = f"layer{layer_id}.expert{expert_id}"
+        layer_name = f"layer_{layer_id}" if layer_id >= 0 else ("embedding" if layer_id == -1 else "lm_head")
         
         try:
-            # Search for expert block in chain
+            # Search for layer block in chain
             if hasattr(self.chain, 'get_blocks_by_type'):
-                expert_blocks = self.chain.get_blocks_by_type('expert')
+                layer_blocks = self.chain.get_blocks_by_type('dense_layer')
                 
-                for block in expert_blocks:
-                    if hasattr(block.header, 'expert_name') and block.header.expert_name == expert_name:
-                        # Found the expert block, deserialize payload
+                for block in layer_blocks:
+                    if hasattr(block.header, 'layer_name') and block.header.layer_name == layer_name:
+                        # Found the layer block, deserialize payload
                         expert_data = pickle.loads(block.payload)
                         
                         # Convert to tensors if needed
@@ -60,7 +59,7 @@ class BlockchainExpertFetcher:
                                 # Convert numpy or list to tensor
                                 result[key] = torch.tensor(value, dtype=torch.float16)
                         
-                        logger.info(f"Loaded expert {expert_name} from blockchain")
+                        logger.info(f"Loaded layer {layer_name} from blockchain")
                         return result
             
             # Alternative: Direct file access for performance
@@ -71,8 +70,8 @@ class BlockchainExpertFetcher:
                         block_data = pickle.load(f)
                         
                     if (hasattr(block_data, 'header') and 
-                        hasattr(block_data.header, 'expert_name') and 
-                        block_data.header.expert_name == expert_name):
+                        hasattr(block_data.header, 'layer_name') and 
+                        block_data.header.layer_name == layer_name):
                         
                         expert_data = pickle.loads(block_data.payload)
                         
@@ -83,20 +82,20 @@ class BlockchainExpertFetcher:
                             else:
                                 result[key] = torch.tensor(value, dtype=torch.float16)
                         
-                        logger.info(f"Loaded expert {expert_name} from block file")
+                        logger.info(f"Loaded layer {layer_name} from block file")
                         return result
                         
                 except Exception as e:
                     continue
             
-            logger.warning(f"Expert {expert_name} not found in blockchain")
+            logger.warning(f"Layer {layer_name} not found in blockchain")
             return None
             
         except Exception as e:
-            logger.error(f"Failed to fetch expert {expert_name}: {e}")
+            logger.error(f"Failed to fetch layer {layer_name}: {e}")
             return None
     
-    def compute_expert_hash(self, expert_data: Dict[str, torch.Tensor]) -> str:
+    def compute_layer_hash(self, layer_data: Dict[str, torch.Tensor]) -> str:
         """
         Compute hash of expert weights for verification.
         

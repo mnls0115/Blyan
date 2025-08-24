@@ -39,7 +39,7 @@
 ### Model Loading
 ```python
 model = AutoModelForCausalLM.from_pretrained(
-    "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",
+    "Qwen/Qwen3-8B-FP8",
     torch_dtype="auto",  # Auto-detect FP8
     device_map="auto",   # Multi-GPU distribution
     trust_remote_code=True

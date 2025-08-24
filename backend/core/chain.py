@@ -168,8 +168,9 @@ class Chain:
         miner_pub: Optional[str] = None,
         payload_sig: Optional[str] = None,
         depends_on: Optional[List[str]] = None,
-        block_type: Literal['meta', 'expert', 'router', 'genesis_pact', 'dataset'] = 'meta',
+        block_type: Literal['meta', 'expert', 'router', 'genesis_pact', 'dataset', 'layer', 'dense_layer'] = 'meta',
         expert_name: Optional[str] = None,
+        layer_name: Optional[str] = None,  # For dense model layers
         layer_id: Optional[str] = None,
     ) -> Block:
         """Create, mine, and persist a new block."""
@@ -199,7 +200,8 @@ class Chain:
             nonce=0,
             depends_on=final_depends_on,
             block_type=block_type,
-            expert_name=expert_name,
+            expert_name=expert_name,  # Keep for backward compatibility
+            layer_name=layer_name,  # New dense model field
             layer_id=layer_id,
         )
 
@@ -349,29 +351,29 @@ class Chain:
         blocks = self.get_all_blocks()
         return topological_sort(blocks)
     
-    def get_blocks_by_type(self, block_type: Literal['meta', 'expert', 'router']) -> List[Block]:
+    def get_blocks_by_type(self, block_type: Literal['meta', 'layer', 'dense_layer']) -> List[Block]:
         """Get all blocks of a specific type."""
         return [block for block in self.storage.iter_blocks() 
                 if block.header.block_type == block_type]
     
-    def get_expert_blocks(self, expert_name: str) -> List[Block]:
-        """Get all blocks for a specific expert."""
+    def get_layer_blocks(self, layer_name: str) -> List[Block]:
+        """Get all blocks for a specific layer."""
         return [block for block in self.storage.iter_blocks() 
-                if (block.header.block_type == 'expert' and 
-                    block.header.expert_name == expert_name)]
+                if (block.header.block_type in ['layer', 'dense_layer'] and 
+                    block.header.layer_name == layer_name)]
     
     def get_blocks_by_layer(self, layer_id: str) -> List[Block]:
         """Get all blocks for a specific layer."""
         return [block for block in self.storage.iter_blocks() 
                 if block.header.layer_id == layer_id]
     
-    def _get_expert_previous_score(self, expert_name: str) -> Optional[float]:
-        """Get the previous best score for an expert."""
-        if not expert_name:
+    def _get_layer_previous_score(self, layer_name: str) -> Optional[float]:
+        """Get the previous best score for a layer."""
+        if not layer_name:
             return None
         
-        # Look for existing blocks with this expert_name
-        existing_blocks = self.get_expert_blocks(expert_name)
+        # Look for existing blocks with this layer_name
+        existing_blocks = self.get_layer_blocks(layer_name)
         
         if not existing_blocks:
             return None

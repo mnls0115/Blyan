@@ -247,9 +247,9 @@ class ExpertBlockUploader:
             "miner_address": self.miner_address,
             "miner_pub": self.miner_pub,
             "payload_sig": signature.hex(),
-            "expert_name": expert_name,
+            "layer_name": expert_name,  # Reusing expert_name as layer_name for dense model
             "layer_id": layer_id,
-            "block_type": "expert",
+            "block_type": "dense_layer",
             # Always depend on the meta block to anchor experts to the current spec
             "depends_on": ([meta_hash] if meta_hash else []),
             "tensor_data_b64": tensor_b64,

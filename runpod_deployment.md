@@ -67,7 +67,7 @@ NODE_PORT=8002
 MAIN_NODE_URL=https://blyan.com/api
 
 # Model Configuration (auto-downloads on first run)
-MODEL_NAME=Qwen/Qwen3-30B-A3B-Instruct-2507-FP8
+MODEL_NAME=Qwen/Qwen3-8B-FP8
 AUTO_UPLOAD=true
 SKIP_POL=true
 
@@ -162,7 +162,7 @@ This process happens once and takes 60-90 minutes depending on:
 
 ```bash
 # ONLY USE THIS MODEL - Qwen3 30B
-MODEL_NAME=Qwen/Qwen3-30B-A3B-Instruct-2507-FP8  # 30B params, requires 80GB+ GPU
+MODEL_NAME=Qwen/Qwen3-8B-FP8  # 30B params, requires 80GB+ GPU
 ```
 
 ## Monitoring

@@ -68,7 +68,7 @@ class RoundExecutor:
                     # Build dataset loader from GOLD tier
                     ds_chain = DatasetChain(Path('./data'), 'D')
                     # Load model via ModelWrapper (must exist in the environment)
-                    model_name = os.getenv('TRAINING_MODEL_NAME', 'Qwen/Qwen3-30B-A3B-Instruct-2507-FP8')
+                    model_name = os.getenv('TRAINING_MODEL_NAME', 'Qwen/Qwen3-8B-FP8')
                     wrapper = ModelWrapper(model_name, allow_mock_fallback=False)
 
                     # Optional DDP and ZeRO-1

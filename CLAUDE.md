@@ -43,7 +43,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **GPU Nodes**: Distributed compute providers
   - Need `BLYAN_API_KEY` to register with main node
   - Must set `BLOCKCHAIN_ONLY=false` to actually serve models
-  - Use `run_gpu_node.py` as entrypoint (auto-downloads Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 if no experts exist)
+  - Use `run_gpu_node.py` as entrypoint (auto-downloads Qwen/Qwen3-8B-FP8 if no experts exist)
   - Require public IP/DNS and port forwarding
   - **Memory Optimization**: Uses MXFP4/NF4 quantization to fit model in 16GB GPU memory
   - See [GPU Node Deployment Guide](docs/GPU_NODE_DEPLOYMENT.md) for setup
@@ -55,7 +55,7 @@ Blyan is a revolutionary distributed MoE (Mixture-of-Experts) blockchain system 
 ## 🚨 CRITICAL MODEL REQUIREMENTS
 
 **CONSISTENT QUANTIZATION ACROSS ALL NODES:**
-- **Model**: `Qwen/Qwen3-30B-A3B-Instruct-2507-FP8` (https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8)
+- **Model**: `Qwen/Qwen3-8B-FP8` (https://huggingface.co/Qwen/Qwen3-8B-FP8)
 - **Architecture**: Mixture-of-Experts (MoE) with 128 experts
 - **Size**: 30.5B total parameters, 3.3B active params per token
 - **Precision**: FP8 - consistent across all GPU nodes
@@ -105,7 +105,7 @@ from backend.core.chain import Chain
 root_dir = Path("./data")
 meta_chain = Chain(root_dir, "A")
 spec = {
-    "model_name": "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8",  # Must match model in ./models/ directory
+    "model_name": "Qwen/Qwen3-8B-FP8",  # Must match model in ./models/ directory
     "architecture": "mixture-of-experts", 
     "num_layers": 24,
     "num_experts": 16,
@@ -443,13 +443,13 @@ await coordinator.run_learning_round(
 python3 scripts/extract_individual_experts.py
 
 # Upload full MoE model (requires candidate-loss parameter) - creates single expert block
-python miner/upload_moe_parameters.py --address alice --model-file ./models/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 --meta-hash <full-meta-hash> --candidate-loss 0.8
+python miner/upload_moe_parameters.py --address alice --model-file ./models/Qwen/Qwen3-8B-FP8 --meta-hash <full-meta-hash> --candidate-loss 0.8
 
 # Get correct meta hash
 curl -s http://127.0.0.1:8000/chain/A/blocks | grep -o '"hash":"[^"]*"' | head -1
 
 # Test MoE extraction (dry-run)
-python miner/upload_moe_parameters.py --address alice --model-file ./models/Qwen/Qwen3-30B-A3B-Instruct-2507-FP8 --meta-hash <hash> --candidate-loss 0.8 --dry-run
+python miner/upload_moe_parameters.py --address alice --model-file ./models/Qwen/Qwen3-8B-FP8 --meta-hash <hash> --candidate-loss 0.8 --dry-run
 
 # Run distributed demo
 python scripts/demo_distributed_moe.py
