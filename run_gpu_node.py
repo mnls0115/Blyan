@@ -91,7 +91,7 @@ class BlyanGPUNode:
         self.gpu_info = {}
         self.genesis_hash = None
         # Precision is now auto-detected from model config
-        model_config = get_model_config(MODEL_NAME)
+        model_config = get_model_config()
         self.precision = model_config.get('precision', 'auto')
         
         # Ensure data directory exists
@@ -751,7 +751,7 @@ class BlyanGPUNode:
                 logger.warning(f"Failed to read upload state: {e}")
         
         logger.info(f"📥 Auto-downloading model: {MODEL_NAME}")
-        model_config = get_model_config(MODEL_NAME)
+        model_config = get_model_config()
         logger.info(f"⚙️  Model: {model_config.get('total_params', 'unknown')} total params, {model_config.get('active_params', 'unknown')} active params per token")
         
         try:
@@ -779,7 +779,7 @@ class BlyanGPUNode:
                 tokenizer = load_tokenizer(MODEL_NAME)
                 
                 # Load with model-specific configuration
-                model_config = get_model_config(MODEL_NAME)
+                model_config = get_model_config()
                 torch_dtype = model_config.get('torch_dtype', 'auto')
                 logger.info(f"Loading model with {model_config.get('precision', 'auto')} precision...")
                 
@@ -824,7 +824,7 @@ class BlyanGPUNode:
                 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
                 
                 # Load with auto dtype for compatibility
-                model_config = get_model_config(MODEL_NAME)
+                model_config = get_model_config()
                 model = AutoModelForCausalLM.from_pretrained(
                     MODEL_NAME,
                     torch_dtype="auto",  # Auto-detect for FP8 models
