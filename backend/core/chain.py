@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import time
+import logging
 from pathlib import Path
 from typing import Iterator, Optional, List, Literal, Dict, Set
 from collections import defaultdict
@@ -12,6 +13,8 @@ from .block import Block, BlockHeader, validate_dag_structure, topological_sort
 from .pow import find_pol_nonce, verify_pol_nonce
 from .storage import BlockStorage
 from ..utils.json_canonical import dumps_canonical, loads_canonical
+
+logger = logging.getLogger(__name__)
 
 
 class Chain:
@@ -47,13 +50,64 @@ class Chain:
         # Performance optimization: In-memory hash index for O(1) lookups
         self._hash_index: Dict[str, int] = {}  # block_hash -> block_index
         self._dependency_index: Dict[str, Set[str]] = defaultdict(set)  # block_hash -> set of dependent hashes
-        self._build_indexes()
+        self._index_built = False  # Lazy loading flag
+        
+        # Use tip index for fast startup
+        from .chain_tip import ChainTipIndex
+        self.tip_index = ChainTipIndex(root_dir)
+        
+        # Trust tip by default, verify in background if requested
+        self.verify_on_start = os.environ.get('VERIFY_ON_START', 'false').lower() in ('true', '1', 'yes')
+        
+        if self.verify_on_start:
+            self._build_indexes()  # Full verification
+        else:
+            self._build_indexes_lazy()  # Fast startup
 
     # ------------------------------------------------------------------
     # Performance optimization methods
     # ------------------------------------------------------------------
+    def _build_indexes_lazy(self):
+        """Build minimal index metadata without loading all blocks - ULTRA FAST."""
+        self._hash_index.clear()
+        self._dependency_index.clear()
+        
+        # Use tip index if available (instant)
+        tip = self.tip_index.get_tip(self.chain_id)
+        if tip and not self.tip_index.is_stale(self.chain_id):
+            # Trust the tip, just set the count
+            height = tip.get("height", 0)
+            for i in range(height + 1):
+                placeholder_hash = f"block_{i}"
+                self._hash_index[placeholder_hash] = i
+            logger.debug(f"Chain {self.chain_id}: Using tip index (height={height})")
+            self._index_built = False
+            return
+        
+        # Fallback: Just count block files without loading them
+        self.storage.ensure_dir()
+        block_files = list(self.storage.dir_path.glob("*.json"))
+        
+        # Build a minimal index with just block counts
+        for filepath in block_files:
+            try:
+                # Extract index from filename (e.g., "00000001.json" -> 1)
+                filename = filepath.stem
+                if filename.isdigit():
+                    block_index = int(filename)
+                    # Use placeholder hash for now - will be loaded on demand
+                    placeholder_hash = f"block_{block_index}"
+                    self._hash_index[placeholder_hash] = block_index
+            except:
+                continue
+        
+        self._index_built = False  # Mark as not fully built
+    
     def _build_indexes(self):
-        """Build in-memory indexes for O(1) block lookups."""
+        """Build full in-memory indexes for O(1) block lookups - SLOW."""
+        if self._index_built:
+            return  # Already built
+            
         self._hash_index.clear()
         self._dependency_index.clear()
         
@@ -65,6 +119,8 @@ class Chain:
             if block.header.depends_on:
                 for dep_hash in block.header.depends_on:
                     self._dependency_index[dep_hash].add(block_hash)
+        
+        self._index_built = True  # Mark as fully built
     
     def _update_indexes(self, block: Block):
         """Update indexes with new block (incremental update)."""
@@ -248,6 +304,14 @@ class Chain:
         
         # Update indexes for O(1) lookups
         self._update_indexes(block)
+        
+        # Update tip index for fast startup
+        self.tip_index.update_tip(
+            self.chain_id,
+            block.compute_hash(),
+            block.header.index,
+            block.header.timestamp
+        )
         
         return block
 

@@ -49,4 +49,8 @@ class ParameterIndex:
         return self._index.get(name)
 
     def all(self) -> Dict[str, int]:
-        return dict(self._index) 
+        return dict(self._index)
+    
+    def get_all_layers(self) -> list[str]:
+        """Get all layer names from the index."""
+        return list(self._index.keys()) 

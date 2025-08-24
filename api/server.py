@@ -257,6 +257,77 @@ app.add_middleware(
     max_age=3600  # Cache preflight requests for 1 hour
 )
 
+# Add rate limiting middleware for free tier protection
+from backend.core.rate_limiter import get_rate_limiter
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limiting middleware for free tier (20 requests per 5 hours)."""
+    # Skip rate limiting for health and public endpoints
+    if request.url.path in ["/health", "/", "/docs", "/redoc", "/openapi.json"]:
+        return await call_next(request)
+    
+    # Only apply rate limiting to chat endpoints
+    if "/chat" not in request.url.path:
+        return await call_next(request)
+    
+    # Get client IP
+    client_ip = request.client.host
+    if request.headers.get("X-Forwarded-For"):
+        client_ip = request.headers.get("X-Forwarded-For").split(",")[0].strip()
+    
+    # Check for authentication
+    wallet = request.headers.get("X-User-Address")
+    api_key = request.headers.get("Authorization")
+    if api_key and api_key.startswith("Bearer "):
+        api_key = api_key[7:]
+    else:
+        api_key = None
+    
+    # Check rate limit
+    rate_limiter = get_rate_limiter()
+    allowed, info = rate_limiter.check_rate_limit(
+        ip=client_ip,
+        wallet=wallet,
+        api_key=api_key,
+        endpoint=request.url.path
+    )
+    
+    if not allowed:
+        # Return 429 Too Many Requests
+        logger.warning(f"Rate limit exceeded for {client_ip}: {info['message']}")
+        return Response(
+            content=json.dumps({
+                "error": "Too Many Requests",
+                "message": info["message"],
+                "tier": info["tier"],
+                "limit": info["limit"],
+                "window_hours": info["window_hours"],
+                "retry_after": info["retry_after"],
+                "retry_at": info["retry_at"]
+            }),
+            status_code=429,
+            headers={
+                "X-RateLimit-Limit": str(info["limit"]),
+                "X-RateLimit-Remaining": str(info["remaining"]),
+                "X-RateLimit-Reset": str(int(info.get("reset_at", 0))),
+                "Retry-After": str(info["retry_after"]),
+                "Content-Type": "application/json"
+            }
+        )
+    
+    # Add rate limit headers to response
+    response = await call_next(request)
+    response.headers["X-RateLimit-Limit"] = str(info["limit"])
+    response.headers["X-RateLimit-Remaining"] = str(info["remaining"])
+    response.headers["X-RateLimit-Reset"] = str(int(info.get("reset_at", 0)))
+    
+    # Log successful request
+    if info["remaining"] <= 5:
+        logger.info(f"Client {client_ip} approaching rate limit: {info['remaining']} requests remaining")
+    
+    return response
+
 # Include consensus router if available
 try:
     if 'consensus_router' in locals():
@@ -3402,6 +3473,27 @@ async def learning_metrics():
         
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/rate-limit/status")
+async def rate_limit_status(request: Request):
+    """Check current rate limit status for the client."""
+    # Get client IP
+    client_ip = request.client.host
+    if request.headers.get("X-Forwarded-For"):
+        client_ip = request.headers.get("X-Forwarded-For").split(",")[0].strip()
+    
+    # Check for authentication
+    wallet = request.headers.get("X-User-Address")
+    
+    # Get status
+    rate_limiter = get_rate_limiter()
+    status = rate_limiter.get_client_status(ip=client_ip, wallet=wallet)
+    
+    return {
+        "status": "ok",
+        "rate_limit": status,
+        "message": f"You have {status['remaining']} requests remaining out of {status['limit']} in {status['window_hours']:.1f} hours"
+    }
 
 @app.get("/health")
 async def health_check():

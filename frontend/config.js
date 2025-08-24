@@ -2,19 +2,28 @@
 const API_CONFIG = {
     // 🔧 CONFIGURATION FOR API ENDPOINTS
 
-    // Use main server API (Digital Ocean - HTTPS enabled)
-    // ⚠️  IMPORTANT: Always use HTTPS in production to avoid Mixed Content errors
-    baseURL: 'https://blyan.com/api',
+    // Auto-detect: Use local API if available, otherwise production
+    // This prevents rate limiting issues during development
+    baseURL: (function() {
+        // Check if we're in local development
+        const isLocalhost = window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' ||
+                          window.location.hostname.startsWith('192.168.');
+        
+        if (isLocalhost) {
+            // Use local GPU node API
+            console.log('🏠 Using local API (http://127.0.0.1:8000)');
+            return 'http://127.0.0.1:8000';
+        } else {
+            // Use production API
+            console.log('🌐 Using production API (https://blyan.com/api)');
+            return 'https://blyan.com/api';
+        }
+    })(),
 
-    // Alternative configurations (for development only):
-    // Option 1: Direct GPU node (requires HTTPS proxy or local dev)
-    // baseURL: 'https://your-gpu-node.com:8002',
-
-    // Option 2: Local development (browser must allow mixed content)
-    // baseURL: 'http://127.0.0.1:8002',
-
-    // Option 3: Environment variable (falls back to production HTTPS)
-    // baseURL: window.API_URL || 'https://blyan.com/api',
+    // Manual override options:
+    // baseURL: 'http://127.0.0.1:8000',  // Force local
+    // baseURL: 'https://blyan.com/api',  // Force production
 
     // Individual endpoints
     balance: '/balance/',

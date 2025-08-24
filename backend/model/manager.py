@@ -9,6 +9,9 @@ Supports delta composition for learning updates.
 import logging
 import torch
 import io
+import os
+import json
+import time
 import numpy as np
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
@@ -57,15 +60,26 @@ class UnifiedModelManager:
             from backend.core.param_index import ParameterIndex
             from backend.core.delta_index import DeltaIndex
             
+            logger.info(f"📦 Initializing blockchain loader...")
+            logger.info(f"   Root dir: {self.root_dir}")
+            
             # Initialize chains with proper parameters
             self.meta_chain = Chain(self.root_dir, "A", difficulty=1, skip_pol=True)
             self.param_chain = Chain(self.root_dir, "B", difficulty=1, skip_pol=True)
             self.param_index = ParameterIndex(self.root_dir / "param_index.json")
             self.delta_index = DeltaIndex(self.root_dir / "delta_index.json")
             
+            # Log what we found
+            layers = self.param_index.get_all_layers()
+            logger.info(f"   Found {len(layers)} layers in param_index")
+            if layers:
+                logger.info(f"   First 3: {layers[:3]}")
+            
             logger.info("✅ Blockchain model manager initialized with delta support")
         except Exception as e:
-            logger.error(f"Failed to init blockchain: {e}")
+            logger.error(f"❌ Failed to init blockchain: {e}")
+            import traceback
+            logger.error(f"   {traceback.format_exc()}")
             # Fallback to local
             self._init_local()
     
@@ -75,21 +89,23 @@ class UnifiedModelManager:
         logger.info("Using local model loading")
     
     def _ensure_model_loaded(self) -> None:
-        """Ensure model and tokenizer are loaded."""
+        """Ensure model and tokenizer are loaded - FAST PATH."""
         if self._initialized:
             return
             
         try:
-            # Load tokenizer
-            logger.info(f"Loading tokenizer for {self.model_name}")
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            if not self.tokenizer.pad_token:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
+            # Load cached tokenizer (or create once)
+            self._load_or_cache_tokenizer()
             
-            # Load model
-            if self.use_blockchain:
+            # Check if we have blockchain weights
+            if self.use_blockchain and self._has_blockchain_weights():
+                # Skip HF completely, load from blockchain
+                os.environ["TRANSFORMERS_OFFLINE"] = "1"
                 self._load_from_blockchain()
+            elif not self.use_blockchain:
+                self._load_from_local()
             else:
+                logger.warning("No blockchain weights found, falling back to HF")
                 self._load_from_local()
             
             self._initialized = True
@@ -122,6 +138,188 @@ class UnifiedModelManager:
         else:
             # Direct delta addition
             return base_tensor + delta.get('delta', torch.zeros_like(base_tensor))
+    
+    def _has_blockchain_weights(self) -> bool:
+        """Check if we have valid blockchain weights."""
+        if not hasattr(self, 'param_index'):
+            return False
+        layers = self.param_index.get_all_layers()
+        # Need at least embedding, one layer, and lm_head
+        return len(layers) >= 3
+    
+    def _load_or_cache_tokenizer(self) -> None:
+        """Load tokenizer from cache or download once."""
+        cache_path = self.root_dir / "tokenizer_cache" / self.model_name.replace("/", "_")
+        
+        if cache_path.exists():
+            logger.info("Loading cached tokenizer")
+            self.tokenizer = AutoTokenizer.from_pretrained(str(cache_path))
+        else:
+            logger.info(f"Downloading tokenizer for {self.model_name}")
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            # Cache it
+            cache_path.mkdir(parents=True, exist_ok=True)
+            self.tokenizer.save_pretrained(str(cache_path))
+        
+        if not self.tokenizer.pad_token:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+    
+    def _create_empty_model_structure(self) -> torch.nn.Module:
+        """Create model structure without loading weights from HF."""
+        # For Qwen3-8B architecture
+        from transformers import AutoConfig
+        from transformers.models.qwen2 import Qwen2ForCausalLM
+        
+        # Load config from cache or minimal download
+        config = AutoConfig.from_pretrained(self.model_name)
+        
+        # Create empty model with config (no weight download)
+        with torch.device("meta"):
+            model = Qwen2ForCausalLM(config)
+        
+        # Move to target device
+        model = model.to_empty(device=self.device)
+        return model
+    
+    def _load_block_direct(self, block_index: int) -> Optional[Dict]:
+        """Load a block directly by index - thread-safe."""
+        try:
+            block = self.param_chain.storage.get_block_by_index(block_index)
+            if block and block.payload:
+                # Try safetensors first, fall back to pickle
+                if block.header.payload_type == "safetensors":
+                    from safetensors.torch import load
+                    return load(block.payload)
+                else:
+                    import io
+                    return torch.load(io.BytesIO(block.payload), map_location=self.device)
+        except Exception as e:
+            logger.warning(f"Failed to load block {block_index}: {e}")
+            return None
+    
+    def _try_load_fused_snapshot(self) -> bool:
+        """Try to load from fused snapshot for instant boot."""
+        if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() != "true":
+            return False
+        
+        # Compute current snapshot key from param_index
+        current_key = self._get_snapshot_key()
+        if not current_key:
+            return False
+        
+        snapshot_path = self.root_dir / "models" / "fused" / f"{current_key}.safetensors"
+        
+        if snapshot_path.exists():
+            try:
+                # Validate snapshot metadata before loading
+                metadata_path = snapshot_path.with_suffix('.meta.json')
+                if metadata_path.exists():
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                    
+                    # Verify param_index hash matches
+                    if metadata.get("param_index_hash") != current_key:
+                        logger.warning(f"Snapshot metadata mismatch - regenerating")
+                        return False
+                    
+                    # 🔒 Security: Verify snapshot checksum
+                    if "snapshot_checksum" in metadata:
+                        import hashlib
+                        with open(snapshot_path, 'rb') as f:
+                            actual_hash = hashlib.sha256(f.read()).hexdigest()
+                        
+                        if actual_hash != metadata["snapshot_checksum"]:
+                            logger.error(f"❌ SECURITY: Snapshot checksum mismatch!")
+                            logger.error(f"   Expected: {metadata['snapshot_checksum'][:16]}...")
+                            logger.error(f"   Got: {actual_hash[:16]}...")
+                            # Delete corrupted/tampered snapshot
+                            snapshot_path.unlink()
+                            metadata_path.unlink()
+                            return False
+                        logger.info(f"   ✅ Checksum verified: {actual_hash[:16]}...")
+                    
+                    # Check if production safe
+                    if not metadata.get("production_safe", False):
+                        logger.warning("   ⚠️ Snapshot not marked production safe")
+                    
+                    # Check timestamp for staleness (optional)
+                    if "timestamp" in metadata:
+                        age = time.time() - metadata["timestamp"]
+                        max_age = int(os.getenv("SNAPSHOT_MAX_AGE_HOURS", "24")) * 3600
+                        if age > max_age:
+                            logger.info(f"Snapshot too old ({age/3600:.1f}h) - regenerating")
+                            return False
+                
+                logger.info(f"Loading validated fused snapshot: {current_key}")
+                from safetensors.torch import load_file
+                state_dict = load_file(str(snapshot_path), device=str(self.device))
+                
+                # Create model structure and load weights
+                self.model = self._create_empty_model_structure()
+                self.model.load_state_dict(state_dict, strict=False)
+                
+                logger.info(f"✅ Loaded from fused snapshot (hash: {current_key[:8]}...)")
+                return True
+            except Exception as e:
+                logger.warning(f"Failed to load snapshot: {e}")
+        
+        return False
+    
+    def _save_fused_snapshot(self) -> None:
+        """Save current model as fused snapshot with security metadata."""
+        try:
+            snapshot_key = self._get_snapshot_key()
+            if not snapshot_key:
+                return
+            
+            snapshot_dir = self.root_dir / "models" / "fused"
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
+            snapshot_path = snapshot_dir / f"{snapshot_key}.safetensors"
+            metadata_path = snapshot_path.with_suffix('.meta.json')
+            
+            logger.info(f"Saving fused snapshot: {snapshot_key}")
+            
+            # Save model weights
+            from safetensors.torch import save_file
+            state_dict = self.model.state_dict()
+            save_file(state_dict, str(snapshot_path))
+            
+            # Calculate snapshot checksum for security
+            import hashlib
+            with open(snapshot_path, 'rb') as f:
+                file_hash = hashlib.sha256(f.read()).hexdigest()
+            
+            # Save metadata with security info
+            metadata = {
+                "param_index_hash": snapshot_key,
+                "snapshot_checksum": file_hash,  # For integrity verification
+                "timestamp": time.time(),
+                "model_name": self.model_name,
+                "num_layers": len(self.param_index.get_all_layers()),
+                "created_by": "UnifiedModelManager",
+                "version": "1.0",
+                "production_safe": True
+            }
+            
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            logger.info(f"✅ Saved secure snapshot (checksum: {file_hash[:16]}...)")
+            
+        except Exception as e:
+            logger.warning(f"Failed to save snapshot: {e}")
+    
+    def _get_snapshot_key(self) -> Optional[str]:
+        """Get snapshot key based on param_index state."""
+        try:
+            import hashlib
+            import json
+            
+            # Hash the param_index to get a unique key
+            index_data = json.dumps(self.param_index.all(), sort_keys=True)
+            return hashlib.sha256(index_data.encode()).hexdigest()[:16]
+        except:
+            return None
     
     def _compose_layer_with_deltas(self, layer_name: str, base_tensor: torch.Tensor) -> torch.Tensor:
         """
@@ -178,64 +376,85 @@ class UnifiedModelManager:
             return base_tensor
     
     def _load_from_blockchain(self) -> None:
-        """Load model weights from blockchain."""
-        logger.info("Loading model from blockchain blocks")
-        
-        import pickle
+        """Load model weights from blockchain - PRODUCTION OPTIMIZED."""
         import io
+        import os
+        from safetensors import safe_open
+        from safetensors.torch import load_file
         
-        # First, initialize model architecture (without weights)
-        model_config = {
-            "torch_dtype": torch.float16 if self.device == "cuda" else torch.float32,
-            "low_cpu_mem_usage": True
-        }
+        logger.info("🚀 Starting optimized blockchain model load...")
         
-        if self.device == "cuda":
-            model_config["device_map"] = "auto"
+        # Skip HuggingFace entirely if we have blockchain weights
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        logger.info("   Set TRANSFORMERS_OFFLINE=1 (no HF downloads)")
         
-        # Initialize model with random weights
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            **model_config
-        )
+        # Check for fused snapshot first (fastest path)
+        logger.info("   📦 Checking for fused snapshot...")
+        if self._try_load_fused_snapshot():
+            logger.info("✅ Loaded from fused snapshot (instant boot)")
+            return
         
-        # Now load actual weights from blockchain
+        logger.info("   📊 Loading from blockchain blocks (parallel fetch)...")
+        
+        # Initialize empty model structure (no HF download)
+        self.model = self._create_empty_model_structure()
+        
+        # Load weights from blockchain via param_index
         try:
-            logger.info("Loading weights from blockchain blocks...")
+            state_dict = {}
             
-            # Expected layer names for dense model
-            expected_layers = ["embedding"]
-            expected_layers.extend([f"layer_{i}" for i in range(36)])  # Dense model has 36 layers
-            expected_layers.append("lm_head")
+            # Get all layers from param_index (no chain scanning)
+            all_layers = self.param_index.get_all_layers()
+            logger.info(f"Found {len(all_layers)} layers in param_index")
             
-            loaded_count = 0
-            missing_layers = []
+            # Parallel block fetch with configurable workers
+            from concurrent.futures import ThreadPoolExecutor
             
-            for layer_name in expected_layers:
-                # Get block index from parameter index
-                block_index = self.param_index.get(layer_name)
+            # Configurable max workers based on system resources
+            max_workers = int(os.getenv("BLOCK_FETCH_MAX_WORKERS", "4"))
+            
+            # Auto-adjust based on CPU count if set to 0
+            if max_workers == 0:
+                import multiprocessing
+                max_workers = min(multiprocessing.cpu_count(), 8)
+            
+            # Clamp to reasonable range
+            max_workers = max(1, min(max_workers, 16))
+            
+            logger.info(f"Using {max_workers} parallel workers for block fetching")
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {}
+                for layer_name in all_layers:
+                    block_index = self.param_index.get(layer_name)
+                    if block_index is not None:
+                        future = executor.submit(self._load_block_direct, block_index)
+                        futures[future] = layer_name
                 
-                if block_index is None:
-                    logger.warning(f"Layer {layer_name} not found in parameter index")
-                    missing_layers.append(layer_name)
-                    continue
+                # Collect results
+                for future in futures:
+                    layer_name = futures[future]
+                    try:
+                        tensor_dict = future.result(timeout=10)
+                        if tensor_dict:
+                            # Apply deltas if available
+                            for key, tensor in tensor_dict.items():
+                                state_dict[key] = self._compose_layer_with_deltas(key, tensor)
+                            logger.debug(f"Loaded {layer_name} from block")
+                    except Exception as e:
+                        logger.warning(f"Failed to load {layer_name}: {e}")
+            
+            # Load state dict into model (strict=False for flexibility)
+            if state_dict:
+                self.model.load_state_dict(state_dict, strict=False)
+                logger.info(f"✅ Loaded {len(state_dict)} tensors from blockchain")
                 
-                # Get block from chain
-                try:
-                    blocks = list(self.param_chain.storage.iter_blocks())
-                    block = None
-                    for b in blocks:
-                        if b.header.index == block_index:
-                            block = b
-                            break
-                    
-                    if block is None:
-                        logger.warning(f"Block {block_index} for layer {layer_name} not found in chain")
-                        missing_layers.append(layer_name)
-                        continue
-                    
-                    # Load tensor data from block payload
-                    tensor_dict = torch.load(io.BytesIO(block.payload), map_location=self.device)
+                # Save fused snapshot for next boot
+                if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() == "true":
+                    self._save_fused_snapshot()
+            else:
+                logger.error("No weights loaded from blockchain")
+                raise RuntimeError("Blockchain weights not available")
                     
                     # Apply deltas if available
                     if hasattr(self, 'delta_index'):
@@ -438,7 +657,7 @@ class UnifiedModelManager:
     
     def get_available_experts(self) -> List[str]:
         """
-        Get list of available experts from blockchain.
+        Get list of available experts from blockchain - OPTIMIZED.
         
         Returns:
             List of expert identifiers available in the blockchain.
@@ -447,8 +666,17 @@ class UnifiedModelManager:
         
         if self.use_blockchain and self.param_chain:
             try:
-                # Get all blocks from parameter chain
-                blocks = list(self.param_chain.get_all_blocks())
+                # OPTIMIZATION: Use parameter index instead of loading all blocks
+                if hasattr(self, 'param_index') and self.param_index:
+                    # Get all layer names from index
+                    all_layers = self.param_index.get_all_layers()
+                    available_experts = [layer for layer in all_layers if layer and layer != 'meta']
+                    logger.info(f"Found {len(available_experts)} layers in parameter index (fast path)")
+                    return available_experts
+                
+                # Fallback: Get blocks (but limit iteration)
+                logger.warning("Parameter index not available, falling back to block iteration")
+                blocks = []
                 
                 # Extract expert blocks
                 for block in blocks:
