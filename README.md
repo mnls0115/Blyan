@@ -40,7 +40,6 @@ MAIN_SERVER_URL=https://blyan.com/api
 NODE_ID=gpu-$(hostname -s)
 NODE_PORT=8001
 RUNPOD_PUBLIC_IP=$(curl -s https://checkip.amazonaws.com)
-BLOCKCHAIN_ONLY=false
 MODEL_QUANTIZATION=8bit
 EOF
 sudo chmod 600 /etc/blyan/blyan-node.env

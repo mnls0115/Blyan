@@ -19,7 +19,7 @@ echo "Node startup time: $(date)"
 export DATA_DIR="${DATA_DIR:-/data}"
 export MAIN_SERVER_URL="${MAIN_SERVER_URL:-https://blyan.com/api}"
 export NODE_PORT="${NODE_PORT:-8001}"
-export BLOCKCHAIN_ONLY="${BLOCKCHAIN_ONLY:-false}"
+# Blockchain is always enabled for GPU nodes
 
 # Create data directory if it doesn't exist
 mkdir -p "$DATA_DIR"
@@ -74,24 +74,22 @@ else
     exit 1
 fi
 
-# Verify GPU availability if not in blockchain-only mode
-if [ "$BLOCKCHAIN_ONLY" = "false" ]; then
-    echo -e "${YELLOW}Checking GPU availability...${NC}"
-    
-    if nvidia-smi > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ GPU detected:${NC}"
-        nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-    else
-        echo -e "${YELLOW}⚠ No GPU detected - running in CPU mode${NC}"
-        echo "For GPU support, ensure NVIDIA drivers and Docker GPU runtime are installed"
-    fi
+# Always check GPU availability (blockchain nodes still benefit from GPU acceleration)
+echo -e "${YELLOW}Checking GPU availability...${NC}"
+
+if nvidia-smi > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ GPU detected:${NC}"
+    nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+else
+    echo -e "${YELLOW}⚠ No GPU detected - running in CPU mode${NC}"
+    echo "For GPU support, ensure NVIDIA drivers and Docker GPU runtime are installed"
 fi
 
 # Start the main node process
 echo -e "${GREEN}Starting Blyan node service...${NC}"
 echo "Main server: $MAIN_SERVER_URL"
 echo "Node port: $NODE_PORT"
-echo "Blockchain only: $BLOCKCHAIN_ONLY"
+echo "Blockchain mode: Always enabled"
 
 # Export credentials for the node process
 export BLYAN_NODE_ID="$NODE_ID"

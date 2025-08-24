@@ -32,8 +32,7 @@ NODE_PORT=8001                            # Port to run server on (default: 8001
 # PUBLIC_HOST=                            # Optional: Your public IP/domain (auto-detected if empty)
 # PUBLIC_PORT=8001                        # Optional: Public-facing port if different (e.g., behind NAT)
 
-# REQUIRED for actual model serving
-BLOCKCHAIN_ONLY=false                     # Must be false to load model
+# GPU nodes automatically use blockchain for model serving
 
 # OPTIONAL Configuration
 NODE_ID=gpu-$(hostname -s)                # Unique node identifier
@@ -128,9 +127,8 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 cp /etc/blyan/blyan-node.env .env && chmod 600 .env
 
 # Ensure these are set in .env:
-# BLOCKCHAIN_ONLY=false
-# MODEL_QUANTIZATION=8bit
-# RUNPOD_PUBLIC_IP=your.public.ip
+# MODEL_QUANTIZATION=8bit  # Optional: for memory optimization
+# RUNPOD_PUBLIC_IP=your.public.ip  # For RunPod deployments
 ```
 
 ### 5. Run Node
@@ -251,8 +249,7 @@ docker restart blyan-node
 - [ ] Public IP/DNS configured
 - [ ] Firewall rules configured (inbound 8001, outbound 443)
 - [ ] Environment file created with secure permissions
-- [ ] `BLOCKCHAIN_ONLY=false` set
-- [ ] `MODEL_QUANTIZATION=8bit` set for 20B model
+- [ ] `MODEL_QUANTIZATION=8bit` set for memory optimization (optional)
 - [ ] `RUNPOD_PUBLIC_IP` set to reachable address
 - [ ] Node registered and visible in `/p2p/nodes`
 - [ ] Local health check passing
@@ -265,7 +262,6 @@ docker restart blyan-node
 ### Environment Variables
 
 #### Required
-- **`BLOCKCHAIN_ONLY=false`**: Must be false to serve models (defaults to true)
 - **`MAIN_NODE_URL`**: URL of main node API (default: https://blyan.com/api)
 
 #### Network Configuration

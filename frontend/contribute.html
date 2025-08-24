@@ -486,7 +486,6 @@
                         &nbsp;&nbsp;-v /var/lib/blyan/data:/data \<br>
                         &nbsp;&nbsp;-e JOIN_CODE=<span style="color: #ef4444;">YOUR_CODE_HERE</span> \<br>
                         &nbsp;&nbsp;-e PUBLIC_IP=$(curl -s https://checkip.amazonaws.com) \<br>
-                        &nbsp;&nbsp;-e BLOCKCHAIN_ONLY=false \<br>
                         &nbsp;&nbsp;--restart unless-stopped \<br>
                         &nbsp;&nbsp;mnls0115/blyan-node:latest
                     </div>
@@ -961,7 +960,7 @@
 
     <script src="config.js?v=2"></script>
     <script src="api-auth.js?v=2"></script>
-    <script src="common-header.js?v=2"></script>
+    <script src="common-header.js?v=4"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             // Initialize theme

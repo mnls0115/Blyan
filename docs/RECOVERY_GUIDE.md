@@ -25,7 +25,7 @@ Set these environment variables to disable problematic subsystems:
 
 ```bash
 export BLYAN_MINIMAL_MODE=true           # Master switch for minimal mode
-export BLOCKCHAIN_ONLY=true              # Disable everything except blockchain
+# Blockchain is always enabled for GPU nodes
 export DISABLE_PIPELINE_ROUND=true       # Disable pipeline round service
 export DISABLE_GRPC=true                 # Disable gRPC services
 export P2P_ENABLE=false                  # Disable P2P coordination
@@ -89,7 +89,7 @@ Once the server is running in minimal mode:
 ### Step 1: Enable Blockchain Only
 ```bash
 export BLYAN_MINIMAL_MODE=false
-export BLOCKCHAIN_ONLY=true
+# Blockchain is always enabled
 systemctl restart blyan
 ```
 
@@ -109,7 +109,7 @@ systemctl restart blyan
 ```bash
 # Remove all restrictive flags
 unset BLYAN_MINIMAL_MODE
-unset BLOCKCHAIN_ONLY
+# Blockchain is always enabled (no need to unset)
 unset DISABLE_PIPELINE_ROUND
 unset DISABLE_GRPC
 unset P2P_ENABLE

@@ -38,17 +38,17 @@ start_server() {
         export ENABLE_POL=true
         export POL_THRESHOLD=0.01
         export SKIP_POW=true  # 개발 환경에서는 PoW 스킵
-        export BLOCKCHAIN_ONLY=true  # No local model fallback - blockchain only!
+        # GPU nodes always use blockchain for models
         if [ -f "myenv/bin/python3" ]; then
-            PYTHONPATH=/Users/mnls/projects/blyan BLOCKCHAIN_ONLY=true ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true myenv/bin/uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/blyan ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true myenv/bin/uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
         else
-            PYTHONPATH=/Users/mnls/projects/blyan BLOCKCHAIN_ONLY=true ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/blyan ENABLE_POL=true POL_THRESHOLD=0.01 SKIP_POW=true uvicorn api.server:app --host 0.0.0.0 --port $port > logs/${name}.log 2>&1 &
         fi
     else
         echo "Debug: Starting P2P node with command: python3 -m $module server $name $port"
-        export BLOCKCHAIN_ONLY=true  # P2P nodes also use blockchain-only mode
+        # P2P nodes also use blockchain for models
         if [ -f "myenv/bin/python3" ]; then
-            PYTHONPATH=/Users/mnls/projects/blyan BLOCKCHAIN_ONLY=true myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
+            PYTHONPATH=/Users/mnls/projects/blyan myenv/bin/python3 -m $module server $name $port > logs/${name}.log 2>&1 &
         else
             PYTHONPATH=/Users/mnls/projects/blyan python3 -m $module server $name $port > logs/${name}.log 2>&1 &
         fi

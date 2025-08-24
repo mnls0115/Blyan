@@ -14,7 +14,7 @@ sleep 2
 
 # Set environment variables for minimal mode
 export BLYAN_MINIMAL_MODE=true
-export BLOCKCHAIN_ONLY=true
+# Blockchain is always enabled for GPU nodes
 export DISABLE_PIPELINE_ROUND=true
 export DISABLE_GRPC=true
 export P2P_ENABLE=false
@@ -28,7 +28,7 @@ export LOG_LEVEL=WARNING
 
 echo "Environment flags set:"
 echo "  BLYAN_MINIMAL_MODE=$BLYAN_MINIMAL_MODE"
-echo "  BLOCKCHAIN_ONLY=$BLOCKCHAIN_ONLY"
+echo "  Blockchain: Always enabled for GPU nodes"
 echo "  DISABLE_PIPELINE_ROUND=$DISABLE_PIPELINE_ROUND"
 echo "  DISABLE_GRPC=$DISABLE_GRPC"
 echo "  P2P_ENABLE=$P2P_ENABLE"

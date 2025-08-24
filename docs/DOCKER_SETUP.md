@@ -50,7 +50,7 @@ docker run -d --name blyan-node \
   -v /var/lib/blyan/data:/data \
   -e JOIN_CODE=YOUR_CODE_HERE \
   -e PUBLIC_IP=$(curl -s https://checkip.amazonaws.com) \
-  -e BLOCKCHAIN_ONLY=false \
+
   --restart unless-stopped \
   mnls0115/blyan-node:latest
 
@@ -60,7 +60,7 @@ docker run -d --name blyan-node \
   -v /var/lib/blyan/data:/data \
   -e JOIN_CODE=YOUR_CODE_HERE \
   -e PUBLIC_IP=$(curl -s https://checkip.amazonaws.com) \
-  -e BLOCKCHAIN_ONLY=false \
+
   --restart unless-stopped \
   mnls0115/blyan-node:latest
 ```
@@ -74,7 +74,7 @@ docker run -d --name blyan-node \
 | `JOIN_CODE` | Enrollment code from blyan.com/contribute | - | Yes (first run) |
 | `PUBLIC_IP` | Your public IP address | auto | No |
 | `MAIN_NODE_URL` | Main node endpoint | https://blyan.com/api | No |
-| `BLOCKCHAIN_ONLY` | Disable model serving | false | No |
+
 | `NODE_NAME` | Friendly name for your node | gpu-node | No |
 | `NODE_PORT` | Port for P2P communication | 8001 | No |
 | `MODEL_NAME` | Model to serve | openai/gpt-oss-20b | No |

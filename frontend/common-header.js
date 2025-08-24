@@ -129,14 +129,27 @@ function switchTab(tabId) {
 // API 상태 체크 함수
 async function checkAPIStatus() {
     try {
-        const response = await fetch(API_CONFIG.baseURL + API_CONFIG.polStatus);
-        if (response.ok) {
-            const status = await response.json();
-            const apiStatus = { api: true, pol: status.pol_enabled };
+        // First check basic health endpoint
+        const healthResponse = await fetch(API_CONFIG.baseURL + '/health');
+        if (healthResponse.ok) {
+            // API is online, now try to get PoL status (optional)
+            let polEnabled = false;
+            try {
+                const polResponse = await fetch(API_CONFIG.baseURL + API_CONFIG.polStatus);
+                if (polResponse.ok) {
+                    const polStatus = await polResponse.json();
+                    polEnabled = polStatus.pol_enabled;
+                }
+            } catch (polError) {
+                // PoL status endpoint failed, but that's okay - use default
+                console.log('PoL status endpoint not available, using default');
+            }
+            
+            const apiStatus = { api: true, pol: polEnabled };
             localStorage.setItem('apiStatus', JSON.stringify(apiStatus));
             updateStatusBadge('api-status', true, 'API: Online');
-            updateStatusBadge('pol-status', status.pol_enabled, 
-                `PoL: ${status.pol_enabled ? 'Enabled' : 'Disabled'}`);
+            updateStatusBadge('pol-status', polEnabled, 
+                `PoL: ${polEnabled ? 'Enabled' : 'Disabled'}`);
         } else {
             throw new Error('API not responding');
         }

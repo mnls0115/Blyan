@@ -23,8 +23,7 @@ services:
       # Main node URL (default: production)
       - MAIN_NODE_URL=${MAIN_NODE_URL:-https://blyan.com/api}
       
-      # Enable model serving (not just blockchain)
-      - BLOCKCHAIN_ONLY=${BLOCKCHAIN_ONLY:-false}
+      # GPU nodes always use blockchain for model serving
       
       # Node configuration
       - NODE_NAME=${NODE_NAME:-gpu-node}

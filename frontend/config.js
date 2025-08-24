@@ -20,6 +20,7 @@ const API_CONFIG = {
     balance: '/balance/',
     chain: '/chain/B/blocks?limit=10',
     polStatus: '/pol/status',
+    health: '/health',  // Basic health check endpoint
 
     // Helper function to ensure HTTPS in production
     ensureHttps: function(url) {

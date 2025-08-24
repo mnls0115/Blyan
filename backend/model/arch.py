@@ -58,14 +58,11 @@ class ModelWrapper:
         self.model = None
         self.allow_mock_fallback = allow_mock_fallback
         
-        # Check if we're in blockchain-only mode
-        blockchain_only = os.getenv('BLOCKCHAIN_ONLY', 'true').lower() == 'true'
-        
-        if blockchain_only:
-            print("🔗 Blockchain-only mode: Skipping local model loading")
-            print("   Models must be loaded from blockchain expert blocks")
-            # Don't try to load any local models
-            return
+        # GPU nodes always use blockchain for inference
+        print("🔗 GPU node: Models will be loaded from blockchain expert blocks")
+        print("   Local model loading skipped - using blockchain as source of truth")
+        # Don't load local models - blockchain is the only source
+        return
         
         # Determine if we need quantization for large models
         is_large_model = "20b" in model_name.lower() or "neox-20b" in model_name.lower()
@@ -77,8 +74,8 @@ class ModelWrapper:
             load_in_8bit = True
         
         try:
-            # Check if it's a local model path (only in non-blockchain mode)
-            local_path = f"./models/{model_name}" if not blockchain_only else None
+            # GPU nodes don't use local model paths - blockchain only
+            local_path = None
             
             # Prepare loading kwargs
             load_kwargs = {}

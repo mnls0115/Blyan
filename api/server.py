@@ -116,7 +116,7 @@ def _verify_signature(pub_hex: str, message: bytes, sig_hex: str) -> bool:
 # ---------------------------------------------------------------------
 # Check for minimal mode to disable heavy initializations
 MINIMAL_MODE = os.getenv("BLYAN_MINIMAL_MODE", "false").lower() == "true"
-BLOCKCHAIN_ONLY = os.getenv("BLOCKCHAIN_ONLY", "false").lower() == "true"
+# GPU nodes always use blockchain for inference - no toggle needed
 DISABLE_PIPELINE_ROUND = os.getenv("DISABLE_PIPELINE_ROUND", "true").lower() == "true"
 DISABLE_GRPC = os.getenv("DISABLE_GRPC", "true").lower() == "true"
 # Force P2P to be enabled unless explicitly disabled

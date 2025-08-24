@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **ALWAYS FIND THE ROOT CAUSE FIRST** before making any changes. Do not jump to solutions without understanding why something is broken. Investigate logs, check configurations, trace execution flow, and understand the actual problem before proposing fixes.
 
 ## ⚠️ BLOCKCHAIN INFERENCE REMINDER
-**The user wants BLOCKCHAIN-BASED INFERENCE**, not local model loading:
-- Keep `BLOCKCHAIN_ONLY=true` (or unset, as true is the default)
-- Models should be reconstructed from blockchain blocks, NOT loaded from HuggingFace
+**GPU nodes ALWAYS use BLOCKCHAIN-BASED INFERENCE**, not local model loading:
+- Models are reconstructed from blockchain blocks, NOT loaded from HuggingFace
 - This is the core principle of Blyan - truly decentralized AI through blockchain
-- GPU nodes should serve inference using expert blocks from the blockchain
+- GPU nodes serve inference using expert blocks from the blockchain
+- No configuration needed - blockchain is the only source
 
 ## 🔐 CRITICAL SECURITY REMINDERS
 
@@ -42,7 +42,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Uses `api/server.py` as entrypoint
 - **GPU Nodes**: Distributed compute providers
   - Need `BLYAN_API_KEY` to register with main node
-  - Must set `BLOCKCHAIN_ONLY=false` to actually serve models
+  - Automatically uses blockchain expert blocks for serving models
   - Use `run_gpu_node.py` as entrypoint (auto-downloads Qwen/Qwen3-8B-FP8 if no experts exist)
   - Require public IP/DNS and port forwarding
   - **Memory Optimization**: Uses MXFP4/NF4 quantization to fit model in 16GB GPU memory

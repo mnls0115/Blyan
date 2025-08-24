@@ -1,0 +1,25 @@
+{
+  "snapshot_1756046933_556a1c01": {
+    "snapshot_id": "snapshot_1756046933_556a1c01",
+    "timestamp": 1756046933.9619331,
+    "size_bytes": 5791,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 0,
+      "D": 0
+    },
+    "integrity_hash": "0cf9a1c816e37caa8493414b4e765000",
+    "compression_ratio": 3.2208599551027457,
+    "creation_time_seconds": 0.02624368667602539,
+    "description": "Automatic snapshot 2025-08-24 23:48:53",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
+  }
+}

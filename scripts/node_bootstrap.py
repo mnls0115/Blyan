@@ -48,7 +48,7 @@ class NodeBootstrap:
             "python_version": sys.version.split()[0],
             "public_ip": os.getenv("PUBLIC_IP", "unknown"),
             "node_port": os.getenv("NODE_PORT", "8001"),
-            "blockchain_only": os.getenv("BLOCKCHAIN_ONLY", "false").lower() == "true",
+            "blockchain_only": True,  # Blockchain is always enabled for GPU nodes
             "donor_mode": os.getenv("DONOR_MODE", "false").lower() == "true",
         }
         

@@ -112,7 +112,7 @@ export CHAIN_SYNC_PROVIDER=true
 
 # For service nodes
 export NODE_TYPE=service
-export BLOCKCHAIN_ONLY=true
+# Blockchain is always enabled for GPU nodes
 export STORE_EXPERTS=false
 export SERVE_INFERENCE=false
 ```

@@ -265,7 +265,6 @@ MODEL_DIR=/opt/blyan/models
 
 # Model Configuration
 MODEL_NAME=Qwen/Qwen3-8B-FP8
-BLOCKCHAIN_ONLY=false
 SKIP_POL=true
 
 # Network

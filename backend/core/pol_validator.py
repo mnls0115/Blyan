@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import ecdsa
 
 from .block import Block
-from ..model.moe_infer import MoEModelManager
+from ..model.manager import UnifiedModelManager
 
 
 class ValidationDatasetManager:
@@ -86,7 +86,7 @@ class PoLEvaluator:
     def evaluate_pol_score(
         self, 
         expert_block: Block,
-        model_manager: MoEModelManager,
+        model_manager: UnifiedModelManager,
         previous_score: Optional[float] = None
     ) -> Tuple[float, Dict[str, Any]]:
         """Evaluate an expert block using Proof-of-Learning.
@@ -175,7 +175,7 @@ class PoLEvaluator:
     
     def _evaluate_model_performance(
         self, 
-        model_manager: MoEModelManager,
+        model_manager: UnifiedModelManager,
         inputs: torch.Tensor,
         targets: torch.Tensor,
         expert_name: str,
@@ -246,7 +246,7 @@ class ChainValidator:
     def __init__(
         self,
         pol_evaluator: PoLEvaluator,
-        model_manager: MoEModelManager,
+        model_manager: UnifiedModelManager,
         enable_pol: bool = True,
         enable_pow: bool = False,
         pol_threshold: float = 0.01,
@@ -453,7 +453,7 @@ class ChainValidator:
 # Utility functions for integration with existing codebase
 
 def create_pol_validator(
-    model_manager: MoEModelManager,
+    model_manager: UnifiedModelManager,
     enable_pol: bool = True,
     pol_threshold: float = 0.01,
     validation_data_dir: Path = Path("./validation_data")
