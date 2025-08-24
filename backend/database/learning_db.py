@@ -364,6 +364,18 @@ class LearningDatabase:
                 WHERE expires_at < now()
             """)
     
+    async def get_last_round_time(self) -> Optional[datetime]:
+        """Get the timestamp of the last completed round"""
+        if not self.pool:
+            return None
+        async with self.pool.acquire() as conn:
+            result = await conn.fetchval("""
+                SELECT MAX(created_at) 
+                FROM rounds 
+                WHERE state = 'completed'
+            """)
+            return result
+    
     async def close(self):
         """Close database connection pool"""
         if self.pool:
