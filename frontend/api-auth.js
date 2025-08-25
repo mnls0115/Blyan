@@ -404,7 +404,7 @@ class APIAuthManagerV2 {
             // Handle rate limiting
             if (response.status === 429) {
                 this.state.requestStats.rateLimited++;
-                const retryAfter = response.headers.get('X-RateLimit-Reset') || 60;
+                const retryAfter = response.headers.get('Retry-After') || 60;
                 
                 throw new RateLimitError(
                     `Rate limit exceeded. Retry after ${retryAfter} seconds`,
