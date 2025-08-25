@@ -455,63 +455,6 @@ class UnifiedModelManager:
             else:
                 logger.error("No weights loaded from blockchain")
                 raise RuntimeError("Blockchain weights not available")
-                    
-                    # Apply deltas if available
-                    if hasattr(self, 'delta_index'):
-                        for key in tensor_dict:
-                            # Check if we have deltas for this specific tensor
-                            layer_key = f"{layer_name}.{key}" if '.' not in key else key
-                            tensor_dict[key] = self._compose_layer_with_deltas(layer_key, tensor_dict[key])
-                    
-                    # Map blockchain tensors to model state dict
-                    model_state = self.model.state_dict()
-                    
-                    if layer_name == "embedding":
-                        # Map embedding layer tensors
-                        for key, tensor in tensor_dict.items():
-                            if "embed" in key.lower():
-                                # Find corresponding key in model
-                                for model_key in model_state.keys():
-                                    if "embed" in model_key.lower() and tensor.shape == model_state[model_key].shape:
-                                        model_state[model_key] = tensor.to(self.device)
-                                        logger.debug(f"Loaded {model_key} from blockchain")
-                                        break
-                    
-                    elif layer_name.startswith("layer_"):
-                        # Map transformer layer tensors
-                        layer_idx = int(layer_name.split("_")[1])
-                        prefix = f"model.layers.{layer_idx}."
-                        
-                        for key, tensor in tensor_dict.items():
-                            # Remove any prefix from blockchain key
-                            clean_key = key.split(".")[-1] if "." in key else key
-                            
-                            # Find matching key in model
-                            for model_key in model_state.keys():
-                                if model_key.startswith(prefix) and clean_key in model_key:
-                                    if tensor.shape == model_state[model_key].shape:
-                                        model_state[model_key] = tensor.to(self.device)
-                                        logger.debug(f"Loaded {model_key} from blockchain")
-                    
-                    elif layer_name == "lm_head":
-                        # Map output layer tensors
-                        for key, tensor in tensor_dict.items():
-                            if "lm_head" in key or "output" in key:
-                                for model_key in model_state.keys():
-                                    if "lm_head" in model_key and tensor.shape == model_state[model_key].shape:
-                                        model_state[model_key] = tensor.to(self.device)
-                                        logger.debug(f"Loaded {model_key} from blockchain")
-                                        break
-                    
-                    loaded_count += 1
-                    logger.info(f"✅ Loaded {layer_name} from blockchain (block {block_index})")
-                    
-                except Exception as e:
-                    logger.error(f"Failed to load {layer_name}: {e}")
-                    missing_layers.append(layer_name)
-            
-            # Load the updated state dict into model
-            self.model.load_state_dict(model_state, strict=False)
             
             # Check if we have minimum required layers
             if loaded_count < 3:  # Need at least embedding, one layer, and lm_head
