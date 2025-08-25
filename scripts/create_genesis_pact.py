@@ -19,7 +19,7 @@ def create_genesis_pact_block() -> Block:
     """Create the Genesis Pact Block that all other blocks will depend on."""
     
     # Read the Human-AI Pact document
-    pact_file = Path(__file__).parent.parent / "docs" / "archive" / "HUMAN_AI_PACT.md"
+    pact_file = Path(__file__).parent.parent / "HUMAN_AI_PACT.md"
     if not pact_file.exists():
         raise FileNotFoundError(f"Human-AI Pact file not found: {pact_file}")
     

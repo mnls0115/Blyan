@@ -113,5 +113,28 @@
       "automatic"
     ],
     "verified": false
+  },
+  "snapshot_1756112966_741490b6": {
+    "snapshot_id": "snapshot_1756112966_741490b6",
+    "timestamp": 1756112966.980132,
+    "size_bytes": 5791,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 0,
+      "D": 0
+    },
+    "integrity_hash": "0cf9a1c816e37caa8493414b4e765000",
+    "compression_ratio": 3.2208599551027457,
+    "creation_time_seconds": 0.014091968536376953,
+    "description": "Automatic snapshot 2025-08-25 18:09:26",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
   }
 }
