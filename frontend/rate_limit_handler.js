@@ -266,7 +266,7 @@ class RateLimitHandler {
     showRateLimitModal() {
         // If we have rate limit info, show the alert
         if (this.rateLimitInfo) {
-            this.showRateLimitAlert();
+            this.showRateLimitMessage();
         } else {
             // Fallback: create basic rate limit info
             this.rateLimitInfo = {
@@ -277,7 +277,7 @@ class RateLimitHandler {
                 retryAt: Date.now()/1000 + 60,
                 message: 'Rate limit exceeded'
             };
-            this.showRateLimitAlert();
+            this.showRateLimitMessage();
         }
     }
     
