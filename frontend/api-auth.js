@@ -404,11 +404,37 @@ class APIAuthManagerV2 {
             // Handle rate limiting
             if (response.status === 429) {
                 this.state.requestStats.rateLimited++;
-                const retryAfter = response.headers.get('Retry-After') || 60;
+                
+                // Try to get retry info from response body
+                let retryAfter = 60; // Default to 60 seconds
+                let message = 'Rate limit exceeded. Please try again later.';
+                
+                try {
+                    const clonedResponse = response.clone();
+                    const data = await clonedResponse.json();
+                    
+                    if (data.retry_after && !isNaN(data.retry_after)) {
+                        retryAfter = Math.min(data.retry_after, 18000); // Cap at 5 hours
+                    } else if (data.retry_at) {
+                        // If we have retry_at timestamp, calculate seconds from now
+                        const now = Date.now() / 1000;
+                        retryAfter = Math.max(1, Math.min(data.retry_at - now, 18000));
+                    }
+                    
+                    if (data.message) {
+                        message = data.message;
+                    }
+                } catch (e) {
+                    // If parsing fails, use header value
+                    const headerRetry = response.headers.get('Retry-After');
+                    if (headerRetry && !isNaN(headerRetry)) {
+                        retryAfter = Math.min(parseInt(headerRetry), 18000);
+                    }
+                }
                 
                 throw new RateLimitError(
-                    `Rate limit exceeded. Retry after ${retryAfter} seconds`,
-                    parseInt(retryAfter)
+                    `Rate limit exceeded. Retry after ${Math.ceil(retryAfter)} seconds`,
+                    Math.ceil(retryAfter)
                 );
             }
             
