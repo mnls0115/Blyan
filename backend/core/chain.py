@@ -161,14 +161,28 @@ class Chain:
         if not self._check_no_cycles_incremental(new_block):
             return False
         
-        # 4. Verify block signature/PoL
-        if not self.skip_pol:
+        # 4. Verify Proof-of-Learning (PoL)
+        #
+        # PoL is enforced only for real training-related updates once the chain is
+        # non-empty. We explicitly skip PoL for the very first block so new GPU
+        # nodes can join and upload their initial state without being blocked.
+        #
+        # Conditions to skip PoL:
+        #   - Development/test mode (self.skip_pol == True)
+        #   - First block on this chain (new_block.header.index == 0)
+        #
+        # PoL applies normally for subsequent training blocks.
+        is_first_block = (new_block.header.index == 0)
+        is_training_block = hasattr(new_block, 'is_learning_block') and new_block.is_learning_block()
+
+        if (not self.skip_pol) and (not is_first_block) and is_training_block:
             contributor_id = new_block.miner_pub or "anonymous"
+            # NOTE: verify_pol_nonce signature is (data, nonce, contributor_id, timestamp_window=60)
+            # Use default timestamp window; do not pass difficulty here.
             if not verify_pol_nonce(
                 new_block.header.to_json().encode() + new_block.payload,
-                contributor_id,
                 new_block.header.nonce,
-                self.difficulty
+                contributor_id
             ):
                 return False
         
@@ -329,14 +343,18 @@ class Chain:
             if block.header.payload_hash != hashlib.sha256(block.payload).hexdigest():
                 return False
             # Anti-spam PoL validity (skip if disabled in development)
+            # Apply PoL only for training-related blocks and only after the first block.
             if not self.skip_pol:
-                contributor_id = block.miner_pub or "anonymous"
-                if not verify_pol_nonce(
-                    block.header.to_json().encode() + block.payload,
-                    block.header.nonce,
-                    contributor_id
-                ):
-                    return False
+                is_first_block = (block.header.index == 0)
+                is_training_block = hasattr(block, 'is_learning_block') and block.is_learning_block()
+                if (not is_first_block) and is_training_block:
+                    contributor_id = block.miner_pub or "anonymous"
+                    if not verify_pol_nonce(
+                        block.header.to_json().encode() + block.payload,
+                        block.header.nonce,
+                        contributor_id
+                    ):
+                        return False
             # Dependency validation (all dependencies must exist)
             block_hashes = {b.compute_hash() for b in blocks}
             for dep_hash in block.header.depends_on:
