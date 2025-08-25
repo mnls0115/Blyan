@@ -261,6 +261,27 @@ class RateLimitHandler {
     }
 
     /**
+     * Show rate limit modal (called from chat.html)
+     */
+    showRateLimitModal() {
+        // If we have rate limit info, show the alert
+        if (this.rateLimitInfo) {
+            this.showRateLimitAlert();
+        } else {
+            // Fallback: create basic rate limit info
+            this.rateLimitInfo = {
+                tier: 'free',
+                limit: 20,
+                windowHours: 5,
+                retryAfter: 60,
+                retryAt: Date.now()/1000 + 60,
+                message: 'Rate limit exceeded'
+            };
+            this.showRateLimitAlert();
+        }
+    }
+    
+    /**
      * Dismiss the rate limit alert
      */
     dismiss() {

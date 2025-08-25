@@ -111,8 +111,14 @@ class RateLimiter:
         # Check if limit exceeded
         if len(recent_requests) >= limit:
             # Calculate when they can retry
-            oldest_request = min(recent_requests)
-            retry_after = int(oldest_request + window - current_time)
+            if recent_requests:
+                oldest_request = min(recent_requests)
+                retry_after = max(1, int(oldest_request + window - current_time))
+            else:
+                retry_after = 60  # Default 1 minute if no requests found
+            
+            # Sanity check - retry_after should never be more than window
+            retry_after = min(retry_after, int(window))
             
             return False, {
                 "tier": tier,
@@ -135,7 +141,7 @@ class RateLimiter:
             "window_hours": window / 3600,
             "used": len(recent_requests),
             "remaining": limit - len(recent_requests),
-            "reset_at": window_start + window + window,  # Next window start
+            "reset_at": window_start + window,  # Next window start
             "message": f"Request allowed. {limit - len(recent_requests)} remaining in {window/3600:.1f} hour window"
         }
     
