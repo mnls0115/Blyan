@@ -67,5 +67,51 @@
       "automatic"
     ],
     "verified": false
+  },
+  "snapshot_1756093186_6a356969": {
+    "snapshot_id": "snapshot_1756093186_6a356969",
+    "timestamp": 1756093186.378357,
+    "size_bytes": 5791,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 0,
+      "D": 0
+    },
+    "integrity_hash": "0cf9a1c816e37caa8493414b4e765000",
+    "compression_ratio": 3.2208599551027457,
+    "creation_time_seconds": 0.017843961715698242,
+    "description": "Automatic snapshot 2025-08-25 12:39:46",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
+  },
+  "snapshot_1756098876_377f074a": {
+    "snapshot_id": "snapshot_1756098876_377f074a",
+    "timestamp": 1756098876.597654,
+    "size_bytes": 5791,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 0,
+      "D": 0
+    },
+    "integrity_hash": "0cf9a1c816e37caa8493414b4e765000",
+    "compression_ratio": 3.2208599551027457,
+    "creation_time_seconds": 0.015768051147460938,
+    "description": "Automatic snapshot 2025-08-25 14:14:36",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
   }
 }

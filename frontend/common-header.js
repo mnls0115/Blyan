@@ -6,7 +6,7 @@ function createAIBlockHeader(currentPage = '') {
     const pages = {
         'home': { icon: '🏠', nameKey: 'home', url: 'home.html' },
         'chat': { icon: '💬', nameKey: 'chat', url: 'chat.html' },
-        'contribute': { icon: '⚡', nameKey: 'network', url: 'contribute.html' },
+        // 'contribute': { icon: '⚡', nameKey: 'network', url: 'contribute.html' },
         'how-it-works': { icon: '📖', nameKey: 'howItWorks', url: 'how-it-works.html' },
         // Temporarily hidden - will be re-enabled later
         // 'leaderboard': { icon: '🏅', nameKey: 'leaderboard', url: 'leaderboard.html' },
