@@ -326,16 +326,16 @@ class BlyanGPUNode:
         Args:
             force_full: If True, reset local chains before syncing
         """
-        # Main node has NO blockchain - it's just a coordinator
-        # GPU nodes maintain their own blockchains independently
-        logger.info("📝 Note: Main node has no blockchain. GPU nodes maintain local chains.")
+        # Currently, the main node does not host the GPU blockchain.
+        # Each GPU node maintains its own local chains; future versions may add peer sync.
+        logger.info("📝 GPU nodes maintain local blockchains (peer sync not yet implemented).")
         
         # For now, skip sync since main node doesn't store blockchain
         # TODO: Implement GPU-to-GPU peer sync in the future
         return True  # Return success to continue initialization
     
     def check_block_progress(self) -> dict:
-        """Check blockchain progress and integrity."""
+        """Check blockchain progress (counts only; integrity handled separately)."""
         progress = {
             "meta_blocks": 0,
             "layer_blocks": 0,
@@ -375,21 +375,28 @@ class BlyanGPUNode:
                 layer_blocks = []  # Empty list to skip iteration below
             else:
                 # Only do expensive check for small chains
-                layer_blocks = self.chains['B'].get_blocks_by_type('layer')
+                # Include both legacy 'layer' and new 'dense_layer' types
+                legacy_blocks = self.chains['B'].get_blocks_by_type('layer')
+                dense_blocks = self.chains['B'].get_blocks_by_type('dense_layer')
+                layer_blocks = legacy_blocks + dense_blocks
                 progress["layer_blocks"] = len(layer_blocks)
             
             # Find missing layers (skip if we have many blocks)
             existing_layers = set()
             if len(layer_blocks) > 0:
                 for block in layer_blocks:
-                    if hasattr(block.header, 'layer_id'):
-                        existing_layers.add(block.header.layer_id)
+                    # Prefer layer_name for dense model; fallback to layer_id
+                    if getattr(block.header, 'layer_name', None):
+                        existing_layers.add(block.header.layer_name)
+                    elif getattr(block.header, 'layer_id', None) is not None:
+                        existing_layers.add(f"layer_{block.header.layer_id}")
             
             # Check which layers are missing (skip for large chains)
             if chain_b_blocks < 1000:
-                for layer_idx in range(36):  # Dense model has 36 layers
-                    if layer_idx not in existing_layers:
-                        progress["missing_layers"].append(f"layer_{layer_idx}")
+                expected = [f"layer_{i}" for i in range(36)]
+                for layer_name in expected:
+                    if layer_name not in existing_layers:
+                        progress["missing_layers"].append(layer_name)
                         # Only track first 10 missing for readability
                         if len(progress["missing_layers"]) >= 10:
                             progress["missing_layers"].append("... and more")
@@ -399,8 +406,8 @@ class BlyanGPUNode:
             if progress["expected_layers"] > 0:
                 progress["progress_percentage"] = (progress["layer_blocks"] / progress["expected_layers"]) * 100
             
-            # Verify integrity of existing blocks
-            progress["integrity_valid"] = self.verify_block_integrity()
+            # Integrity is verified separately in startup Step 4
+            progress["integrity_valid"] = True
             
             # Log progress summary
             logger.info(f"📊 Block Progress Report:")
@@ -709,7 +716,8 @@ class BlyanGPUNode:
                 root_dir=DATA_DIR,
                 model_name=MODEL_NAME,
                 device="cuda" if self.gpu_available else "cpu",
-                use_blockchain=True  # Always use blockchain for inference
+                use_blockchain=True,  # Always use blockchain for inference
+                use_gpu_direct=True  # Enable GPU-direct loading for faster boot
             )
             
             # Initialize zero-copy loader for efficient loading
@@ -1609,27 +1617,29 @@ class BlyanGPUNode:
                         logger.warning(f"Could not detect public IP: {e}")
                         public_host = "unknown"
                 
-                # Get available experts for registration
+                # For dense model, send layer information instead of experts
                 available_experts = []
                 try:
                     if self.model_manager:
-                        if hasattr(self.model_manager, "get_available_experts"):
-                            all_experts = self.model_manager.get_available_experts()
-                            # The main node needs actual expert names, not wildcards
-                            # But we can't send all 6144, so send a representative sample
-                            if len(all_experts) > 500:
-                                # TEMPORARY: Send ALL experts until server is updated
-                                logger.info(f"   Node has {len(all_experts)} experts, sending ALL...")
-                                available_experts = all_experts
-                                logger.info(f"   Sending {len(available_experts)} experts to main node")
-                            else:
-                                available_experts = all_experts
-                        elif hasattr(self.model_manager, "_get_available_experts_for_layer"):
-                            for layer_id in range(24):
-                                layer_experts = self.model_manager._get_available_experts_for_layer(f"layer{layer_id}")
-                                available_experts.extend(layer_experts)
+                        # Dense model has layers, not experts
+                        # Send layer names as "experts" for compatibility with API
+                        from backend.core.param_index import ParameterIndex
+                        param_index = ParameterIndex(DATA_DIR / "param_index.json")
+                        available_layers = param_index.get_all_layers()
+                        
+                        if available_layers:
+                            # Convert layer names to expert-like format for API compatibility
+                            # This allows the main node to understand what the GPU node has
+                            available_experts = available_layers
+                            logger.info(f"   Dense model has {len(available_layers)} layers available")
+                        else:
+                            # If no layers in index, just report model readiness
+                            available_experts = ["dense_model_ready"] if self.model_manager else []
                 except Exception as e:
-                    logger.warning(f"Could not enumerate experts for registration: {e}")
+                    logger.warning(f"Could not enumerate layers for registration: {e}")
+                    # Fallback: just indicate we have a dense model
+                    if self.model_manager:
+                        available_experts = ["dense_model"]
                 
                 # Register with main node
                 # Format the endpoint URL properly
@@ -1647,18 +1657,37 @@ class BlyanGPUNode:
                     # Default to HTTP for regular hosts
                     endpoint_url = f"http://{public_host}:{PUBLIC_PORT}"
                 
+                # Convert GPU info to hardware_info format expected by API
+                hardware_info = {
+                    "vram_gb": self.gpu_info.get("memory_gb", 0),
+                    "cuda": self.gpu_info.get("cuda_version", ""),
+                    "gpu_name": self.gpu_info.get("name", "Unknown"),
+                    "num_gpus": self.gpu_info.get("num_gpus", 1)
+                }
+                
+                # Get CUDA capability if available
+                cuda_cap = None
+                if self.gpu_available:
+                    try:
+                        import torch
+                        cap = torch.cuda.get_device_capability()
+                        cuda_cap = f"{cap[0]}.{cap[1]}"
+                    except:
+                        pass
+                
                 data = {
                     "node_id": self.node_id,
                     "host": endpoint_url,  # Send full URL instead of separate host:port
                     "port": 443 if 'https://' in endpoint_url else PUBLIC_PORT,
                     "available_experts": available_experts,
+                    "node_name": f"GPU Node {self.node_id}",
+                    "resource_limit": "gpu-75",  # GPU node with 75% resource allocation
                     "node_type": "gpu",
-                    "gpu_info": self.gpu_info,
-                    "chains": list(self.chains.keys()),
-                    "model_ready": self.model_manager is not None,
-                    "genesis_hash": self.genesis_hash,
-                    "precision": self.precision,
-                    "supports_int8": False
+                    "hardware_info": hardware_info,  # Use hardware_info instead of gpu_info
+                    "donor_mode": False,
+                    # Optional device profile fields
+                    "vram_gb": self.gpu_info.get("memory_gb", 0),
+                    "cuda_capability": cuda_cap
                 }
                 
                 logger.info(f"📝 Registering with endpoint: {endpoint_url}")
@@ -1668,7 +1697,14 @@ class BlyanGPUNode:
                 if PUBLIC_PORT != self.port:
                     logger.info(f"   (Internal port: {self.port}, Public endpoint: {endpoint_url})")
                 
-                resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data)
+                # Add API key if available
+                headers = {}
+                api_key = os.environ.get('BLYAN_API_KEY')
+                if api_key:
+                    headers['X-API-Key'] = api_key
+                    logger.debug("   Using API key for authentication")
+                
+                resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data, headers=headers)
                 if resp.status_code == 200:
                     result = resp.json()
                     logger.info(f"✅ Registered with main node")
@@ -1860,12 +1896,16 @@ class BlyanGPUNode:
         # 4. Verify integrity
         current_step += 1
         log_step(startup_steps[current_step-1], current_step)
-        if not progress["integrity_valid"]:
+        # Perform integrity verification here (not in progress step)
+        integrity_ok = self.verify_block_integrity()
+        progress["integrity_valid"] = integrity_ok
+        if not integrity_ok:
             logger.warning("⚠️ Blockchain integrity issue detected")
             recovery_success = await self.handle_integrity_failure()
             if recovery_success:
                 # Re-check progress after recovery
                 progress = self.check_block_progress()
+                progress["integrity_valid"] = self.verify_block_integrity()
             else:
                 logger.error("Failed to recover blockchain integrity")
                 # Continue anyway but with warnings

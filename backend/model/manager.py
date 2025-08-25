@@ -28,7 +28,8 @@ class UnifiedModelManager:
         root_dir: Path,
         model_name: str = "Qwen/Qwen3-8B",
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
-        use_blockchain: bool = True
+        use_blockchain: bool = True,
+        use_gpu_direct: bool = True
     ):
         """
         Initialize unified model manager.
@@ -38,15 +39,18 @@ class UnifiedModelManager:
             model_name: Model identifier
             device: Device to run on
             use_blockchain: Whether to load from blockchain
+            use_gpu_direct: Use GPU-direct loading for faster inference
         """
         self.root_dir = Path(root_dir)
         self.model_name = model_name
         self.device = device
         self.use_blockchain = use_blockchain
+        self.use_gpu_direct = use_gpu_direct and device != "cpu"
         
         self.model = None
         self.tokenizer = None
         self._initialized = False
+        self.gpu_loader = None
         
         if use_blockchain:
             self._init_blockchain()
@@ -375,6 +379,93 @@ class UnifiedModelManager:
             logger.error(f"Failed to apply delta for {layer_name}: {e}")
             return base_tensor
     
+    def _load_from_blockchain_gpu_direct(self) -> None:
+        """Load model weights from blockchain using GPU-direct loading."""
+        from backend.core.gpu_direct_loader import GPUDirectBlockLoader, gpu_memory_optimization
+        
+        logger.info("⚡ GPU-Direct blockchain loading initiated...")
+        
+        # Initialize GPU-direct loader
+        if not self.gpu_loader:
+            self.gpu_loader = GPUDirectBlockLoader(
+                param_chain=self.param_chain,
+                cache_dir=self.root_dir / "gpu_cache",
+                enable_pinned_cache=True,
+                max_pinned_memory_gb=float(os.getenv("GPU_PINNED_MEMORY_GB", "4.0"))
+            )
+        
+        # Initialize empty model structure
+        self.model = self._create_empty_model_structure()
+        
+        with gpu_memory_optimization():
+            try:
+                # Get all layer indices from param_index
+                all_layers = self.param_index.get_all_layers()
+                logger.info(f"   Found {len(all_layers)} layers to load")
+                
+                # Collect block indices for batch loading
+                block_indices = []
+                layer_to_block = {}
+                
+                for layer_name in all_layers:
+                    block_idx = self.param_index.get(layer_name)
+                    if block_idx is not None:
+                        block_indices.append(block_idx)
+                        layer_to_block[layer_name] = block_idx
+                
+                logger.info(f"   Loading {len(block_indices)} blocks directly to {self.device}...")
+                
+                # Batch load all blocks to GPU
+                gpu_tensors = self.gpu_loader.batch_load_to_gpu(
+                    block_indices, 
+                    device=self.device,
+                    max_workers=int(os.getenv("GPU_LOAD_WORKERS", "8"))
+                )
+                
+                # Build state dict from GPU tensors
+                state_dict = {}
+                for layer_name, block_idx in layer_to_block.items():
+                    if block_idx in gpu_tensors:
+                        tensors = gpu_tensors[block_idx]
+                        # Apply delta composition if needed
+                        for key, tensor in tensors.items():
+                            final_key = key if '.' in key else f"{layer_name}.{key}"
+                            state_dict[final_key] = self._compose_layer_with_deltas(final_key, tensor)
+                
+                # Load state dict into model
+                if state_dict:
+                    # Model weights are already on GPU, just assign references
+                    incompatible = self.model.load_state_dict(state_dict, strict=False)
+                    logger.info(f"✅ Loaded {len(state_dict)} tensors via GPU-Direct")
+                    
+                    if incompatible.missing_keys:
+                        logger.warning(f"Missing keys: {incompatible.missing_keys[:5]}")
+                    
+                    # Log performance stats
+                    stats = self.gpu_loader.get_stats()
+                    logger.info(f"   📊 GPU-Direct Stats:")
+                    logger.info(f"      Cache hit rate: {stats['cache_hit_rate']:.1%}")
+                    logger.info(f"      Pinned hit rate: {stats['pinned_hit_rate']:.1%}")
+                    logger.info(f"      Avg load time: {stats['avg_load_time_ms']:.2f}ms")
+                    logger.info(f"      Avg GPU transfer: {stats['avg_gpu_transfer_ms']:.2f}ms")
+                    logger.info(f"      Pinned cache: {stats['pinned_cache_size_mb']:.1f}MB")
+                    
+                    # Save fused snapshot for next boot
+                    if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() == "true":
+                        self._save_fused_snapshot()
+                else:
+                    logger.error("No weights loaded via GPU-Direct")
+                    raise RuntimeError("GPU-Direct loading failed")
+                    
+            except Exception as e:
+                logger.error(f"GPU-Direct loading failed: {e}")
+                logger.warning("Falling back to standard blockchain loading")
+                # Clear GPU loader and retry with standard method
+                if self.gpu_loader:
+                    self.gpu_loader.clear_cache()
+                self.use_gpu_direct = False
+                self._load_from_blockchain()
+    
     def _load_from_blockchain(self) -> None:
         """Load model weights from blockchain - PRODUCTION OPTIMIZED."""
         import io
@@ -392,6 +483,12 @@ class UnifiedModelManager:
         logger.info("   📦 Checking for fused snapshot...")
         if self._try_load_fused_snapshot():
             logger.info("✅ Loaded from fused snapshot (instant boot)")
+            return
+        
+        # Use GPU-direct loading if enabled
+        if self.use_gpu_direct and self.device != "cpu":
+            logger.info("   ⚡ Using GPU-Direct loading (zero-copy, pinned memory)...")
+            self._load_from_blockchain_gpu_direct()
             return
         
         logger.info("   📊 Loading from blockchain blocks (parallel fetch)...")
