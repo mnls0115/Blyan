@@ -398,7 +398,7 @@ class LayerStore:
                                 return tensor
                     except:
                         # Fallback to raw tensor
-                        return torch.frombuffer(data, dtype=torch.float16).reshape(-1, 768)
+                        return torch.frombuffer(data, dtype=torch.bfloat16).reshape(-1, 768)  # BF16 ONLY
         
         return None
     

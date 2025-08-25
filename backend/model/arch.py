@@ -46,8 +46,6 @@ class ModelWrapper:
         self,
         model_name: str,
         device: Optional[str] = None,
-        load_in_8bit: bool = False,
-        load_in_4bit: bool = False,
         device_map: Optional[str] = None,
         max_memory: Optional[dict] = None,
         allow_mock_fallback: bool = True,
@@ -64,14 +62,8 @@ class ModelWrapper:
         # Don't load local models - blockchain is the only source
         return
         
-        # Determine if we need quantization for large models
+        # No quantization - always use BF16/FP16
         is_large_model = "20b" in model_name.lower() or "neox-20b" in model_name.lower()
-        # Allow disabling auto quantization via env
-        auto_quant_env = os.getenv("MODEL_AUTO_QUANTIZE") or os.getenv("AUTO_QUANTIZE")
-        auto_quantize = True if auto_quant_env is None else auto_quant_env.lower() not in {"0", "false", "no", "off"}
-        if is_large_model and not (load_in_8bit or load_in_4bit) and auto_quantize:
-            print(f"⚠️ Large model detected ({model_name}), enabling INT8 quantization (can disable with MODEL_AUTO_QUANTIZE=0)")
-            load_in_8bit = True
         
         try:
             # GPU nodes don't use local model paths - blockchain only
@@ -85,27 +77,16 @@ class ModelWrapper:
                 load_kwargs['device_map'] = device_map or "auto"
                 print(f"🚀 Using device_map={load_kwargs['device_map']} for model distribution")
             
-            # Add quantization options
-            if load_in_8bit:
-                from transformers import BitsAndBytesConfig
-                quantization_config = BitsAndBytesConfig(
-                    load_in_8bit=True,
-                    llm_int8_enable_fp32_cpu_offload=True
-                )
-                load_kwargs['quantization_config'] = quantization_config
-                print("📦 Loading model in INT8 (8-bit quantization)")
-            elif load_in_4bit:
-                from transformers import BitsAndBytesConfig
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_use_double_quant=True,
-                    bnb_4bit_quant_type="nf4"
-                )
-                load_kwargs['quantization_config'] = quantization_config
-                print("📦 Loading model in INT4 (4-bit quantization)")
+            # ALWAYS use BF16 - no fallbacks
+            load_kwargs['torch_dtype'] = torch.bfloat16
+            print("📦 Loading model in BF16 precision (REQUIRED - no fallbacks)")
+            
+            # Check if GPU supports BF16
+            if torch.cuda.is_available():
+                if torch.cuda.get_device_capability()[0] < 8:
+                    raise RuntimeError("GPU does not support BF16. Minimum compute capability 8.0 required (Ampere or newer).")
             else:
-                load_kwargs['torch_dtype'] = torch.float16 if torch.cuda.is_available() else torch.float32
+                raise RuntimeError("CUDA not available. BF16 requires GPU with compute capability 8.0+")
             
             # Add memory limits if specified
             if max_memory:

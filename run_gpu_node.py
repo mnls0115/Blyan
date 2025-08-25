@@ -839,8 +839,11 @@ class BlyanGPUNode:
                     logger.error("CUDA not available on this node. Skipping auto-upload.")
                     return
                 
-                if not caps['bnb_cuda']:
-                    logger.warning("BitsAndBytes CUDA support not available, will try non-quantized loading")
+                # No quantization check needed - BF16 only
+                if not caps['supports_bf16']:
+                    logger.error("GPU does not support BF16. Cannot proceed.")
+                    logger.error("Minimum compute capability 8.0 required (Ampere or newer).")
+                    return
                 
                 # Load tokenizer with compatibility handling
                 logger.info("Loading tokenizer...")
@@ -850,29 +853,35 @@ class BlyanGPUNode:
                 model_config = get_model_config()
                 logger.info(f"Loading model with {model_config.get('precision', 'auto')} precision...")
                 
-                # Force FP16 loading only
+                # Force BF16 loading ONLY - no fallbacks
                 from transformers import AutoModelForCausalLM
                 import torch
                 
+                # Verify BF16 support
+                if not self.gpu_available:
+                    logger.error("CUDA not available. BF16 requires GPU with compute capability 8.0+")
+                    return
+                
+                if torch.cuda.get_device_capability()[0] < 8:
+                    logger.error(f"GPU compute capability {torch.cuda.get_device_capability()} does not support BF16.")
+                    logger.error("Minimum compute capability 8.0 required (Ampere or newer).")
+                    return
+                
                 # Multi-GPU support with device_map="auto"
-                if self.gpu_available:
-                    num_gpus = self.gpu_info.get("num_gpus", 1)
-                    logger.info(f"Using {num_gpus} GPU(s) for model loading")
-                    if num_gpus > 1:
-                        logger.info("Model will be distributed across all available GPUs")
+                num_gpus = self.gpu_info.get("num_gpus", 1)
+                logger.info(f"Using {num_gpus} GPU(s) for model loading")
+                if num_gpus > 1:
+                    logger.info("Model will be distributed across all available GPUs")
                 
                 model = AutoModelForCausalLM.from_pretrained(
                     MODEL_NAME,
-                    torch_dtype="auto",  # Auto-detect for FP8 models
-                    device_map="auto" if self.gpu_available else None,  # Auto distributes across all GPUs
+                    torch_dtype=torch.bfloat16,  # ALWAYS BF16 - no fallbacks
+                    device_map="auto",  # Auto distributes across all GPUs
                     low_cpu_mem_usage=True,
                     trust_remote_code=True
                 )
                 
-                if not self.gpu_available:
-                    model = model.to("cpu")
-                
-                logger.info(f"✅ Model loaded with {model_config.get('precision', 'auto')} precision")
+                logger.info(f"✅ Model loaded with BF16 precision (REQUIRED - no fallbacks)")
                 
             else:
                 # Fallback to original loading method
@@ -886,24 +895,29 @@ class BlyanGPUNode:
                 
                 from transformers import AutoModelForCausalLM, AutoTokenizer
                 
-                # Try loading with FP16 as fallback
-                logger.info("⏳ Loading model...")
+                # BF16 loading ONLY - no fallbacks
+                logger.info("⏳ Loading model in BF16...")
                 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
                 
-                # Load with auto dtype for compatibility
-                model_config = get_model_config()
+                # Verify BF16 support
+                if not self.gpu_available or not torch.cuda.is_available():
+                    logger.error("CUDA not available. BF16 requires GPU with compute capability 8.0+")
+                    return
+                
+                if torch.cuda.get_device_capability()[0] < 8:
+                    logger.error(f"GPU compute capability {torch.cuda.get_device_capability()} does not support BF16.")
+                    logger.error("Minimum compute capability 8.0 required (Ampere or newer).")
+                    return
+                
                 model = AutoModelForCausalLM.from_pretrained(
                     MODEL_NAME,
-                    torch_dtype="auto",  # Auto-detect for FP8 models
-                    device_map="auto" if self.gpu_available else None,
+                    torch_dtype=torch.bfloat16,  # ALWAYS BF16 - no fallbacks
+                    device_map="auto",
                     low_cpu_mem_usage=True,
                     trust_remote_code=True
                 )
-                
-                if not self.gpu_available:
-                    model = model.to("cpu")
                     
-                logger.info(f"✅ Model loaded with {model_config.get('precision', 'auto')} precision")
+                logger.info(f"✅ Model loaded with BF16 precision (REQUIRED - no fallbacks)")
             
             # Create meta block if needed
             meta_count = len(self.chains['A']._hash_index) if hasattr(self.chains['A'], '_hash_index') else 0

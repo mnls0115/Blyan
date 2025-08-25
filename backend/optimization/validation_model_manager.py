@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Validation Model Manager with Automatic Quantization
-Applies INT8 quantization to Teacher/Sentinel models while keeping main model at FP16
+Validation Model Manager with BF16 Precision
+All models use BF16 precision - no quantization, no fallbacks
 """
 
 import torch
@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 
 class ValidationModelManager:
     """
-    Manages validation models (Teacher/Sentinel) with automatic quantization.
-    Main AI model stays at FP16 for quality preservation.
+    Manages validation models with precision policy:
+    - Main/Reward models: BF16 (numerical consistency)
+    - Teacher/Sentinel models: INT8 (validation speed, older GPU support)
     """
     
     def __init__(self, model_dir: Path = Path("./models")):
@@ -68,9 +69,13 @@ class ValidationModelManager:
             original_size = self._get_model_size(model)
             
             if model_type == 'main':
-                # Main model: Keep at FP16 for quality
-                model = model.half()
-                logger.info(f"Main model using FP16 precision (preserving quality)")
+                # Main model: BF16 for consistency (no quantization)
+                import torch
+                if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:
+                    model = model.to(torch.bfloat16)
+                    logger.info(f"Main model using BF16 precision (numerical consistency)")
+                else:
+                    raise RuntimeError("Main model requires BF16. GPU compute capability 8.0+ required.")
                 quantized_size = self._get_model_size(model)
                 
             elif model_type == 'teacher':
@@ -97,9 +102,13 @@ class ValidationModelManager:
                 quantized_size = quantizer.quantized_size_mb
                 
             elif model_type == 'reward_model':
-                # Reward model: FP16 for reasonable precision
-                model = model.half()
-                logger.info(f"Reward model using FP16 precision")
+                # Reward model: BF16 for consistency
+                import torch
+                if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:
+                    model = model.to(torch.bfloat16)
+                    logger.info(f"Reward model using BF16 precision (consistency)")
+                else:
+                    raise RuntimeError("Reward model requires BF16. GPU compute capability 8.0+ required.")
                 quantized_size = self._get_model_size(model)
                 
             else:

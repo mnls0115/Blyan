@@ -2,7 +2,7 @@
 
 **Transparent, community-owned AI on the blockchain.**
 
-We're building AI that can't lie to you, can't be secretly modified, and belongs to everyone—not just tech giants.
+We're building AI that is for everyone, built by everyone, and belongs to everyone—not just tech giants.
 
 ## 🚀 Try It Now
 
@@ -15,7 +15,7 @@ curl -X POST https://blyan.com/api/chat \
   -d '{"prompt": "Hello, Blyan!", "max_tokens": 50}'
 ```
 
-## 💰 Run a GPU Node (Earn BLY Tokens)
+## 💰 Run a GPU Node (Earn BLY Tokens, not supported now! Please wait...)
 
 ```bash
 # Quick start with Docker
@@ -82,7 +82,7 @@ python -m api.server
 
 ## 📄 License
 
-MIT License - See [LICENSE](LICENSE) file
+Apache 2.0 License - See [LICENSE](LICENSE) file
 
 ---
 

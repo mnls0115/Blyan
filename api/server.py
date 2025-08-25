@@ -3476,7 +3476,7 @@ async def learning_metrics():
 
 @app.get("/rate-limit/status")
 async def rate_limit_status(request: Request):
-    """Check current rate limit status for the client."""
+    """Check current rate limit status for ALL limiters."""
     # Get client IP
     client_ip = request.client.host
     if request.headers.get("X-Forwarded-For"):
@@ -3485,14 +3485,58 @@ async def rate_limit_status(request: Request):
     # Check for authentication
     wallet = request.headers.get("X-User-Address")
     
-    # Get status
+    # Get status from 5-hour window limiter
     rate_limiter = get_rate_limiter()
-    status = rate_limiter.get_client_status(ip=client_ip, wallet=wallet)
+    window_status = rate_limiter.get_client_status(ip=client_ip, wallet=wallet)
+    
+    # Check SSOT limiter (hourly/daily)
+    ssot_limiter = ssot_manager.rate_limiter if 'ssot_manager' in globals() else None
+    ssot_blocked = False
+    ssot_reason = None
+    
+    if ssot_limiter:
+        try:
+            # Check if SSOT would block
+            ssot_result = ssot_limiter.check_rate_limit(client_ip)
+            if not ssot_result.allowed:
+                ssot_blocked = True
+                ssot_reason = f"SSOT limit: {ssot_result.message}"
+        except:
+            pass
+    
+    # Check abuse detection
+    abuse_blocked = False
+    abuse_reason = None
+    if hasattr(rate_limiter, 'is_abusive'):
+        if rate_limiter.is_abusive(client_ip):
+            abuse_blocked = True
+            abuse_reason = "Abuse pattern detected"
+    
+    # Determine actual status
+    actually_blocked = ssot_blocked or abuse_blocked or window_status['remaining'] <= 0
+    block_reason = ssot_reason or abuse_reason or ("5-hour limit reached" if window_status['remaining'] <= 0 else None)
     
     return {
-        "status": "ok",
-        "rate_limit": status,
-        "message": f"You have {status['remaining']} requests remaining out of {status['limit']} in {status['window_hours']:.1f} hours"
+        "status": "blocked" if actually_blocked else "ok",
+        "rate_limit": window_status,
+        "blocked": actually_blocked,
+        "block_reason": block_reason,
+        "limiters": {
+            "window_5h": {
+                "remaining": window_status['remaining'],
+                "limit": window_status['limit'],
+                "blocked": window_status['remaining'] <= 0
+            },
+            "ssot": {
+                "blocked": ssot_blocked,
+                "reason": ssot_reason
+            },
+            "abuse": {
+                "blocked": abuse_blocked,
+                "reason": abuse_reason
+            }
+        },
+        "message": block_reason if actually_blocked else f"You have {window_status['remaining']} requests remaining"
     }
 
 @app.get("/health")

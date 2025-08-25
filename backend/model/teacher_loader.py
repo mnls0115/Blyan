@@ -1,6 +1,16 @@
 """
 Blyan Teacher Model Loader for Quality Validation
-INT8 quantized model for fast inference with anti-loop protection
+
+⚠️ EXCEPTION TO BF16 RULE: Teacher models use INT8 quantization
+
+Why INT8 for Teacher Models:
+- Teacher is frozen (N-1 generation) and read-only
+- Used ONLY for quality validation, not learning
+- 4x faster inference and 4x less memory
+- Allows older GPUs to participate as validators
+- Does NOT affect numerical consistency in distributed learning
+
+All other models (student, inference, learning) MUST use BF16.
 """
 
 import os
@@ -45,7 +55,15 @@ class TeacherModelLoader:
         self.total_latency = 0.0
         
     def load_teacher_model(self) -> bool:
-        """Load INT8 quantized teacher model using validation manager"""
+        """
+        Load INT8 quantized teacher model using validation manager
+        
+        NOTE: This is the ONLY exception to the BF16-only rule.
+        Teacher models use INT8 because:
+        1. They are frozen checkpoints (not learning)
+        2. Only used for validation gating
+        3. Allows older GPUs to participate as validators
+        """
         try:
             # Use validation manager for automatic INT8 quantization
             validation_manager = get_validation_manager()
@@ -66,7 +84,7 @@ class TeacherModelLoader:
                 self.model_version = hashlib.sha256(model_bytes).hexdigest()[:8]
                 
                 logger.info(f"✅ Loaded teacher model v{self.model_version} from safetensors")
-                logger.info(f"   INT8 quantized for 4x speedup")
+                logger.info(f"   INT8 quantized for 4x speedup (EXCEPTION: not BF16)")
                 
             else:
                 # Fall back to loading a pre-trained model with automatic INT8 quantization
@@ -81,6 +99,7 @@ class TeacherModelLoader:
                 
                 self.model_version = "auto-int8"
                 logger.info(f"✅ Loaded teacher model with INT8 quantization")
+                logger.info(f"   NOTE: Teacher uses INT8 (exception to BF16 rule) for validation only")
                 
                 # Show memory savings
                 savings = validation_manager.get_memory_savings()

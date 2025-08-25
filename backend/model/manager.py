@@ -478,8 +478,15 @@ class UnifiedModelManager:
         """Load model from local files."""
         logger.info(f"Loading model from local: {self.model_name}")
         
+        # BF16 ONLY - no fallbacks
+        if self.device != "cuda":
+            raise RuntimeError("BF16 requires CUDA. CPU mode not supported.")
+        
+        if torch.cuda.get_device_capability()[0] < 8:
+            raise RuntimeError(f"GPU compute capability {torch.cuda.get_device_capability()} does not support BF16. Minimum 8.0 required (Ampere or newer).")
+        
         model_config = {
-            "torch_dtype": torch.float16 if self.device == "cuda" else torch.float32,
+            "torch_dtype": torch.bfloat16,  # BF16 ONLY
             "low_cpu_mem_usage": True
         }
         

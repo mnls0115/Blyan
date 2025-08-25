@@ -210,7 +210,7 @@ class ExecutionEngine:
         # Initialize hidden states (mock)
         hidden_states = torch.randn(
             batch_size, seq_len, hidden_dim, 
-            device=self.device, dtype=torch.float16 if self.mixed_precision else torch.float32
+            device=self.device, dtype=torch.bfloat16  # BF16 ONLY
         )
         
         # Process each layer
@@ -250,7 +250,7 @@ class ExecutionEngine:
         vocab_size = 151936  # Qwen3-30B vocab size
         logits = torch.randn(
             batch_size, seq_len, vocab_size,
-            device=self.device, dtype=torch.float32
+            device=self.device, dtype=torch.bfloat16  # BF16 ONLY
         )
         
         # Get last token logits
@@ -352,27 +352,18 @@ class ExecutionEngine:
                     trust_remote_code=True
                 )
                 
-                # Determine appropriate dtype based on model and hardware
-                if "FP8" in model_id:
-                    # For FP8 models, try to use FP8 if available
-                    try:
-                        # Check if FP8 is available (PyTorch 2.1+)
-                        if hasattr(torch, 'float8_e4m3fn'):
-                            torch_dtype = torch.float8_e4m3fn
-                            logger.info("Using native FP8 dtype")
-                        else:
-                            # Fallback to auto for FP8 models
-                            torch_dtype = "auto"
-                            logger.info("Using auto dtype for FP8 model")
-                    except:
-                        torch_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-                        logger.info(f"FP8 not available, using {torch_dtype}")
-                elif self.device == "cuda" and torch.cuda.is_bf16_supported():
-                    torch_dtype = torch.bfloat16
-                    logger.info("Using bfloat16 dtype")
-                else:
-                    torch_dtype = torch.float16
-                    logger.info("Using float16 dtype")
+                # BF16 ONLY - no fallbacks
+                if self.device != "cuda":
+                    raise RuntimeError("BF16 requires CUDA. CPU mode not supported.")
+                
+                if not torch.cuda.is_available():
+                    raise RuntimeError("CUDA not available. BF16 requires GPU.")
+                
+                if torch.cuda.get_device_capability()[0] < 8:
+                    raise RuntimeError(f"GPU compute capability {torch.cuda.get_device_capability()} does not support BF16. Minimum 8.0 required (Ampere or newer).")
+                
+                torch_dtype = torch.bfloat16  # BF16 ONLY
+                logger.info("Using BF16 dtype (REQUIRED - no fallbacks)")
                 
                 # Load with explicit dtype and memory optimization
                 self.model = AutoModelForCausalLM.from_pretrained(
@@ -383,10 +374,9 @@ class ExecutionEngine:
                     low_cpu_mem_usage=True
                 )
                 
+                # No CPU support - BF16 requires GPU
                 if self.device == "cpu":
-                    # For CPU, convert to float32 for stability
-                    self.model = self.model.to(self.device).float()
-                    logger.info("Converted model to float32 for CPU")
+                    raise RuntimeError("CPU mode not supported. BF16 requires GPU with compute capability 8.0+")
                     
                 self.model.eval()
                 

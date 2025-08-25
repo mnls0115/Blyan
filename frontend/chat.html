@@ -1104,7 +1104,15 @@
             } catch (error) {
                 removeTypingIndicator();
                 
-                if (error instanceof AuthenticationError) {
+                if (error instanceof RateLimitError) {
+                    // Rate limit error - show specific message
+                    console.log('Rate limit error:', error.message);
+                    addMessage(t('rateLimitExceeded') || 'Rate limit exceeded. Please try again later.', 'assistant');
+                    // Show rate limit modal with details
+                    if (window.rateLimitHandler) {
+                        window.rateLimitHandler.showRateLimitModal();
+                    }
+                } else if (error instanceof AuthenticationError) {
                     // For free tier users, this is expected - just show a simple message
                     console.log('Free tier user - authentication not required');
                     addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');

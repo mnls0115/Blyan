@@ -258,17 +258,17 @@ def load_tokenizer(model_name: str, **kwargs) -> Any:
 
 def load_model_any_precision(
     model_name: str,
-    prefer_quant: Optional[str] = "auto",
+    prefer_quant: Optional[str] = None,
     device_pref: Optional[str] = "auto",
     max_memory_gb: Optional[float] = None,
     **extra_kwargs
 ) -> Tuple[Any, Dict[str, Any]]:
     """
-    Load model with automatic precision fallback.
+    Load model with BF16/FP16 precision (no quantization).
     
     Args:
         model_name: Model name or path
-        prefer_quant: Preferred quantization ("8bit", "4bit", "auto", None)
+        prefer_quant: Ignored - no quantization used
         device_pref: Device preference ("auto", "cuda", "cpu")
         max_memory_gb: Maximum GPU memory to use
         **extra_kwargs: Additional model loading arguments
@@ -288,225 +288,75 @@ def load_model_any_precision(
         'fallback_reason': None
     }
     
-    # Determine device
-    if device_pref == "auto":
-        device = "cuda" if caps['cuda'] else "cpu"
-    else:
-        device = device_pref
+    # BF16 ONLY - no fallbacks
+    if not caps['cuda']:
+        raise RuntimeError("CUDA required for BF16 inference. CPU mode not supported.")
     
-    # Check if quantization is possible
-    can_quantize = caps['cuda'] and caps['bitsandbytes'] and caps['bnb_cuda']
+    if not caps['supports_bf16']:
+        raise RuntimeError("GPU does not support BF16. Minimum compute capability 8.0 required (Ampere or newer).")
     
-    # Auto-select quantization based on GPU memory
-    if prefer_quant == "auto" and can_quantize:
-        if caps['gpu_memory_gb'] < 12:
-            prefer_quant = "4bit"
-        elif caps['gpu_memory_gb'] < 24:
-            prefer_quant = "8bit"
-        else:
-            prefer_quant = None
+    # Only use BF16 - fail fast if not supported
+    device = "cuda"  # BF16 requires CUDA
     
-    # Loading attempts in order
-    attempts = []
+    logger.info("Loading model with BF16 precision (REQUIRED - no fallbacks)...")
     
-    # Build attempt list based on preferences
-    if can_quantize and prefer_quant == "8bit":
-        attempts.append(('8bit', _load_8bit))
-    if can_quantize and prefer_quant == "4bit":
-        attempts.append(('4bit', _load_4bit))
-    if can_quantize and prefer_quant != "4bit":
-        attempts.append(('4bit', _load_4bit))  # Fallback to 4bit
-    if can_quantize and prefer_quant != "8bit":
-        attempts.append(('8bit', _load_8bit))  # Fallback to 8bit
-    
-    # Add non-quantized fallbacks
-    if caps['cuda'] and caps['supports_bf16']:
-        attempts.append(('bf16', _load_bf16))
-    if caps['cuda']:
-        attempts.append(('fp16', _load_fp16))
-    attempts.append(('fp32', _load_fp32))
-    
-    # Try each loading method
-    last_error = None
-    for attempt_name, load_func in attempts:
-        try:
-            logger.info(f"Attempting to load model with {attempt_name} precision...")
-            model = load_func(
-                model_name,
-                device=device,
-                max_memory_gb=max_memory_gb,
-                **extra_kwargs
-            )
-            
-            info['method'] = attempt_name
-            info['device'] = device
-            
-            if '8bit' in attempt_name or '4bit' in attempt_name:
-                info['quantization'] = attempt_name
-            else:
-                info['dtype'] = attempt_name
-            
-            logger.info(f"✅ Successfully loaded model with {attempt_name} precision")
-            return model, info
-            
-        except Exception as e:
-            last_error = e
-            logger.warning(f"Failed to load with {attempt_name}: {e}")
-            if attempt_name == prefer_quant:
-                info['fallback_reason'] = str(e)
-            continue
-    
-    # All attempts failed
-    raise RuntimeError(f"Failed to load model with any precision. Last error: {last_error}")
+    try:
+        model = _load_bf16(
+            model_name,
+            device=device,
+            max_memory_gb=max_memory_gb,
+            **extra_kwargs
+        )
+        
+        info['method'] = 'bf16'
+        info['device'] = device
+        info['dtype'] = 'bf16'
+        
+        logger.info("✅ Successfully loaded model with BF16 precision")
+        return model, info
+        
+    except Exception as e:
+        logger.error(f"Failed to load model with BF16: {e}")
+        raise RuntimeError(f"BF16 loading failed (no fallbacks allowed): {e}")
 
 # ============================================================================
 # SPECIFIC LOADING FUNCTIONS
 # ============================================================================
 
-def _load_8bit(model_name: str, device: str, max_memory_gb: Optional[float] = None, **kwargs):
-    """Load model with 8-bit quantization."""
-    from transformers import AutoModelForCausalLM, BitsAndBytesConfig
-    import torch
-    
-    # Prepare quantization config
-    quantization_config = BitsAndBytesConfig(
-        load_in_8bit=True,
-        llm_int8_enable_fp32_cpu_offload=True
-    )
-    
-    # Prepare loading kwargs
-    load_kwargs = {
-        'trust_remote_code': True,
-        'low_cpu_mem_usage': True,
-        **kwargs
-    }
-    
-    # Handle version differences
-    transformers_version = _get_transformers_version()
-    if transformers_version >= (4, 30, 0):
-        # Newer versions use quantization_config
-        load_kwargs['quantization_config'] = quantization_config
-        load_kwargs['device_map'] = 'auto' if device == 'cuda' else None
-    else:
-        # Older versions use direct kwargs
-        load_kwargs.update(quantization_config.get_loading_attributes())
-        load_kwargs['device_map'] = 'auto' if device == 'cuda' else None
-    
-    if max_memory_gb and device == 'cuda':
-        load_kwargs['max_memory'] = {0: f"{int(max_memory_gb)}GB"}
-    
-    return AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
-
-def _load_4bit(model_name: str, device: str, max_memory_gb: Optional[float] = None, **kwargs):
-    """Load model with 4-bit quantization."""
-    from transformers import AutoModelForCausalLM, BitsAndBytesConfig
-    import torch
-    
-    # Determine compute dtype
-    compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    
-    # Prepare quantization config
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=compute_dtype
-    )
-    
-    # Prepare loading kwargs
-    load_kwargs = {
-        'trust_remote_code': True,
-        'low_cpu_mem_usage': True,
-        **kwargs
-    }
-    
-    # Handle version differences
-    transformers_version = _get_transformers_version()
-    if transformers_version >= (4, 30, 0):
-        load_kwargs['quantization_config'] = quantization_config
-        load_kwargs['device_map'] = 'auto' if device == 'cuda' else None
-    else:
-        load_kwargs.update(quantization_config.get_loading_attributes())
-        load_kwargs['device_map'] = 'auto' if device == 'cuda' else None
-    
-    if max_memory_gb and device == 'cuda':
-        load_kwargs['max_memory'] = {0: f"{int(max_memory_gb)}GB"}
-    
-    return AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+# BF16 ONLY - no quantization, no fallbacks
 
 def _load_bf16(model_name: str, device: str, max_memory_gb: Optional[float] = None, **kwargs):
-    """Load model with bfloat16 precision."""
+    """Load model with bfloat16 precision - REQUIRED, no fallbacks."""
     from transformers import AutoModelForCausalLM
     import torch
+    
+    # Verify BF16 support
+    if device != 'cuda':
+        raise RuntimeError("BF16 requires CUDA. CPU mode not supported.")
+    
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA not available. BF16 requires GPU.")
+    
+    if torch.cuda.get_device_capability()[0] < 8:
+        raise RuntimeError(f"GPU compute capability {torch.cuda.get_device_capability()} does not support BF16. Minimum 8.0 required (Ampere or newer).")
     
     load_kwargs = {
         'torch_dtype': torch.bfloat16,
         'trust_remote_code': True,
         'low_cpu_mem_usage': True,
+        'device_map': 'auto',
         **kwargs
     }
     
-    if device == 'cuda':
-        load_kwargs['device_map'] = 'auto'
-        if max_memory_gb:
-            load_kwargs['max_memory'] = {0: f"{int(max_memory_gb)}GB"}
+    if max_memory_gb:
+        load_kwargs['max_memory'] = {0: f"{int(max_memory_gb)}GB"}
     
+    logger.info("Loading model in BF16 precision (REQUIRED - no fallbacks)")
     model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
-    
-    if device == 'cpu':
-        model = model.to(device)
     
     return model
 
-def _load_fp16(model_name: str, device: str, max_memory_gb: Optional[float] = None, **kwargs):
-    """Load model with float16 precision."""
-    from transformers import AutoModelForCausalLM
-    import torch
-    
-    load_kwargs = {
-        'torch_dtype': torch.float16,
-        'trust_remote_code': True,
-        'low_cpu_mem_usage': True,
-        **kwargs
-    }
-    
-    if device == 'cuda':
-        load_kwargs['device_map'] = 'auto'
-        if max_memory_gb:
-            load_kwargs['max_memory'] = {0: f"{int(max_memory_gb)}GB"}
-    
-    model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
-    
-    if device == 'cpu':
-        model = model.to(device)
-    
-    return model
-
-def _load_fp32(model_name: str, device: str, max_memory_gb: Optional[float] = None, **kwargs):
-    """Load model with float32 precision (fallback)."""
-    from transformers import AutoModelForCausalLM
-    import torch
-    
-    logger.warning("Loading model in FP32 - this will use significant memory!")
-    
-    load_kwargs = {
-        'torch_dtype': torch.float32,
-        'trust_remote_code': True,
-        'low_cpu_mem_usage': True,
-        **kwargs
-    }
-    
-    if device == 'cuda':
-        load_kwargs['device_map'] = 'auto'
-        if max_memory_gb:
-            load_kwargs['max_memory'] = {0: f"{int(max_memory_gb)}GB"}
-    
-    model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
-    
-    if device == 'cpu':
-        model = model.to(device)
-    
-    return model
+# Removed FP16 and FP32 functions - BF16 only
 
 # ============================================================================
 # UTILITY FUNCTIONS

@@ -144,13 +144,11 @@ class ZeroCopyTileLoader:
         # Get raw bytes from mmap (no copying)
         tensor_bytes = mmap_view[data_start:data_start + element_count * torch_dtype.itemsize]
         
-        # Create numpy view (no copying)
-        if torch_dtype == torch.float16:
-            np_dtype = np.float16
-        elif torch_dtype == torch.int8:
-            np_dtype = np.int8
+        # Create numpy view (no copying) - BF16 ONLY
+        if torch_dtype == torch.bfloat16:
+            np_dtype = np.dtype('>f2')  # BF16 as 2-byte float
         else:
-            np_dtype = np.float16  # fallback
+            raise RuntimeError(f"Unsupported dtype {torch_dtype}. Only BF16 is allowed.")
         
         np_array = np.frombuffer(tensor_bytes, dtype=np_dtype)
         

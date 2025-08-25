@@ -228,7 +228,32 @@ class RateLimitHandler {
             const response = await fetch(`${API_CONFIG.baseURL}/rate-limit/status`);
             const data = await response.json();
             
-            alert(`Rate Limit Status:\n\nTier: ${data.rate_limit.tier}\nRemaining: ${data.rate_limit.remaining}/${data.rate_limit.limit}\nWindow: ${data.rate_limit.window_hours} hours\n\n${data.message}`);
+            // Show comprehensive status from ALL limiters
+            let statusMessage = `Rate Limit Status:\n\n`;
+            
+            if (data.blocked) {
+                statusMessage += `❌ BLOCKED: ${data.block_reason}\n\n`;
+            } else {
+                statusMessage += `✅ OK - You can make requests\n\n`;
+            }
+            
+            // Show each limiter status
+            statusMessage += `5-Hour Window:\n`;
+            statusMessage += `  Remaining: ${data.rate_limit.remaining}/${data.rate_limit.limit}\n`;
+            
+            if (data.limiters?.ssot?.blocked) {
+                statusMessage += `\nSSOT Limiter:\n`;
+                statusMessage += `  ❌ ${data.limiters.ssot.reason || 'Blocked'}\n`;
+            }
+            
+            if (data.limiters?.abuse?.blocked) {
+                statusMessage += `\nAbuse Detection:\n`;
+                statusMessage += `  ❌ ${data.limiters.abuse.reason || 'Blocked'}\n`;
+            }
+            
+            statusMessage += `\n${data.message}`;
+            
+            alert(statusMessage);
         } catch (error) {
             console.error('Failed to check rate limit status:', error);
             alert('Failed to check rate limit status. Please try again.');

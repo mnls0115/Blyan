@@ -57,7 +57,7 @@ class BlockchainLayerFetcher:
                                 result[key] = value
                             else:
                                 # Convert numpy or list to tensor
-                                result[key] = torch.tensor(value, dtype=torch.float16)
+                                result[key] = torch.tensor(value, dtype=torch.bfloat16)  # BF16 ONLY
                         
                         logger.info(f"Loaded layer {layer_name} from blockchain")
                         return result
@@ -80,7 +80,7 @@ class BlockchainLayerFetcher:
                             if isinstance(value, torch.Tensor):
                                 result[key] = value
                             else:
-                                result[key] = torch.tensor(value, dtype=torch.float16)
+                                result[key] = torch.tensor(value, dtype=torch.bfloat16)  # BF16 ONLY
                         
                         logger.info(f"Loaded layer {layer_name} from block file")
                         return result

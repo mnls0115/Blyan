@@ -20,8 +20,21 @@ Blyan is a distributed AI blockchain system using a dense model (Qwen3-8B) with 
 ### Model Architecture
 - **Model**: Qwen/Qwen3-8B (dense transformer, NOT MoE)
 - **Architecture**: 32 layers, 8B parameters
-- **Quantization**: FP8/NF4 for 16GB GPUs
+- **Precision Requirements**:
+  - **BF16 ONLY** for all learning and inference (no fallbacks)
+  - **Minimum GPU**: Compute capability 8.0+ (Ampere or newer)
+  - **EXCEPTION**: Teacher models use INT8 for validation only
 - **Distribution**: Pipeline parallelism across GPUs
+
+### ⚠️ Precision Policy
+- **Student Models**: BF16 only (required for numerical consistency)
+- **Inference Models**: BF16 only (all nodes must compute identically)
+- **Learning Models**: BF16 only (distributed training consistency)
+- **Teacher Models**: INT8 allowed (frozen, validation-only, allows older GPUs)
+  - Teacher is N-1 generation, read-only
+  - Used ONLY for quality gating, not learning
+  - 4x faster validation with INT8
+  - Enables older GPUs to participate as validators
 
 ### Blockchain-First Inference (MANDATORY)
 - **NEVER use local LLMs or HuggingFace models directly**
