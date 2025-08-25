@@ -166,10 +166,10 @@ class AtomicChatHandler:
                 detail=f"Resource limit exceeded: {denial_reason}"
             )
         
-            # Reserve the quota (will be rolled back on failure)
-            is_free_tier = (limits_info.get("free_requests_remaining", 0) > 0 or
-                           limits_info.get("bonus_requests_available", 0) > 0)
-            ctx.is_free_tier_request = is_free_tier
+        # Reserve the quota (will be rolled back on failure)
+        is_free_tier = (limits_info.get("free_requests_remaining", 0) > 0 or
+                       limits_info.get("bonus_requests_available", 0) > 0)
+        ctx.is_free_tier_request = is_free_tier
         
         if is_free_tier:
             # Reserve free tier quota
