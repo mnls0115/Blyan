@@ -525,14 +525,14 @@ async def monitoring_middleware(request: Request, call_next):
 from backend.security.rate_limiting import RateLimitMiddleware
 from backend.security.input_validation import validate_heartbeat_params
 
-# Only apply rate limiting if not disabled
-if not os.getenv("RATE_LIMIT_DISABLED", "false").lower() == "true":
-    rate_limit_middleware = RateLimitMiddleware(
-        default_limit=60,  # 60 requests per minute for basic tier
-        premium_limit=300,  # 300 requests per minute for premium
-        enterprise_limit=1000  # 1000 requests per minute for enterprise
-    )
-    app.middleware("http")(rate_limit_middleware)
+# PoL-based rate limiting DISABLED - only using basic 5-hour rate limiter
+# if not os.getenv("RATE_LIMIT_DISABLED", "false").lower() == "true":
+#     rate_limit_middleware = RateLimitMiddleware(
+#         default_limit=60,  # 60 requests per minute for basic tier
+#         premium_limit=300,  # 300 requests per minute for premium
+#         enterprise_limit=1000  # 1000 requests per minute for enterprise
+#     )
+#     app.middleware("http")(rate_limit_middleware)
 
 # Add CORS middleware (restrict in production)
 # Default to specific domains for production security
@@ -1327,7 +1327,9 @@ async def chat(req: ChatRequest, http_request: Request = None):
     
     metrics.estimated_cost = estimated_cost
     
-    # Abuse prevention check
+    # Abuse prevention check - DISABLED for testing
+    # Only use basic 5-hour rate limiting
+    """
     if http_request:
         abuse_system = get_abuse_prevention_system()
         fingerprint = RequestFingerprint(
@@ -1382,6 +1384,7 @@ async def chat(req: ChatRequest, http_request: Request = None):
                         "challenge_type": challenge_type.value
                     }
                 )
+    """
 
     # Rate limiting check
     if http_request:

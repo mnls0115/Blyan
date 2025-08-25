@@ -352,6 +352,12 @@ class Chain:
         if block_type == "genesis_pact":
             return depends_on
         
+        # Only the meta chain ('A') enforces a dependency on the Genesis Pact.
+        # Other chains must not inject cross-chain dependencies via depends_on
+        # (use points_to for cross-chain references instead).
+        if getattr(self, 'chain_id', None) != 'A':
+            return depends_on or []
+        
         # If chain is empty, don't add genesis dependency (bootstrap case)
         if len(self._hash_index) == 0:
             return depends_on or []
