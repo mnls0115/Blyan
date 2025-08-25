@@ -117,10 +117,14 @@ class FreeTierManager:
         
     def get_user_key(self, address: str) -> str:
         """Generate Redis key for user limits."""
+        if not address:
+            address = "anonymous"
         return f"user_limits:{address.lower()}"
     
     def get_user_limits(self, address: str) -> UserLimits:
         """Get user limits from Redis SSOT, creating default if not exists."""
+        if not address:
+            address = "anonymous"
         user_key = self.get_user_key(address)
         user_data = self.redis.hgetall(user_key)
         
@@ -163,6 +167,8 @@ class FreeTierManager:
     
     def _create_new_user(self, address: str) -> UserLimits:
         """Create new user with default newcomer limits."""
+        if not address:
+            address = "anonymous"
         trust_level = TrustLevel.NEWCOMER
         base_limits = self.TRUST_LEVEL_LIMITS[trust_level]
         current_time = time.time()
@@ -255,6 +261,8 @@ class FreeTierManager:
             - reason: Reason if denied
             - limits_info: Current user limits for client display
         """
+        if not address:
+            address = "anonymous"
         limits = self.get_user_limits(address)
         
         # Check token limits
