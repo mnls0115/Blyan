@@ -178,7 +178,7 @@ class ProductionInferencePipeline:
         # Generate response
         response = blockchain_manager.generate(
             prompt=prompt,
-            max_tokens=max_new_tokens
+            max_new_tokens=max_new_tokens
         )
         
         # Estimate token count

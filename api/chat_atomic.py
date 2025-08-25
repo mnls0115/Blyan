@@ -87,11 +87,11 @@ class AtomicChatHandler:
             # Prepare response
             response = AtomicChatResponse(
                 response=result["response"],
-                expert_usage=result.get("expert_usage", {}),
+                layers_used=result.get("layers_used", {}),
                 inference_time=result["inference_time"],
                 transaction_id=ctx.transaction_id,
-                actual_cost=result.get("actual_cost"),
-                tokens_used=result.get("tokens_used")
+                actual_cost=result.get("actual_cost", 0.0),
+                tokens_generated=result.get("tokens_generated", 0)
             )
             
             # Save for idempotency
@@ -285,62 +285,77 @@ class AtomicChatHandler:
         start_time = time.time()
         
         try:
-            # Import inference modules
-            from backend.model.moe_infer import get_moe_manager
+            # Import dense model inference modules (NOT MoE!)
+            from backend.model.manager import get_model_manager
             from backend.p2p.distributed_inference import get_distributed_coordinator
+            from backend.inference.production_pipeline import get_production_pipeline
+            from pathlib import Path
             
-            model_manager = get_moe_manager()
             distributed_coordinator = get_distributed_coordinator()
             
-            # Check for distributed inference
-            if request.use_moe and distributed_coordinator and distributed_coordinator.registry.nodes:
-                # Use distributed inference
-                available_experts = list(distributed_coordinator.registry.expert_to_nodes.keys())
+            # Check if we have GPU nodes for distributed inference
+            has_gpu_nodes = (distributed_coordinator and 
+                           hasattr(distributed_coordinator, 'registry') and 
+                           distributed_coordinator.registry and 
+                           hasattr(distributed_coordinator.registry, 'nodes') and
+                           distributed_coordinator.registry.nodes)
+            
+            # Use production pipeline for inference
+            if has_gpu_nodes:
+                # Distributed inference across GPU nodes
+                production_pipeline = get_production_pipeline(distributed_coordinator)
+                result = await production_pipeline.process_request(
+                    prompt=request.prompt,
+                    use_distributed=True,
+                    max_new_tokens=request.max_new_tokens,
+                    temperature=request.temperature,
+                    stream=request.stream
+                )
                 
-                if available_experts:
-                    selected_experts = available_experts[:request.top_k_experts]
-                    
-                    prefer_donor = getattr(ctx, "is_free_tier_request", False)
-                    response_text, routing_info = await distributed_coordinator.distribute_inference(
-                        prompt=request.prompt,
-                        required_experts=selected_experts,
-                        max_new_tokens=request.max_new_tokens,
-                        prefer_donor=prefer_donor
-                    )
-                    
-                    ctx.inference_completed = True
-                    
-                    return {
-                        "response": response_text,
-                        "expert_usage": routing_info.get('expert_usage', {}),
-                        "inference_time": time.time() - start_time,
-                        "tokens_used": len(response_text.split())  # Approximate
-                    }
-            
-            # Fallback to local MoE inference
-            if request.use_moe:
-                answer, expert_usage = model_manager.generate_with_moe(
-                    request.prompt,
-                    top_k=request.top_k_experts,
-                    max_new_tokens=request.max_new_tokens
-                )
+                ctx.inference_completed = True
+                
+                return {
+                    "response": result.get("response", ""),
+                    "layers_used": result.get("pipeline_stages", {}),  # Dense layers, not experts
+                    "inference_time": time.time() - start_time,
+                    "tokens_generated": result.get("tokens_generated", 0),
+                    "actual_cost": 0.001 * result.get("tokens_generated", 0)  # Simple cost calculation
+                }
             else:
-                # Standard inference
-                answer = model_manager.generate(
-                    request.prompt,
-                    max_new_tokens=request.max_new_tokens
-                )
-                expert_usage = {}
+                # Local dense model inference (single GPU or CPU)
+                model_manager = get_model_manager(Path("./data"))
+                
+                # Generate response - model manager will auto-load if needed
+                try:
+                    answer = model_manager.generate(
+                        prompt=request.prompt,
+                        max_new_tokens=request.max_new_tokens,
+                        temperature=request.temperature
+                    )
+                except Exception as gen_error:
+                    logger.error(f"Failed to generate response: {gen_error}")
+                    # If no GPU nodes and can't generate, return helpful error
+                    raise HTTPException(
+                        status_code=503,
+                        detail="No GPU nodes available and unable to generate response locally. Please wait for GPU nodes to come online or ensure blockchain contains model weights."
+                    )
+                
+                ctx.inference_completed = True
+                
+                # Estimate tokens
+                tokens_generated = len(answer.split()) * 1.3  # Rough estimate
+                
+                return {
+                    "response": answer,
+                    "layers_used": {},  # No distributed layers for local inference
+                    "inference_time": time.time() - start_time,
+                    "tokens_generated": int(tokens_generated),
+                    "actual_cost": 0.001 * tokens_generated
+                }
             
-            ctx.inference_completed = True
-            
-            return {
-                "response": answer,
-                "expert_usage": expert_usage,
-                "inference_time": time.time() - start_time,
-                "tokens_used": len(answer.split())  # Approximate
-            }
-            
+        except HTTPException:
+            # Re-raise HTTP exceptions with proper error messages
+            raise
         except Exception as e:
             logger.error(f"Inference failed: {e}")
             raise HTTPException(
