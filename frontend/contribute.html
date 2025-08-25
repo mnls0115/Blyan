@@ -368,12 +368,34 @@
 <body>
     <div id="header-container"></div>
 
+    <!-- Development Notice -->
+    <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(239, 68, 68, 0.1)); border: 2px solid rgba(245, 158, 11, 0.5); border-radius: 12px; padding: 24px; margin: 40px auto; max-width: 800px; text-align: center;">
+        <h2 style="color: #f59e0b; margin: 0 0 12px 0; display: flex; align-items: center; justify-content: center; gap: 12px;">
+            🚧 Feature Under Development
+        </h2>
+        <p style="color: var(--color-text-primary); font-size: 1.1rem; margin: 0 0 16px 0; font-weight: 500;">
+            The GPU node contribution system is currently being developed and tested.
+        </p>
+        <p style="color: var(--color-text-secondary); margin: 0 0 16px 0;">
+            We're building a decentralized network where GPU owners can contribute computing power for AI inference and earn BLY tokens. 
+            The system is in active development and will be available soon.
+        </p>
+        <div style="background: rgba(59, 130, 246, 0.1); border-radius: 8px; padding: 16px; margin-top: 20px;">
+            <p style="margin: 0 0 8px 0; color: var(--color-text-primary); font-weight: 600;">
+                📅 Expected Timeline: Q1 2025
+            </p>
+            <p style="margin: 0; color: var(--color-text-secondary); font-size: 0.9rem;">
+                Join our community to get notified when node registration opens
+            </p>
+        </div>
+    </div>
+
     <!-- Requirements Section -->
     <div class="feature-section" style="padding-top: 40px;">
         <div class="section-container">
             <div class="section-header">
-                <h2 class="section-title" data-i18n="systemRequirements">System Requirements</h2>
-                <p class="section-subtitle" data-i18n="systemRequirementsDesc">What you need to join the network</p>
+                <h2 class="section-title" data-i18n="systemRequirements">System Requirements (Preview)</h2>
+                <p class="section-subtitle" data-i18n="systemRequirementsDesc">What you'll need to join the network when it launches</p>
             </div>
             <div class="requirements-grid">
                 <div class="requirement-item">
@@ -409,11 +431,16 @@
     </div>
 
     <!-- Quick Setup Guide Section (Docker) -->
-    <div class="feature-section alt-background">
+    <div class="feature-section alt-background" style="opacity: 0.7;">
         <div class="section-container">
             <div class="section-header">
-                <h2 class="section-title">🚀 Quick Setup with Docker (Recommended)</h2>
-                <p class="section-subtitle">Join the network in 5 simple steps using Docker</p>
+                <h2 class="section-title">🚀 Quick Setup with Docker (Coming Soon)</h2>
+                <p class="section-subtitle">How you'll join the network when it launches</p>
+                <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.5); border-radius: 8px; padding: 12px; margin-top: 16px;">
+                    <p style="margin: 0; color: var(--color-text-primary);">
+                        ⚠️ <strong>Note:</strong> These instructions are for preview only. The JOIN_CODE system is not yet active.
+                    </p>
+                </div>
             </div>
             
             <!-- Quick link to Common Concepts -->
@@ -427,17 +454,18 @@
                     <div class="step-title">Step 1: Get Your JOIN_CODE</div>
                     <div class="step-description">Request a one-time enrollment code</div>
                     <div style="padding: 16px; background: rgba(59, 130, 246, 0.03); border-radius: 8px; border-left: 4px solid #3b82f6; margin-top: 12px;">
-                        <button onclick="requestJoinCode()" style="
-                            background: var(--color-primary);
+                        <button onclick="alert('The JOIN_CODE system will be available when the network launches in Q1 2025.')" style="
+                            background: #9ca3af;
                             color: var(--color-background);
                             border: none;
                             padding: 10px 20px;
                             border-radius: 6px;
-                            cursor: pointer;
+                            cursor: not-allowed;
                             font-weight: 600;
                             margin-bottom: 12px;
-                        " id="joinCodeBtn">
-                            Request Join Code
+                            opacity: 0.6;
+                        " id="joinCodeBtn" disabled>
+                            Request Join Code (Coming Soon)
                         </button>
                         <div id="joinCodeResult" style="display: none; margin-top: 12px; padding: 12px; background: rgba(34, 197, 94, 0.03); border-radius: 6px;">
                             <strong>Your Join Code:</strong> <code id="joinCodeDisplay" style="font-size: 1.2em; font-weight: bold;"></code><br>
@@ -868,11 +896,11 @@
     </div>
 
     <!-- Rewards Section -->
-    <div class="stats-section">
+    <div class="stats-section" style="opacity: 0.7;">
         <div class="section-container">
             <div class="section-header">
-                <h2 class="section-title" data-i18n="earningPotential">Earning Potential</h2>
-                <p class="section-subtitle" data-i18n="earningPotentialDesc">Estimated rewards based on GPU type</p>
+                <h2 class="section-title" data-i18n="earningPotential">Planned Earning Potential</h2>
+                <p class="section-subtitle" data-i18n="earningPotentialDesc">Projected rewards when the network launches (subject to change)</p>
             </div>
             <div class="stats-grid">
                 <div class="stat-item">

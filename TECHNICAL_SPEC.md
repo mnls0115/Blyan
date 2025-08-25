@@ -4,14 +4,14 @@
 ## 1. System Overview
 
 ### 1.1 Architecture Summary
-Blyan Network implements a distributed Mixture-of-Experts (MoE) AI system using a dual-chain blockchain architecture with DAG structure for parallel expert evolution. The system combines Proof-of-Learning (PoL) consensus for AI advancement with Proof-of-Stake (PoS) for transaction security.
+Blyan Network implements a distributed dense model AI system (Qwen3-8B) using a dual-chain blockchain architecture with DAG structure for parallel layer evolution. The system uses Proof-of-Learning (PoL) validation for verifying model improvements through loss comparison and fraud detection.
 
 ### 1.2 Core Components
-- **Blockchain Layer**: Two-chain architecture (Transaction + PoL chains)
-- **AI Layer**: GPT OSS 20B MoE model with 384 expert blocks
-- **P2P Network**: Distributed inference and training coordination
-- **Storage Layer**: Hybrid on-chain/off-chain with IPFS integration
-- **Economic Layer**: BLY token with dynamic reward distribution
+- **Blockchain Layer**: Dual-chain architecture (Meta chain A + Parameter chain B)
+- **AI Layer**: Qwen3-8B dense model with 32 transformer layers
+- **P2P Network**: Distributed inference with pipeline parallelism
+- **Storage Layer**: Hybrid on-chain weights with zero-copy GPU loading
+- **Economic Layer**: BLY token with automatic hourly reward distribution
 
 ### 1.3 Technology Stack
 - **Language**: Python 3.10+
@@ -44,15 +44,15 @@ class TransactionChain:
 ```python
 class PoLChain:
     purpose: str = "AI model improvements"
-    validation: str = "Quality-based consensus"
-    epochs: str = "24-hour cycles"
-    rewards: str = "BLY token minting"
+    validation: str = "Loss comparison on validation datasets"
+    fraud_detection: str = "Statistical outlier analysis"
+    rewards: str = "Automatic BLY distribution"
     
     features:
-        - Expert weight storage
-        - Training verification
-        - Merkle root anchoring
-        - Cross-chain bridge
+        - Layer weight storage (append-only)
+        - Delta validation with fraud detection
+        - Confidence scoring based on improvement
+        - Hourly reward distribution cycles
 ```
 
 ### 2.2 DAG Structure
@@ -61,17 +61,17 @@ class PoLChain:
 ```python
 class BlockType(Enum):
     META = "meta"        # Model architecture
-    EXPERT = "expert"    # Expert weights
-    ROUTER = "router"    # Routing logic
-    DATA = "data"        # Training datasets
+    LAYER = "layer"      # Layer weights (dense model)
     DELTA = "delta"      # Weight updates
+    DATA = "dataset"     # Training data metadata
+    MIGRATION = "migration"  # Layer dimension changes
 ```
 
 #### DAG Properties
-- **Parallel Evolution**: Experts evolve independently
-- **Dependency Tracking**: `depends_on` field for relationships
+- **Append-Only**: New blocks are always appended, never replaced
+- **Dependency Tracking**: `depends_on` field for parent relationships
 - **Cycle Prevention**: Topological sorting validation
-- **Version Control**: SemVer for expert versions
+- **No Merging**: Parallel branches exist independently without intelligent merging
 
 ### 2.3 Consensus Mechanisms
 
@@ -100,16 +100,28 @@ def select_validators(stake_pool: Dict[str, int]) -> List[str]:
 ```python
 def validate_improvement(
     delta: TensorDict,
-    baseline_loss: float,
+    original_weights: Dict,
     validation_set: Dataset
-) -> bool:
+) -> PoLScore:
     """
-    Verify model improvement on public validation set
+    Comprehensive delta evaluation with fraud detection
     """
-    improved_loss = evaluate_with_delta(delta, validation_set)
-    improvement = (baseline_loss - improved_loss) / baseline_loss
+    # Apply delta and evaluate
+    candidate_weights = apply_delta(original_weights, delta)
+    loss_before = evaluate_weights(original_weights, validation_set)
+    loss_after = evaluate_weights(candidate_weights, validation_set)
     
-    return improvement >= 0.01  # 1% minimum threshold
+    # Calculate improvement and detect fraud
+    improvement_score = (loss_before - loss_after) / loss_before
+    fraud_probability = detect_fraud_patterns(delta, improvement_score)
+    confidence = calculate_confidence(improvement_score, fraud_probability)
+    
+    return PoLScore(
+        is_valid=(improvement_score >= 0.005 and fraud_probability < 0.7),
+        improvement_score=improvement_score,
+        fraud_probability=fraud_probability,
+        confidence_score=confidence
+    )
 ```
 
 ## 3. AI Model Architecture
@@ -255,22 +267,28 @@ class LoadBalancer:
 
 #### Zero-Copy Implementation
 ```python
-class TensorBlock:
-    """Memory-mapped tensor storage"""
+class ZeroCopyTileLoader:
+    """Zero-copy loading from blockchain to GPU memory"""
     
-    def __init__(self, data: bytes, metadata: Dict):
-        self.mmap = mmap.mmap(-1, len(data))
-        self.mmap.write(data)
-        self.shape = metadata['shape']
-        self.dtype = metadata['dtype']
-        self.quantization = metadata.get('quantization', 'none')
-    
-    def to_tensor(self) -> torch.Tensor:
-        """Zero-copy tensor creation"""
-        buffer = torch.from_numpy(
-            np.frombuffer(self.mmap, dtype=self.dtype)
+    def load_tile(self, tile_hash: str, device: str = 'cuda') -> torch.Tensor:
+        """
+        Load tensor with minimal copying:
+        - Memory-map blockchain file (no copy)
+        - Create tensor view from mmap (no copy)
+        - Pin memory for GPU transfer
+        - Transfer to GPU (single copy)
+        
+        Traditional: blockchain → deserialize → tensor → GPU (3 copies)
+        Zero-copy: mmap → torch.frombuffer → pin_memory → GPU (1 copy)
+        """
+        mmap_view = self._get_mmap_view(tile_hash)
+        tensor_view = torch.from_numpy(
+            np.frombuffer(mmap_view, dtype=np.float16)
         )
-        return buffer.reshape(self.shape)
+        if device != 'cpu':
+            tensor_view = tensor_view.pin_memory()
+            return tensor_view.to(device, non_blocking=True)
+        return tensor_view
 ```
 
 ## 5. Network Protocol

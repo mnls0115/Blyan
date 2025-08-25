@@ -269,15 +269,15 @@ class BlyanGPUNode:
             
             logger.info("📂 Initializing blockchains...")
             
-            # Check if chains already exist locally
-            chains_exist = (DATA_DIR / "chain_A").exists()
+            # Check if chains already exist locally (correct directories: A/B/D)
+            chains_exist = (DATA_DIR / "A").exists() or (DATA_DIR / "B").exists() or (DATA_DIR / "D").exists()
             
             if chains_exist:
                 logger.info("   ✅ Loading existing chains from disk...")
-                # Log chain sizes
+                # Log chain sizes using correct paths
                 import glob
                 for chain_id in ['A', 'B', 'D']:
-                    chain_dir = DATA_DIR / f"chain_{chain_id}"
+                    chain_dir = DATA_DIR / chain_id
                     if chain_dir.exists():
                         block_count = len(list(chain_dir.glob("*.json")))
                         logger.info(f"      Chain {chain_id}: {block_count} blocks on disk")

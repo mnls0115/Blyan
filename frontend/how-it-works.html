@@ -436,7 +436,7 @@
                             <ul>
                                 <li>Pipeline setup: Coordinator assigns layer ranges to nodes based on GPU memory capacity</li>
                                 <li>Sequential processing: Hidden states flow through pipeline stages from embedding to output</li>
-                                <li>Zero-copy streaming: Tensor data streams between nodes without CPU transfers</li>
+                                <li>Zero-copy loading: Tensors load directly from blockchain blocks to GPU memory without CPU copies</li>
                             </ul>
                         </div>
                     </div>
@@ -451,14 +451,14 @@
                         <div class="process-number">2</div>
                         <h2 class="process-title">Proof-of-Learning (PoL) & Model Updates</h2>
                         <p class="process-description">
-                            Through our Proof-of-Learning (PoL) consensus mechanism, nodes validate model improvements by demonstrating measurable quality gains. When idle, nodes automatically engage in PoL training to improve their assigned layers. Contributors evolve individual layer weights through delta blocks and migration blocks that track parameter changes. During high inference demand, PoL accelerates as the system accumulates rewards that can be distributed to contributing nodes.
+                            Through our Proof-of-Learning (PoL) consensus mechanism, nodes validate model improvements by demonstrating measurable quality gains on validation datasets. When idle, nodes automatically engage in PoL training to improve their assigned layers. Contributors submit layer weight updates as delta blocks that are validated through loss comparison, fraud detection, and confidence scoring. Rewards are automatically distributed based on actual improvements, with hourly distribution cycles tracking inference usage, learning contributions, and validation tasks.
                         </p>
                         <div class="process-details">
                             <ul>
-                                <li>Proof-of-Learning validation: Nodes must prove their training improved model quality to earn rewards</li>
-                                <li>Idle time PoL training: Nodes train their assigned layers when not serving inference requests</li>
-                                <li>Demand-driven evolution: High inference activity generates more rewards, incentivizing rapid improvements</li>
-                                <li>Layer evolution: New layer versions branch from existing ones, validated through PoL consensus</li>
+                                <li>Proof-of-Learning validation: Delta weights are validated by comparing loss before/after on validation datasets</li>
+                                <li>Fraud detection: Statistical analysis detects suspicious improvements and gradient poisoning attempts</li>
+                                <li>Automatic reward distribution: Hourly cycles distribute BLY tokens based on tracked contributions</li>
+                                <li>Layer evolution: New layer versions are appended as delta blocks to the parameter chain</li>
                             </ul>
                         </div>
                     </div>
@@ -480,7 +480,7 @@
                                 <li>Node registration: Join with GPU specs and receive appropriate layer assignments</li>
                                 <li>Pipeline participation: Process assigned layer computations as part of distributed inference</li>
                                 <li>Idle time PoL training: Train and improve assigned layers during idle time</li>
-                                <li>Performance-based rewards: Distribution based on pipeline participation and layer quality</li>
+                                <li>Performance-based rewards: Automatic distribution based on usage metrics, quality scores, and validation results</li>
                             </ul>
                         </div>
                     </div>
@@ -495,14 +495,14 @@
                         <div class="process-number">4</div>
                         <h2 class="process-title">Data Pool & Training Data Flow</h2>
                         <p class="process-description">
-                            The Blyan Data Pool ensures that training data is transparent, deduplicated, and reusable across the network. User uploads (JSON, CSV, PDF, TXT) and curated internet datasets (Wikipedia, C4, BookCorpus, etc.) are ingested through adapters, normalized, and chunked into token-level segments. Each piece of data is verified, scored, and stored as a content-addressed block with Merkle proofs for auditability.
+                            The Blyan Data Pool provides a transparent data management system for training. User uploads (JSON, CSV, PDF, TXT) and text data are ingested, normalized, and chunked into segments. Each chunk is deduplicated using MinHash/SimHash, quality-scored into tiers (Gold/Silver/Bronze), and stored with content addressing (BLAKE3 hashing). Metadata is recorded on Chain D for transparency and auditability.
                         </p>
                         <div class="process-details">
                             <ul>
                                 <li><strong>Ingestion & Validation:</strong> Data passes through format adapters, PII redaction, license checks, and deduplication (BLAKE3 + MinHash/SimHash). Quality scoring classifies chunks into Gold, Silver, or Bronze tiers.</li>
                                 <li><strong>Transparent Storage:</strong> Verified chunks are stored in a content-addressed system, with metadata logged to Chain D for integrity. The catalog is dual-layered: a private index for operators and a public version for transparency.</li>
                                 <li><strong>No-Reuse Guarantee:</strong> Each expert tracks its used data via efficient Cuckoo filters, ensuring new epochs always receive fresh, unseen data.</li>
-                                <li><strong>Fair Distribution:</strong> The scheduler balances data across GPU nodes using consistent hashing, guaranteeing coverage across experts while avoiding duplication.</li>
+                                <li><strong>Data Serving:</strong> The system tracks which chunks have been used by each node, serving fresh data for new training epochs.</li>
                                 <li><strong>Right-to-be-Forgotten:</strong> Users can request deletion at any time, triggering a full GDPR-compliant removal across catalogs, storage, and usage ledgers.</li>
                             </ul>
                             <p style="margin-top: 16px; color: var(--color-text-secondary);">
@@ -538,14 +538,14 @@
                     <div class="tech-icon">🔗</div>
                     <h3 class="tech-title">Dual-Chain Architecture</h3>
                     <p class="tech-description">
-                        Chain A stores model architecture specifications, Chain B stores layer weights. Dependency tracking enables parallel layer evolution branches that merge intelligently.
+                        Chain A stores model architecture specifications, Chain B stores layer weights as append-only blocks. Dependencies are tracked through DAG structure, enabling parallel branches for different layer versions.
                     </p>
                 </div>
                 <div class="tech-card animate-in">
                     <div class="tech-icon">🛡️</div>
                     <h3 class="tech-title">Evolution Block System</h3>
                     <p class="tech-description">
-                        Blocks track parent relationships, version numbers, evolution types, and dimensional changes. Compatible versions merge automatically while incompatible branches fork.
+                        Blocks track parent relationships and evolution types through delta blocks and migration blocks. New improvements are appended to the chain after PoL validation, creating an auditable history of model evolution.
                     </p>
                 </div>
                 <div class="tech-card animate-in">
@@ -566,7 +566,7 @@
                     <div class="tech-icon">📊</div>
                     <h3 class="tech-title">Reward Distribution System</h3>
                     <p class="tech-description">
-                        The system tracks contributions and distributes rewards based on actual usage, quality metrics, and network demand. Maintains economic balance through controlled token distribution.
+                        Automatic hourly distribution of BLY tokens based on tracked contributions: inference serving (token count × quality), learning improvements (PoL validation scores), validation tasks, and dataset contributions. Includes idempotency guarantees to prevent double-payments.
                     </p>
                 </div>
             </div>
