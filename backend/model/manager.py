@@ -67,9 +67,16 @@ class UnifiedModelManager:
             logger.info(f"📦 Initializing blockchain loader...")
             logger.info(f"   Root dir: {self.root_dir}")
             
+            # Ensure root dir exists
+            self.root_dir.mkdir(parents=True, exist_ok=True)
+            
             # Initialize chains with proper parameters
-            self.meta_chain = Chain(self.root_dir, "A", difficulty=1, skip_pol=True)
-            self.param_chain = Chain(self.root_dir, "B", difficulty=1, skip_pol=True)
+            # Check environment for PoL settings
+            skip_pol = os.environ.get('SKIP_POL', 'false').lower() == 'true'
+            self.meta_chain = Chain(self.root_dir, "A", difficulty=1, skip_pol=skip_pol)
+            self.param_chain = Chain(self.root_dir, "B", difficulty=1, skip_pol=skip_pol)
+            
+            # Initialize indices
             self.param_index = ParameterIndex(self.root_dir / "param_index.json")
             self.delta_index = DeltaIndex(self.root_dir / "delta_index.json")
             
@@ -145,11 +152,31 @@ class UnifiedModelManager:
     
     def _has_blockchain_weights(self) -> bool:
         """Check if we have valid blockchain weights."""
-        if not hasattr(self, 'param_index'):
+        try:
+            # Check param_index file directly
+            param_index_path = self.root_dir / "param_index.json"
+            if not param_index_path.exists():
+                logger.debug(f"No param_index found at {param_index_path}")
+                return False
+            
+            # Ensure param_index is loaded
+            if not hasattr(self, 'param_index'):
+                from backend.core.param_index import ParameterIndex
+                self.param_index = ParameterIndex(param_index_path)
+            
+            layers = self.param_index.get_all_layers()
+            logger.debug(f"Found {len(layers)} layers in param_index: {layers[:3]}...")
+            
+            # Need at least embedding, one layer, and lm_head
+            has_weights = len(layers) >= 3
+            if has_weights:
+                logger.info(f"✅ Found blockchain weights: {len(layers)} components")
+            else:
+                logger.info(f"❌ Insufficient blockchain weights: {len(layers)} components (need >= 3)")
+            return has_weights
+        except Exception as e:
+            logger.warning(f"Error checking blockchain weights: {e}")
             return False
-        layers = self.param_index.get_all_layers()
-        # Need at least embedding, one layer, and lm_head
-        return len(layers) >= 3
     
     def _load_or_cache_tokenizer(self) -> None:
         """Load tokenizer from cache or download once."""

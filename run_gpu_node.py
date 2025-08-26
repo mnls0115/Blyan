@@ -2119,6 +2119,23 @@ class BlyanGPUNode:
         log_step(startup_steps[current_step-1], current_step)
         sync_success = await self.sync_from_peers()
         
+        # 5.5. Wait for auto-upload to complete if it was triggered
+        if AUTO_UPLOAD and hasattr(self, '_upload_triggered_from_block_building'):
+            logger.info("⏳ Waiting for model upload to complete before initializing model manager...")
+            max_wait = 600  # 10 minutes max
+            wait_start = time.time()
+            while hasattr(self, '_upload_in_progress') and self._upload_in_progress:
+                if time.time() - wait_start > max_wait:
+                    logger.warning("Upload taking too long, proceeding anyway")
+                    break
+                await asyncio.sleep(5)
+                elapsed = time.time() - wait_start
+                if int(elapsed) % 30 == 0:  # Log every 30 seconds
+                    logger.info(f"   Still uploading... ({elapsed:.0f}s elapsed)")
+            
+            if hasattr(self, 'upload_completed') and self.upload_completed:
+                logger.info("✅ Upload completed, proceeding with model manager initialization")
+        
         # 6. Initialize model manager
         current_step += 1
         log_step(startup_steps[current_step-1], current_step)
