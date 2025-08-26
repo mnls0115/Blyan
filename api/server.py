@@ -864,27 +864,12 @@ def _startup():
         print(f"⚠️  Model initialization failed: {e}")
         # Continue without models
     
-    # Wire scheduler to distributed coordinator
-    try:
-        if distributed_coordinator:
-            scheduler_integration = SchedulerIntegration()
-            scheduler_integration.connect_inference_coordinator(distributed_coordinator)
-    except Exception as e:
-        logger.warning(f"Failed to wire scheduler: {e}")
-    
-    # Initialize production inference pipeline
-    global production_pipeline
-    production_pipeline = None
-    try:
-        from backend.inference.production_pipeline import get_production_pipeline
-        production_pipeline = get_production_pipeline(distributed_coordinator)
-        logger.info("✅ Production inference pipeline initialized")
-    except Exception as e:
-        logger.warning(f"Failed to initialize production pipeline: {e}")
-    
-    # Initialize distributed coordinator for P2P
+    # Initialize distributed coordinator for P2P (declare global first)
     global distributed_coordinator
+    global production_pipeline
+    
     distributed_coordinator = None
+    production_pipeline = None
     
     # Try to initialize distributed coordinator
     if not MINIMAL_MODE:
@@ -895,6 +880,22 @@ def _startup():
         except Exception as e:
             logger.warning(f"Failed to initialize distributed coordinator: {e}")
             logger.info("ℹ️  Server will run without P2P support")
+    
+    # Wire scheduler to distributed coordinator
+    try:
+        if distributed_coordinator:
+            scheduler_integration = SchedulerIntegration()
+            scheduler_integration.connect_inference_coordinator(distributed_coordinator)
+    except Exception as e:
+        logger.warning(f"Failed to wire scheduler: {e}")
+    
+    # Initialize production inference pipeline
+    try:
+        from backend.inference.production_pipeline import get_production_pipeline
+        production_pipeline = get_production_pipeline(distributed_coordinator)
+        logger.info("✅ Production inference pipeline initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize production pipeline: {e}")
     
     # Initialize learning coordinator (production version with fault tolerance)
     global learning_coordinator
