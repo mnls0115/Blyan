@@ -996,7 +996,11 @@ class BlyanGPUNode:
                     buffer = io.BytesIO()
                     tensors_to_save = {}
                     for key in embedding_keys:
-                        tensors_to_save[key] = state_dict[key]
+                        # ENSURE BFLOAT16 before saving to blockchain
+                        tensor = state_dict[key]
+                        if tensor.dtype != torch.bfloat16:
+                            tensor = tensor.to(torch.bfloat16)
+                        tensors_to_save[key] = tensor
                     
                     torch.save(tensors_to_save, buffer)
                     payload = buffer.getvalue()
@@ -1040,7 +1044,11 @@ class BlyanGPUNode:
                     buffer = io.BytesIO()
                     tensors_to_save = {}
                     for key in layer_keys:
-                        tensors_to_save[key] = state_dict[key]  # Keep on GPU
+                        # ENSURE BFLOAT16 before saving to blockchain
+                        tensor = state_dict[key]
+                        if tensor.dtype != torch.bfloat16:
+                            tensor = tensor.to(torch.bfloat16)
+                        tensors_to_save[key] = tensor
                     
                     torch.save(tensors_to_save, buffer)
                     payload = buffer.getvalue()
@@ -1081,7 +1089,11 @@ class BlyanGPUNode:
                     buffer = io.BytesIO()
                     tensors_to_save = {}
                     for key in lm_head_keys:
-                        tensors_to_save[key] = state_dict[key]  # Keep on GPU
+                        # ENSURE BFLOAT16 before saving to blockchain
+                        tensor = state_dict[key]
+                        if tensor.dtype != torch.bfloat16:
+                            tensor = tensor.to(torch.bfloat16)
+                        tensors_to_save[key] = tensor
                     
                     torch.save(tensors_to_save, buffer)
                     payload = buffer.getvalue()
