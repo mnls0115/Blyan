@@ -42,19 +42,14 @@ async def enable_local_inference():
         use_gpu_direct=True
     )
     
-    # Load the model from blockchain
-    logger.info("📦 Loading model from blockchain...")
+    # Test inference - model loads automatically on first generate
+    logger.info("📦 Testing inference (model will auto-load from blockchain)...")
     try:
-        model_manager.load_model()
-        logger.info("✅ Model loaded successfully from blockchain")
-        
-        # Test inference
-        logger.info("🧪 Testing inference...")
         response = model_manager.generate(
             prompt="Hello, this is a test.",
             max_new_tokens=20
         )
-        logger.info(f"✅ Test response: {response}")
+        logger.info(f"✅ Model loaded and working! Test response: {response}")
         
         # Register as local GPU node
         logger.info("📝 Registering as local GPU node...")
