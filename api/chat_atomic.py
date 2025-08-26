@@ -285,13 +285,12 @@ class AtomicChatHandler:
         start_time = time.time()
         
         try:
-            # Import dense model inference modules (NOT MoE!)
-            from backend.model.manager import get_model_manager
-            from backend.inference.production_pipeline import get_production_pipeline
-            from pathlib import Path
-            
-            # Use the global distributed coordinator from server
+            # Import GPU forwarding module
+            from backend.p2p.batch_inference import get_gpu_forwarder
             from api.server import distributed_coordinator
+            
+            # Get the GPU forwarder
+            forwarder = get_gpu_forwarder(distributed_coordinator)
             
             # Check if we have GPU nodes for distributed inference
             has_gpu_nodes = (distributed_coordinator and 
@@ -300,29 +299,68 @@ class AtomicChatHandler:
                            hasattr(distributed_coordinator.registry, 'nodes') and
                            distributed_coordinator.registry.nodes)
             
-            # Use production pipeline for inference
+            # Use GPU forwarder for inference
             if has_gpu_nodes:
-                # Distributed inference across GPU nodes
-                production_pipeline = get_production_pipeline(distributed_coordinator)
-                result = await production_pipeline.process_request(
+                # Forward inference request to GPU nodes
+                logger.info(f"Forwarding inference request to GPU nodes (prompt: {len(request.prompt)} chars)")
+                
+                result = await forwarder.process_inference(
                     prompt=request.prompt,
-                    use_distributed=True,
                     max_new_tokens=request.max_new_tokens,
-                    temperature=request.temperature,
-                    stream=request.stream
+                    temperature=request.temperature
                 )
                 
                 ctx.inference_completed = True
                 
-                return {
-                    "response": result.get("response", ""),
-                    "layers_used": result.get("pipeline_stages", {}),  # Dense layers, not experts
-                    "inference_time": time.time() - start_time,
-                    "tokens_generated": result.get("tokens_generated", 0),
-                    "actual_cost": 0.001 * result.get("tokens_generated", 0)  # Simple cost calculation
-                }
+                # Check if request was successful
+                if result.get("response"):
+                    # Estimate tokens (rough approximation)
+                    tokens_generated = len(result["response"].split()) * 1.3
+                    
+                    return {
+                        "response": result.get("response", ""),
+                        "layers_used": {"node": result.get("node_used", "unknown")},
+                        "inference_time": result.get("inference_time", time.time() - start_time),
+                        "tokens_generated": int(tokens_generated),
+                        "actual_cost": 0.001 * tokens_generated
+                    }
+                else:
+                    # Fallback error response
+                    error_msg = result.get("error", "GPU nodes unavailable")
+                    logger.warning(f"GPU forwarding failed: {error_msg}")
+                    return {
+                        "response": f"Service temporarily unavailable: {error_msg}",
+                        "layers_used": {},
+                        "inference_time": time.time() - start_time,
+                        "tokens_generated": 0,
+                        "actual_cost": 0.0
+                    }
             else:
-                # Local dense model inference (single GPU or CPU)
+                # No GPU nodes available - try forwarding anyway (might get registered nodes)
+                logger.warning("No GPU nodes in registry, attempting to forward anyway...")
+                
+                result = await forwarder.process_inference(
+                    prompt=request.prompt,
+                    max_new_tokens=request.max_new_tokens,
+                    temperature=request.temperature
+                )
+                
+                ctx.inference_completed = True
+                
+                if result.get("response"):
+                    tokens_generated = len(result["response"].split()) * 1.3
+                    return {
+                        "response": result.get("response", ""),
+                        "layers_used": {"node": result.get("node_used", "unknown")},
+                        "inference_time": result.get("inference_time", time.time() - start_time),
+                        "tokens_generated": int(tokens_generated),
+                        "actual_cost": 0.001 * tokens_generated
+                    }
+                
+                # Fallback - try local model as last resort
+                from backend.model.manager import get_model_manager
+                from pathlib import Path
+                
                 model_manager = get_model_manager(Path("./data"))
                 
                 # Generate response - model manager will auto-load if needed

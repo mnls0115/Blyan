@@ -715,7 +715,7 @@ class BlyanGPUNode:
                 model_name=MODEL_NAME,
                 device="cuda" if self.gpu_available else "cpu",
                 use_blockchain=True,  # Always use blockchain for inference
-                use_gpu_direct=True  # Enable GPU-direct loading for faster boot
+                use_gpu_direct=os.getenv("USE_GPU_DIRECT", "true").lower() == "true"  # Tunable to mitigate OOM during load
             )
             
             # Initialize zero-copy loader for efficient loading

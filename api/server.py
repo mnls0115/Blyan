@@ -877,6 +877,11 @@ def _startup():
             from backend.p2p.distributed_inference import DensePipelineCoordinator
             distributed_coordinator = DensePipelineCoordinator()
             logger.info("✅ Distributed P2P coordinator initialized")
+            
+            # Initialize GPU forwarder with coordinator
+            from backend.p2p.batch_inference import get_gpu_forwarder
+            gpu_forwarder = get_gpu_forwarder(distributed_coordinator)
+            logger.info("✅ GPU node forwarder initialized")
         except Exception as e:
             logger.warning(f"Failed to initialize distributed coordinator: {e}")
             logger.info("ℹ️  Server will run without P2P support")

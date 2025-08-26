@@ -220,8 +220,17 @@ def gpu_memory_pool():
     # Enable memory pooling for faster GPU allocations
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-        # Set memory fraction to prevent OOM
-        torch.cuda.set_per_process_memory_fraction(0.8)
+        # Set memory fraction to prevent OOM (tunable via env)
+        try:
+            import os
+            fraction = float(os.getenv("GPU_MEMORY_FRACTION", "0.75"))
+            if fraction < 0.5:
+                fraction = 0.5
+            if fraction > 0.95:
+                fraction = 0.95
+        except Exception:
+            fraction = 0.75
+        torch.cuda.set_per_process_memory_fraction(fraction)
     
     try:
         yield

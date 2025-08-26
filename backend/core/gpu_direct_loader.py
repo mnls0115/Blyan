@@ -440,8 +440,18 @@ def gpu_memory_optimization():
         # Clear cache before operation
         torch.cuda.empty_cache()
         
-        # Set memory fraction
-        torch.cuda.set_per_process_memory_fraction(0.9)
+        # Set memory fraction (tunable via env GPU_MEMORY_FRACTION)
+        try:
+            import os
+            fraction = float(os.getenv("GPU_MEMORY_FRACTION", "0.75"))
+            # Clamp to reasonable range
+            if fraction < 0.5:
+                fraction = 0.5
+            if fraction > 0.95:
+                fraction = 0.95
+        except Exception:
+            fraction = 0.75
+        torch.cuda.set_per_process_memory_fraction(fraction)
         
         # Enable TF32 for better performance on Ampere+
         torch.backends.cuda.matmul.allow_tf32 = True
