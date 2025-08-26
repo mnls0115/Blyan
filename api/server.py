@@ -2235,6 +2235,8 @@ class NodeRegistrationResponse(BaseModel):
     message: str
     registered_experts: int
     donor_mode: Optional[bool] = None
+    total_experts_available: Optional[int] = None
+    has_full_coverage: Optional[bool] = None
 
 
 def is_valid_node_ip(host: str) -> bool:
@@ -2267,7 +2269,15 @@ async def register_expert_node(req: RegisterNodeRequest):
             print("✅ P2P coordinator initialized on-demand")
         except Exception as e:
             logger.error(f"Failed to initialize P2P on-demand: {e}")
-            raise HTTPException(status_code=500, detail="P2P distributed mode is not available on this server")
+            # This is expected behavior - main node may not have P2P mode
+            # Return success to allow GPU nodes to continue in standalone mode
+            return NodeRegistrationResponse(
+                status="standalone",
+                message=f"Main node P2P not available - node {req.node_id} should run independently",
+                registered_experts=len(req.available_experts),
+                total_experts_available=len(req.available_experts),
+                has_full_coverage=len(req.available_experts) >= 32  # Dense model has ~38 components
+            )
     
     # Clean up malformed URLs first
     host = req.host
@@ -2302,20 +2312,36 @@ async def register_expert_node(req: RegisterNodeRequest):
             has_full_coverage = True
             logger.info(f"Node {req.node_id} has full coverage via metadata")
     
-    node = ExpertNode(
+    # Import GPUNode from distributed_inference
+    from backend.p2p.distributed_inference import GPUNode
+    
+    # Convert available_experts (layer names) to layer indices
+    available_layers = []
+    for expert in req.available_experts:
+        # Try to extract layer index from name
+        if 'layer' in expert.lower():
+            try:
+                # Handle formats like "layer_0", "layer_1", etc.
+                layer_num = int(expert.split('_')[-1])
+                available_layers.append(layer_num)
+            except:
+                pass
+        elif expert == "dense_model" or expert == "dense_model_ready":
+            # If generic dense model indicator, assume all layers available
+            available_layers = list(range(32))  # Qwen3-8B has 32 transformer layers
+            break
+    
+    # If no specific layers identified, assume full model
+    if not available_layers and req.available_experts:
+        available_layers = list(range(32))
+    
+    node = GPUNode(
         node_id=req.node_id,
         host=host,  # Use cleaned host
         port=req.port,
-        available_experts=req.available_experts,
-        donor_mode=req.donor_mode,
-        device_profile=DeviceProfile(
-            vram_gb=req.vram_gb or float(hw_info.get("vram_gb", 0) if hw_info else 0),
-            tflops_est=req.tflops_est or float(hw_info.get("tflops", 0) if hw_info else 0),
-            net_mbps=req.net_mbps or float(hw_info.get("net_mbps", 0) if hw_info else 0),
-            cuda_capability=req.cuda_capability or (hw_info.get("cuda", None) if hw_info else None)
-        ),
-        has_full_coverage=has_full_coverage,
-        expert_metadata=expert_metadata
+        available_layers=available_layers,
+        vram_gb=req.vram_gb or float(hw_info.get("vram_gb", 0) if hw_info else 0),
+        compute_capability=float(req.cuda_capability.replace('.', '')) if req.cuda_capability else 8.0
     )
     
     distributed_coordinator.registry.register_node(node)
@@ -2324,6 +2350,8 @@ async def register_expert_node(req: RegisterNodeRequest):
         status="success",
         message=f"Node {req.node_id} registered successfully",
         registered_experts=len(req.available_experts),
+        total_experts_available=len(req.available_experts),
+        has_full_coverage=has_full_coverage,
         donor_mode=req.donor_mode
     )
 

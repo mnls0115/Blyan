@@ -178,12 +178,18 @@ class DensePipelineCoordinator:
         self.metrics: Dict[str, Any] = defaultdict(list)
         
         # Pipeline configuration - dynamic based on model
-        from backend.model.dynamic_config import get_model_config
-        model_config = get_model_config()
-        self.num_layers = model_config.num_layers  # Dynamic from actual model
+        try:
+            from backend.model.dynamic_config import get_model_config
+            model_config = get_model_config()
+            self.num_layers = model_config.num_layers  # Dynamic from actual model
+        except Exception as e:
+            # Fallback for main node without model dependencies
+            logger.warning(f"Using default layer count (dynamic config unavailable): {e}")
+            self.num_layers = 32  # Default for Qwen3-8B
+        
         self.default_stages = min(4, self.num_layers // 8)  # Adaptive stages
         
-        logger.info("🚀 Dense pipeline coordinator initialized")
+        logger.info(f"🚀 Dense pipeline coordinator initialized with {self.num_layers} layers")
     
     def setup_pipeline(
         self,

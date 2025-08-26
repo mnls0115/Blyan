@@ -1893,9 +1893,14 @@ class BlyanGPUNode:
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data, headers=headers)
                 if resp.status_code == 200:
                     result = resp.json()
-                    logger.info(f"✅ Registered with main node")
-                    if isinstance(result, dict) and 'message' in result:
-                        logger.debug(f"   Response: {result['message']}")
+                    # Check if it's a standalone response (main node P2P not available)
+                    if isinstance(result, dict) and result.get('status') == 'standalone':
+                        logger.info("ℹ️  Main node P2P mode not available - running independently")
+                        logger.info("✅ GPU node will operate in standalone mode")
+                    else:
+                        logger.info(f"✅ Registered with main node")
+                        if isinstance(result, dict) and 'message' in result:
+                            logger.debug(f"   Response: {result['message']}")
                 elif resp.status_code == 500:
                     # Try to get error details
                     try:
@@ -1978,11 +1983,17 @@ class BlyanGPUNode:
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data, headers=headers)
                 
                 if resp.status_code == 200:
-                    logger.info(f"✅ Successfully registered with main node on retry!")
-                    self._registration_retries = 0  # Reset counter on success
+                    result = resp.json()
+                    if isinstance(result, dict) and result.get('status') == 'standalone':
+                        logger.info("ℹ️  Main node P2P still not available - continuing standalone")
+                        # Don't retry for standalone mode - it's expected
+                        self._registration_retries = 999  # Stop retrying
+                    else:
+                        logger.info(f"✅ Successfully registered with main node on retry!")
+                        self._registration_retries = 0  # Reset counter on success
                 elif resp.status_code == 500:
                     logger.info("ℹ️  Main node P2P still not available")
-                    # Continue retrying
+                    # Stop retrying - this is expected behavior
                     self._registration_retries += 1
                     if self._registration_retries <= 5:
                         retry_delay = min(60 * self._registration_retries, 300)
