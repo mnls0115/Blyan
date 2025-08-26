@@ -1921,6 +1921,84 @@ class BlyanGPUNode:
                     
         except Exception as e:
             logger.info(f"Could not register: {e}")
+            
+            # Schedule retry if registration failed
+            if not hasattr(self, '_registration_retries'):
+                self._registration_retries = 0
+            
+            self._registration_retries += 1
+            if self._registration_retries <= 5:  # Max 5 retries
+                retry_delay = min(30 * self._registration_retries, 300)  # 30s, 60s, 90s... max 5min
+                logger.info(f"📅 Will retry registration in {retry_delay} seconds (attempt {self._registration_retries}/5)")
+                asyncio.create_task(self._delayed_registration_retry(retry_delay))
+            else:
+                logger.warning("❌ Max registration retries reached. Running in standalone mode.")
+    
+    async def _delayed_registration_retry(self, delay: int):
+        """Retry registration after a delay."""
+        await asyncio.sleep(delay)
+        logger.info(f"🔄 Retrying registration with main node (attempt {self._registration_retries})...")
+        
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                # Get available experts again (might have changed)
+                available_experts = []
+                if self.model_manager:
+                    from backend.core.param_index import ParameterIndex
+                    param_index = ParameterIndex(DATA_DIR / "param_index.json")
+                    available_experts = param_index.get_all_layers()
+                
+                # Detect public host if needed
+                if 'PUBLIC_HOST' in os.environ:
+                    endpoint_url = f"http://{os.environ['PUBLIC_HOST']}:{os.environ.get('PUBLIC_PORT', PORT)}"
+                else:
+                    try:
+                        async with httpx.AsyncClient() as ip_client:
+                            resp = await ip_client.get('https://api.ipify.org')
+                            public_ip = resp.text
+                            endpoint_url = f"http://{public_ip}:{PORT}"
+                    except:
+                        endpoint_url = f"http://localhost:{PORT}"
+                
+                data = {
+                    "node_id": self.node_id,
+                    "host": endpoint_url,
+                    "port": PORT,
+                    "available_experts": available_experts,
+                    "node_type": "gpu",
+                    "vram_gb": self.gpu_info.get("memory_gb", 0),
+                }
+                
+                headers = {}
+                api_key = os.environ.get('BLYAN_API_KEY')
+                if api_key:
+                    headers['X-API-Key'] = api_key
+                
+                resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data, headers=headers)
+                
+                if resp.status_code == 200:
+                    logger.info(f"✅ Successfully registered with main node on retry!")
+                    self._registration_retries = 0  # Reset counter on success
+                elif resp.status_code == 500:
+                    logger.info("ℹ️  Main node P2P still not available")
+                    # Continue retrying
+                    self._registration_retries += 1
+                    if self._registration_retries <= 5:
+                        retry_delay = min(60 * self._registration_retries, 300)
+                        logger.info(f"📅 Will retry again in {retry_delay} seconds")
+                        asyncio.create_task(self._delayed_registration_retry(retry_delay))
+                else:
+                    logger.warning(f"Registration failed with status: {resp.status_code}")
+                    
+        except Exception as e:
+            logger.warning(f"Registration retry failed: {e}")
+            # Schedule another retry if under limit
+            if self._registration_retries < 5:
+                self._registration_retries += 1
+                retry_delay = min(60 * self._registration_retries, 300)
+                logger.info(f"📅 Will retry again in {retry_delay} seconds")
+                asyncio.create_task(self._delayed_registration_retry(retry_delay))
     
     async def periodic_sync(self):
         """Periodically attempt to sync with main node."""

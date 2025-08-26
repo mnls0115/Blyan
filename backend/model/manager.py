@@ -159,10 +159,9 @@ class UnifiedModelManager:
                 logger.debug(f"No param_index found at {param_index_path}")
                 return False
             
-            # Ensure param_index is loaded
-            if not hasattr(self, 'param_index'):
-                from backend.core.param_index import ParameterIndex
-                self.param_index = ParameterIndex(param_index_path)
+            # ALWAYS reload param_index from disk to avoid stale cache
+            from backend.core.param_index import ParameterIndex
+            self.param_index = ParameterIndex(param_index_path)
             
             layers = self.param_index.get_all_layers()
             logger.debug(f"Found {len(layers)} layers in param_index: {layers[:3]}...")
@@ -581,6 +580,11 @@ class UnifiedModelManager:
                 raise RuntimeError("Blockchain weights not available")
             
             # Check if we have minimum required layers
+            available_layers = self.param_index.get_all_layers() if hasattr(self, 'param_index') else []
+            loaded_count = len(available_layers)
+            expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head"]  # Dense model structure
+            missing_layers = set(expected_layers) - set(available_layers)
+            
             if loaded_count < 3:  # Need at least embedding, one layer, and lm_head
                 logger.error(f"Insufficient layers loaded from blockchain: {loaded_count}/{len(expected_layers)}")
                 logger.error(f"Missing layers: {missing_layers}")
