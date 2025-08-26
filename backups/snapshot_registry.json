@@ -1,27 +1,4 @@
 {
-  "snapshot_1756052672_6e064be7": {
-    "snapshot_id": "snapshot_1756052672_6e064be7",
-    "timestamp": 1756052672.898762,
-    "size_bytes": 5791,
-    "chains_included": [
-      "A",
-      "B",
-      "D"
-    ],
-    "block_count": {
-      "A": 1,
-      "B": 0,
-      "D": 0
-    },
-    "integrity_hash": "0cf9a1c816e37caa8493414b4e765000",
-    "compression_ratio": 3.2208599551027457,
-    "creation_time_seconds": 0.011677980422973633,
-    "description": "Automatic snapshot 2025-08-25 01:24:32",
-    "tags": [
-      "automatic"
-    ],
-    "verified": false
-  },
   "snapshot_1756093186_6a356969": {
     "snapshot_id": "snapshot_1756093186_6a356969",
     "timestamp": 1756093186.378357,
@@ -247,6 +224,52 @@
     "compression_ratio": 3.3708052140149762,
     "creation_time_seconds": 0.19977807998657227,
     "description": "Automatic snapshot 2025-08-26 00:46:08",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
+  },
+  "snapshot_1756140369_70699edc": {
+    "snapshot_id": "snapshot_1756140369_70699edc",
+    "timestamp": 1756140369.3177989,
+    "size_bytes": 10817,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 1,
+      "D": 0
+    },
+    "integrity_hash": "4baca29870b5d5bc2718e385c3c4094b",
+    "compression_ratio": 3.3708052140149762,
+    "creation_time_seconds": 0.014381170272827148,
+    "description": "Automatic snapshot 2025-08-26 01:46:09",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
+  },
+  "snapshot_1756173448_34864a3c": {
+    "snapshot_id": "snapshot_1756173448_34864a3c",
+    "timestamp": 1756173448.072621,
+    "size_bytes": 10817,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 1,
+      "D": 0
+    },
+    "integrity_hash": "4baca29870b5d5bc2718e385c3c4094b",
+    "compression_ratio": 3.3708052140149762,
+    "creation_time_seconds": 0.01548004150390625,
+    "description": "Automatic snapshot 2025-08-26 10:57:28",
     "tags": [
       "automatic"
     ],

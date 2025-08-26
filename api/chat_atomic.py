@@ -287,11 +287,11 @@ class AtomicChatHandler:
         try:
             # Import dense model inference modules (NOT MoE!)
             from backend.model.manager import get_model_manager
-            from backend.p2p.distributed_inference import get_distributed_coordinator
             from backend.inference.production_pipeline import get_production_pipeline
             from pathlib import Path
             
-            distributed_coordinator = get_distributed_coordinator()
+            # Use the global distributed coordinator from server
+            from api.server import distributed_coordinator
             
             # Check if we have GPU nodes for distributed inference
             has_gpu_nodes = (distributed_coordinator and 

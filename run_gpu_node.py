@@ -443,7 +443,7 @@ class BlyanGPUNode:
                     else:
                         logger.debug(f"Chain {chain_id} empty (OK)")
             
-            logger.info("✅ Blockchain integrity verified")
+            logger.debug("Blockchain integrity verified")
             return True
             
         except Exception as e:
@@ -693,9 +693,7 @@ class BlyanGPUNode:
             # Initialize unified model manager
             logger.info("  4/5: Creating unified model manager...")
             
-            # Log what we have available
-            from backend.core.param_index import ParameterIndex
-            param_index = ParameterIndex(DATA_DIR / "param_index.json")
+            # Log what we have available (reuse same index)
             param_layers = param_index.get_all_layers()
             logger.info(f"     📊 Parameter index: {len(param_layers)} layers")
             
@@ -783,6 +781,33 @@ class BlyanGPUNode:
         except Exception as e:
             logger.error(f"Failed to initialize model manager: {e}")
             return False
+
+    async def _warmup_gpu(self, timeout_seconds: int = 180) -> None:
+        """Warm up model on GPU without blocking server startup.
+        Loads tokenizer, allocates model, and runs a minimal 1-token generation.
+        """
+        try:
+            import asyncio
+            from backend.model.manager import get_model_manager
+            if not self.model_manager:
+                # Ensure global manager exists
+                self.model_manager = get_model_manager(DATA_DIR)
+            logger.info("🔥 Starting GPU warmup (non-blocking)...")
+
+            async def _do_warmup():
+                try:
+                    # Minimal deterministic prompt to materialize weights
+                    prompt = "Warmup"
+                    await self.model_manager.generate_async(prompt=prompt, max_new_tokens=1, temperature=0.0)
+                    logger.info("✅ GPU warmup complete")
+                except Exception as we:
+                    logger.warning(f"GPU warmup skipped: {we}")
+
+            await asyncio.wait_for(_do_warmup(), timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            logger.warning(f"GPU warmup timed out after {timeout_seconds}s - continuing")
+        except Exception as e:
+            logger.warning(f"GPU warmup failed: {e}")
     
     async def download_and_upload_model(self):
         """Download and upload model to blockchain."""
@@ -1386,7 +1411,9 @@ class BlyanGPUNode:
                 )
                 
                 # Track which layers were used (for dense model, all layers are used)
-                layers_used = [f"layer_{i}" for i in range(36)]  # Dense model has 36 layers
+                from backend.model.dynamic_config import get_model_config
+                model_config = get_model_config()
+                layers_used = [f"layer_{i}" for i in range(model_config.num_layers)]
                 
                 return web.json_response({
                     "node_id": self.node_id,
@@ -1400,6 +1427,149 @@ class BlyanGPUNode:
                 
             except Exception as e:
                 return web.json_response({"error": str(e)}, status=500)
+        
+        # Pipeline stage endpoint for distributed inference
+        async def inference_stage(request):
+            """Handle pipeline stage inference for distributed processing."""
+            try:
+                data = await request.json()
+                stage = data.get("stage")  # Which layers to process
+                hidden_states = data.get("hidden_states")  # Input tensor
+                temperature = data.get("temperature", 0.7)
+                
+                if not self.model_manager:
+                    return web.json_response({
+                        "error": "Model manager not initialized"
+                    }, status=503)
+                
+                # Process specific layers for pipeline parallelism
+                if stage is None:
+                    return web.json_response({
+                        "error": "Stage information required"
+                    }, status=400)
+                
+                logger.info(f"Processing pipeline stage: {stage}")
+                
+                # Convert hidden states to tensor - handle both JSON and binary
+                import torch
+                import numpy as np
+                import base64
+                import io
+                
+                serialization_type = data.get("serialization", "json")
+                
+                if serialization_type == "binary" and isinstance(hidden_states, str):
+                    # Decode binary serialized tensor
+                    buffer = io.BytesIO(base64.b64decode(hidden_states))
+                    loaded = torch.load(buffer)
+                    hidden_states = loaded['tensor']
+                elif isinstance(hidden_states, list):
+                    hidden_states = torch.tensor(hidden_states)
+                elif isinstance(hidden_states, dict):
+                    # Reconstruct tensor from serialized format
+                    hidden_states = torch.tensor(hidden_states.get("data", []))
+                
+                # Process through specific layers
+                output = await asyncio.to_thread(
+                    self._process_pipeline_stage,
+                    stage,
+                    hidden_states
+                )
+                
+                # Serialize output for transport using binary format
+                import base64
+                import io
+                
+                if isinstance(output, torch.Tensor):
+                    # Binary serialization for efficiency
+                    buffer = io.BytesIO()
+                    torch.save({
+                        'tensor': output.cpu(),
+                        'dtype': str(output.dtype),
+                        'shape': list(output.shape)
+                    }, buffer)
+                    output_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                    serialization_type = 'binary'
+                else:
+                    output_data = output
+                    serialization_type = 'json'
+                
+                return web.json_response({
+                    "node_id": self.node_id,
+                    "stage": stage,
+                    "output": output_data,
+                    "serialization": serialization_type,
+                    "shape": list(output.shape) if hasattr(output, 'shape') else None
+                })
+                
+            except Exception as e:
+                logger.error(f"Pipeline stage error: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+        
+        def _process_pipeline_stage(self, stage, hidden_states):
+            """Process a specific pipeline stage - REAL IMPLEMENTATION."""
+            import torch
+            
+            if not hasattr(self.model_manager, 'model') or self.model_manager.model is None:
+                raise RuntimeError("Model not loaded")
+            
+            model = self.model_manager.model
+            
+            # Get dynamic model configuration
+            from backend.model.dynamic_config import get_model_config
+            model_config = get_model_config()
+            
+            # Parse stage information
+            if isinstance(stage, dict):
+                layer_range = stage.get('layer_range', [0, model_config.num_layers])
+                has_embedding = stage.get('has_embedding', False)
+                has_lm_head = stage.get('has_lm_head', False)
+            else:
+                # Default to all layers if stage info not provided
+                layer_range = [0, model_config.num_layers]
+                has_embedding = False
+                has_lm_head = False
+            
+            with torch.no_grad():
+                # Ensure hidden_states is on the right device
+                if not isinstance(hidden_states, torch.Tensor):
+                    hidden_states = torch.tensor(hidden_states)
+                
+                device = torch.device('cuda' if self.gpu_available else 'cpu')
+                if hidden_states.device != device:
+                    hidden_states = hidden_states.to(device)
+                
+                # Process embedding layer if needed
+                if has_embedding and hasattr(model, 'embed_tokens'):
+                    # If we have token IDs, embed them
+                    if hidden_states.dtype in [torch.int32, torch.int64]:
+                        hidden_states = model.embed_tokens(hidden_states)
+                
+                # Process through transformer layers
+                if hasattr(model, 'layers'):
+                    start_layer = layer_range[0] if layer_range else 0
+                    end_layer = layer_range[1] if len(layer_range) > 1 else len(model.layers)
+                    
+                    # Apply each layer in the range
+                    for layer_idx in range(start_layer, min(end_layer, len(model.layers))):
+                        layer = model.layers[layer_idx]
+                        # Qwen3 layer forward pass
+                        layer_outputs = layer(hidden_states)
+                        # Handle different return formats
+                        if isinstance(layer_outputs, tuple):
+                            hidden_states = layer_outputs[0]
+                        else:
+                            hidden_states = layer_outputs
+                
+                # Apply final LM head if needed
+                if has_lm_head and hasattr(model, 'lm_head'):
+                    # Apply final layer norm first if it exists
+                    if hasattr(model, 'norm'):
+                        hidden_states = model.norm(hidden_states)
+                    # Get logits from LM head
+                    hidden_states = model.lm_head(hidden_states)
+                
+            return hidden_states
         
         # Learning endpoints
         async def learning_start(request):
@@ -1513,6 +1683,7 @@ class BlyanGPUNode:
                 return web.json_response({"error": str(e)}, status=500)
         
         # Register routes
+        enable_learning = os.getenv('ENABLE_LEARNING_ENDPOINTS', 'false').lower() == 'true'
         if cors:
             # Add routes with CORS
             cors.add(app.router.add_get('/', health))
@@ -1521,13 +1692,15 @@ class BlyanGPUNode:
             cors.add(app.router.add_post('/chat', chat))
             cors.add(app.router.add_get('/chain/{chain_id}', chain_info))
             cors.add(app.router.add_post('/inference', inference))
+            cors.add(app.router.add_post('/inference/stage', inference_stage))  # Add pipeline stage endpoint
             cors.add(app.router.add_get('/pol/status', lambda r: web.json_response({"status": "ok"})))
             
-            # Learning routes with CORS
-            cors.add(app.router.add_post('/learning/start', learning_start))
-            cors.add(app.router.add_post('/learning/data', learning_data_allocation))
-            cors.add(app.router.add_get('/learning/status', learning_status))
-            cors.add(app.router.add_post('/learning/delta', submit_delta))
+            # Learning routes with CORS (optional)
+            if enable_learning:
+                cors.add(app.router.add_post('/learning/start', learning_start))
+                cors.add(app.router.add_post('/learning/data', learning_data_allocation))
+                cors.add(app.router.add_get('/learning/status', learning_status))
+                cors.add(app.router.add_post('/learning/delta', submit_delta))
         else:
             # Add routes without CORS
             app.router.add_get('/', health)
@@ -1537,10 +1710,11 @@ class BlyanGPUNode:
             app.router.add_get('/chain/{chain_id}', chain_info)
             app.router.add_post('/inference', inference)
             app.router.add_get('/pol/status', lambda r: web.json_response({"status": "ok"}))
-            app.router.add_post('/learning/start', learning_start)
-            app.router.add_post('/learning/data', learning_data_allocation)
-            app.router.add_get('/learning/status', learning_status)
-            app.router.add_post('/learning/delta', submit_delta)
+            if enable_learning:
+                app.router.add_post('/learning/start', learning_start)
+                app.router.add_post('/learning/data', learning_data_allocation)
+                app.router.add_get('/learning/status', learning_status)
+                app.router.add_post('/learning/delta', submit_delta)
         
         # Start server
         runner = web.AppRunner(app)
@@ -1711,12 +1885,25 @@ class BlyanGPUNode:
                     if isinstance(result, dict) and 'message' in result:
                         logger.debug(f"   Response: {result['message']}")
                 elif resp.status_code == 500:
+                    # Try to get error details
+                    try:
+                        error_text = resp.text
+                        logger.debug(f"Full error response: {error_text}")
+                    except:
+                        error_text = "Could not get error details"
+                    
                     # Check if it's because distributed coordinator is not initialized
-                    if "distributed coordinator" in resp.text.lower():
-                        logger.warning("⚠️  Main node P2P/distributed mode is disabled")
-                        logger.info("💡 Running as standalone GPU node (blockchain sync only)")
+                    # This is common and expected - main node may not have P2P enabled
+                    if ("distributed" in error_text.lower() or 
+                        "p2p" in error_text.lower() or 
+                        "coordinator" in error_text.lower() or
+                        "not available" in error_text.lower()):
+                        logger.info("ℹ️  Main node P2P mode not available - running independently")
+                        logger.info("✅ GPU node will operate in standalone mode")
                     else:
-                        logger.warning(f"Registration failed (500): {resp.text[:100]}")
+                        # Only warn for unexpected errors
+                        logger.warning(f"Registration error: {error_text[:200] if error_text else 'Internal Server Error'}")
+                        logger.info("💡 Continuing in standalone mode")
                 else:
                     logger.info(f"Registration status: {resp.status_code}")
                     
@@ -1925,7 +2112,13 @@ class BlyanGPUNode:
         log_step(startup_steps[current_step-1], current_step)
         if not self.initialize_model_manager():
             logger.warning("Running without model manager")
-        
+        else:
+            # Start background GPU warmup if enabled
+            if os.getenv('ENABLE_STARTUP_WARMUP', 'true').lower() == 'true':
+                import asyncio as _asyncio
+                _asyncio.create_task(self._warmup_gpu())
+                logger.info("🧊 Warmup task scheduled (will not block startup)")
+
         # 4.5 Check if we just completed an upload and need to reinit
         if hasattr(self, 'upload_completed') and self.upload_completed:
             logger.info("🔄 Upload was just completed, reinitializing model manager...")
@@ -1960,8 +2153,15 @@ class BlyanGPUNode:
         logger.info(f"🚀 NODE STARTUP COMPLETE")
         logger.info(f"⏱️  Total time: {mins:02d}:{secs:02d}")
         logger.info(f"📊 Blocks loaded: {len(self.chains['B']._hash_index) if hasattr(self.chains['B'], '_hash_index') else 0}")
-        if expert_count > 0:
-            logger.info(f"🤖 Experts loaded from blockchain: {expert_count}")
+        
+        # Report model status
+        if self.model_manager:
+            from backend.core.param_index import ParameterIndex
+            param_index = ParameterIndex(DATA_DIR / "param_index.json")
+            layer_count = len(param_index.get_all_layers())
+            if layer_count > 0:
+                logger.info(f"🤖 Dense model ready: {layer_count} layers from blockchain")
+        
         logger.info(f"🌐 Server: http://0.0.0.0:{self.port}")
         logger.info(f"✅ Ready for inference requests")
         logger.info("=" * 60)

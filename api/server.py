@@ -882,6 +882,20 @@ def _startup():
     except Exception as e:
         logger.warning(f"Failed to initialize production pipeline: {e}")
     
+    # Initialize distributed coordinator for P2P
+    global distributed_coordinator
+    distributed_coordinator = None
+    
+    # Try to initialize distributed coordinator
+    if not MINIMAL_MODE:
+        try:
+            from backend.p2p.distributed_inference import DensePipelineCoordinator
+            distributed_coordinator = DensePipelineCoordinator()
+            logger.info("✅ Distributed P2P coordinator initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize distributed coordinator: {e}")
+            logger.info("ℹ️  Server will run without P2P support")
+    
     # Initialize learning coordinator (production version with fault tolerance)
     global learning_coordinator
     learning_coordinator = None

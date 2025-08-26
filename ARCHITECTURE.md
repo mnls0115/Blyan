@@ -76,16 +76,52 @@ The system employs a dual-chain architecture to separate concerns:
 - Stores expert weight hashes
 - Validates training contributions
 
-#### DAG Structure
+#### Linear Blockchain Structure with Cross-Chain References
+
+**Actual Implementation (verified from codebase):**
+1. **Each chain is linear** - starts from Genesis and connects via `prev_hash`
+2. **Two parallel chains** - Chain A (Meta) and Chain B (Parameters)
+3. **Cross-references** - `points_to` for inter-chain references
+4. **Optional dependencies** - `depends_on` for additional dependencies within chains
+
 ```
-Genesis Block
-     |
-Meta Block (Architecture)
-     |
-   / | \
-Expert Blocks (Parallel Evolution)
-  |   |   |
-Delta Blocks (Improvements)
+Chain A (Meta/Architecture)          Chain B (Parameters)
+        ↓ (prev_hash)                      ↓ (prev_hash)
+   Genesis A                            Genesis B
+        ↓                                    ↓
+   Meta Block ←----(points_to)------→ Layer 0 Block
+        ↓                                    ↓
+   Config Block ←--(points_to)-----→ Layer 1 Block
+        ↓                                    ↓
+   Update Block ←--(points_to)-----→ Layer 2 Block
+        ↓                                    ↓
+   Evolution Block ←(points_to)----→ Layer 3 Block
+        ↓                                    ↓
+   Consensus Block ←(points_to)----→ Layer N Block
+```
+
+**실제 블록 구조:**
+```python
+@dataclass
+class BlockHeader:
+    index: int
+    timestamp: float
+    prev_hash: str  # 이전 블록 해시 (선형 체인)
+    chain_id: str  # "A" or "B"
+    points_to: Optional[str]  # 다른 체인의 블록 참조
+    depends_on: List[str]  # 추가 의존성 (옵션)
+```
+
+**How it Actually Works:**
+```python
+# Chain B에 블록 추가 (선형)
+chain_b.add_block(
+    payload=layer_weights,
+    # prev_hash는 자동으로 이전 블록 참조
+    points_to="meta_block_hash",  # Chain A의 메타 블록 참조
+    block_type="dense_layer",
+    layer_id="layer_0"
+)
 ```
 
 ### 2.2 AI Model Architecture
@@ -248,44 +284,43 @@ graph LR
 ### 4.2 Blockchain Core (`backend/core/`)
 
 **Components:**
-- `chain.py` - DAG blockchain implementation
+- `chain.py` - Linear blockchain with cross-references (not true DAG)
 - `block.py` - Block structure and validation
 - `storage.py` - Persistent storage interface
-- `consensus.py` - Consensus mechanisms
+- `pow.py` - Proof-of-Learning (PoL) implementation
 
 **Features:**
-- Cycle detection in DAG
-- Topological sorting
-- Merkle tree generation
-- Signature verification
+- Linear chain validation with dependency checking
+- Cross-chain references via `points_to`
+- Anti-spam PoL (Proof-of-Learning)
+- Incremental block verification
 
 ### 4.3 Model Manager (`backend/model/`)
 
 **Components:**
-- `manager.py` - Unified model management
-- `moe_infer.py` - MoE inference engine
-- `expert_cache.py` - Expert caching layer
-- `router.py` - Expert routing logic
+- `manager.py` - Unified model management for dense models
+- `dense_inference.py` - Dense model inference (NOT MoE)
+- `chunked_blockchain_loader.py` - Load model layers from blockchain
 
 **Capabilities:**
-- Selective expert loading
+- Blockchain-first model loading
+- Dense model pipeline parallelism
 - Memory-mapped tensors
-- Quantization support
-- Version management
+- BF16 precision enforcement
 
 ### 4.4 P2P Coordinator (`backend/p2p/`)
 
 **Components:**
-- `distributed_inference.py` - Inference coordination
-- `node_registry.py` - Node management
-- `heartbeat.py` - Health monitoring
-- `load_balancer.py` - Request distribution
+- `distributed_inference.py` - Dense pipeline coordination via `DensePipelineCoordinator`
+- `node_registry.py` - GPU node management
+- Built-in health monitoring and heartbeat system
+- Integrated load balancing
 
 **Features:**
-- Automatic failover
-- Geographic routing
-- Expert group optimization
-- Donor mode support
+- Pipeline parallelism across GPU nodes
+- Automatic failover and node health monitoring
+- Geographic routing optimization
+- Dense model layer distribution
 
 ### 4.5 Learning System (`backend/learning/`)
 

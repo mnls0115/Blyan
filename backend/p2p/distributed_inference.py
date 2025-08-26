@@ -177,9 +177,11 @@ class DensePipelineCoordinator:
         self.request_queue = asyncio.Queue()
         self.metrics: Dict[str, Any] = defaultdict(list)
         
-        # Pipeline configuration
-        self.num_layers = 36  # Dense model has 36 layers
-        self.default_stages = 4  # Default number of pipeline stages
+        # Pipeline configuration - dynamic based on model
+        from backend.model.dynamic_config import get_model_config
+        model_config = get_model_config()
+        self.num_layers = model_config.num_layers  # Dynamic from actual model
+        self.default_stages = min(4, self.num_layers // 8)  # Adaptive stages
         
         logger.info("🚀 Dense pipeline coordinator initialized")
     
@@ -333,10 +335,20 @@ class DensePipelineCoordinator:
             return f"Error: {str(e)}", {"error": str(e)}
     
     async def _tokenize(self, text: str) -> List[int]:
-        """Tokenize input text."""
-        # In production, use actual tokenizer
-        # For now, return mock tokens
-        return [1] * 10  # Mock: 10 tokens
+        """Tokenize input text using actual tokenizer."""
+        from transformers import AutoTokenizer
+        import os
+        
+        # Get model name from environment or use default
+        model_name = os.getenv('MODEL_NAME', 'Qwen/Qwen3-8B')
+        
+        # Cache tokenizer for efficiency
+        if not hasattr(self, '_tokenizer'):
+            self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        # Real tokenization
+        tokens = self._tokenizer.encode(text, return_tensors=None)
+        return tokens
     
     async def _process_stage(
         self,
@@ -348,22 +360,53 @@ class DensePipelineCoordinator:
         """Process data through a pipeline stage."""
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                # Call node's inference endpoint
+                # Serialize tensors efficiently for transport
+                import base64
+                import io
+                import torch
+                
+                payload_data = hidden_states if hidden_states else tokens
+                serialization_type = "json"
+                
+                # Use binary serialization for tensors
+                if isinstance(payload_data, torch.Tensor):
+                    buffer = io.BytesIO()
+                    torch.save({
+                        'tensor': payload_data.cpu(),
+                        'dtype': str(payload_data.dtype),
+                        'shape': list(payload_data.shape)
+                    }, buffer)
+                    payload_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                    serialization_type = "binary"
+                
+                # Call node's inference endpoint with correct format
                 response = await client.post(
                     f"{node.endpoint}/inference/stage",
                     json={
-                        "stage_id": stage.stage_id,
-                        "layer_range": stage.layer_range,
-                        "has_embedding": stage.has_embedding,
-                        "has_lm_head": stage.has_lm_head,
-                        "tokens": tokens,
-                        "hidden_states": hidden_states if hidden_states else None
+                        "stage": {
+                            "stage_id": stage.stage_id,
+                            "layer_range": stage.layer_range,
+                            "has_embedding": stage.has_embedding,
+                            "has_lm_head": stage.has_lm_head
+                        },
+                        "hidden_states": payload_data,
+                        "serialization": serialization_type,
+                        "temperature": 0.7  # Default temperature
                     }
                 )
                 
                 if response.status_code == 200:
                     result = response.json()
-                    return result.get("hidden_states")
+                    output = result.get("output") or result.get("hidden_states")
+                    
+                    # Handle binary deserialization if needed
+                    if result.get("serialization") == "binary" and isinstance(output, str):
+                        import base64
+                        buffer = io.BytesIO(base64.b64decode(output))
+                        loaded = torch.load(buffer)
+                        output = loaded['tensor']
+                    
+                    return output
                 else:
                     logger.error(f"Stage {stage.stage_id} failed: {response.text}")
                     return None
@@ -383,13 +426,40 @@ class DensePipelineCoordinator:
     
     async def _sample_token(self, logits: Any, temperature: float) -> int:
         """Sample next token from logits."""
-        # In production, implement proper sampling
-        return 42  # Mock token
+        import torch
+        import torch.nn.functional as F
+        
+        # Convert to tensor if needed
+        if not isinstance(logits, torch.Tensor):
+            logits = torch.tensor(logits)
+        
+        # Apply temperature
+        if temperature > 0:
+            logits = logits / temperature
+            probs = F.softmax(logits, dim=-1)
+            # Sample from distribution
+            token = torch.multinomial(probs, num_samples=1).item()
+        else:
+            # Greedy sampling
+            token = torch.argmax(logits).item()
+        
+        return token
     
     async def _decode_tokens(self, tokens: List[int]) -> str:
-        """Decode tokens to text."""
-        # In production, use actual tokenizer
-        return f"Generated response with {len(tokens)} tokens"
+        """Decode tokens to text using actual tokenizer."""
+        from transformers import AutoTokenizer
+        import os
+        
+        # Get model name from environment or use default
+        model_name = os.getenv('MODEL_NAME', 'Qwen/Qwen3-8B')
+        
+        # Cache tokenizer for efficiency
+        if not hasattr(self, '_tokenizer'):
+            self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        # Actual decoding
+        text = self._tokenizer.decode(tokens, skip_special_tokens=True)
+        return text
     
     async def update_node_heartbeat(self, node_id: str) -> bool:
         """Update node heartbeat timestamp."""

@@ -1,10 +1,10 @@
 # Technical Specification
-# Blyan Network - Distributed MoE Blockchain System
+# Blyan Network - Distributed Dense Model Blockchain System
 
 ## 1. System Overview
 
 ### 1.1 Architecture Summary
-Blyan Network implements a distributed dense model AI system (Qwen3-8B) using a dual-chain blockchain architecture with DAG structure for parallel layer evolution. The system uses Proof-of-Learning (PoL) validation for verifying model improvements through loss comparison and fraud detection.
+Blyan Network implements a distributed dense model AI system (Qwen3-8B) using a dual-chain linear blockchain architecture with cross-chain references for coordinated layer evolution. The system uses Proof-of-Learning (PoL) validation for verifying model improvements through loss comparison and fraud detection.
 
 ### 1.2 Core Components
 - **Blockchain Layer**: Dual-chain architecture (Meta chain A + Parameter chain B)
@@ -15,8 +15,8 @@ Blyan Network implements a distributed dense model AI system (Qwen3-8B) using a 
 
 ### 1.3 Technology Stack
 - **Language**: Python 3.10+
-- **Framework**: FastAPI, PyTorch 2.0+
-- **Blockchain**: Custom DAG implementation
+- **Framework**: FastAPI, PyTorch 2.0+, Transformers, SafeTensors
+- **Blockchain**: Linear chain with cross-references implementation
 - **Database**: PostgreSQL 14+, Redis 7+
 - **Infrastructure**: Docker, Kubernetes
 - **Monitoring**: Prometheus, Grafana
@@ -25,19 +25,19 @@ Blyan Network implements a distributed dense model AI system (Qwen3-8B) using a 
 
 ### 2.1 Two-Chain Design
 
-#### Transaction Chain (PoS+BFT)
+#### Transaction Chain (PoW+PoL)
 ```python
 class TransactionChain:
-    consensus: str = "Tendermint BFT"
-    finality: str = "<2 seconds"
-    validators: int = 100-300
-    tolerance: str = "<1/3 Byzantine"
+    consensus: str = "Proof-of-Work with Proof-of-Learning"
+    anti_spam: str = "PoL nonce validation"
+    contributors: str = "GPU miners and trainers"
+    tolerance: str = "51% attack resistant"
     
     features:
         - Token transfers with nonce protection
-        - EIP-1559 fee mechanism
-        - Deterministic finality
-        - Slashing conditions
+        - Anti-spam PoL validation
+        - Linear block progression
+        - Cross-chain coordination via points_to
 ```
 
 #### PoL Chain (Proof-of-Learning)
@@ -55,45 +55,48 @@ class PoLChain:
         - Hourly reward distribution cycles
 ```
 
-### 2.2 DAG Structure
+### 2.2 Linear Chain Structure with Cross-References
 
 #### Block Types
 ```python
 class BlockType(Enum):
     META = "meta"        # Model architecture
-    LAYER = "layer"      # Layer weights (dense model)
+    DENSE_LAYER = "dense_layer"  # Dense model layer weights
     DELTA = "delta"      # Weight updates
-    DATA = "dataset"     # Training data metadata
-    MIGRATION = "migration"  # Layer dimension changes
+    DATASET = "dataset"  # Training data metadata
+    GENESIS_PACT = "genesis_pact"  # Genesis governance block
 ```
 
-#### DAG Properties
-- **Append-Only**: New blocks are always appended, never replaced
-- **Dependency Tracking**: `depends_on` field for parent relationships
-- **Cycle Prevention**: Topological sorting validation
-- **No Merging**: Parallel branches exist independently without intelligent merging
+#### Linear Chain Properties
+- **Append-Only**: New blocks are always appended via `prev_hash` links
+- **Cross-Chain References**: `points_to` field for inter-chain coordination
+- **Optional Dependencies**: `depends_on` field for additional references within chains
+- **Linear Validation**: Each block validates against its direct predecessor
 
 ### 2.3 Consensus Mechanisms
 
-#### PoS Validator Selection
+#### PoW Anti-Spam Mining
 ```python
-def select_validators(stake_pool: Dict[str, int]) -> List[str]:
+def find_pol_nonce(
+    data: bytes,
+    contributor_id: str,
+    difficulty: int = 1
+) -> int:
     """
-    VRF-based validator selection weighted by stake
+    Find nonce that satisfies PoL difficulty requirement
+    Anti-spam protection for blockchain submissions
     """
-    total_stake = sum(stake_pool.values())
-    selection_threshold = 2/3 * total_stake
+    nonce = 0
+    target = "0" * difficulty
     
-    validators = []
-    accumulated_stake = 0
-    
-    for validator in sorted_by_vrf(stake_pool):
-        validators.append(validator)
-        accumulated_stake += stake_pool[validator]
-        if accumulated_stake >= selection_threshold:
-            break
-    
-    return validators
+    while True:
+        candidate = hashlib.sha256(
+            data + contributor_id.encode() + str(nonce).encode()
+        ).hexdigest()
+        
+        if candidate.startswith(target):
+            return nonce
+        nonce += 1
 ```
 
 #### PoL Quality Validation
@@ -327,40 +330,79 @@ message P2PMessage {
 #### Core Endpoints
 ```yaml
 endpoints:
+  # Health Checks
+  GET /health:
+    response:
+      status: string
+      timestamp: float
+      chain_status: string
+      model_loaded: bool
+  
+  GET /health/pipeline:
+    response:
+      pipeline_status: string
+      nodes_available: int
+      latency_ms: float
+  
   # Inference
   POST /chat:
     request:
       prompt: string
-      max_tokens: int
+      max_new_tokens: int
       temperature: float
-      use_moe: bool
     response:
-      text: string
-      tokens_used: int
-      experts_used: List[str]
-      cost_bly: float
+      response: string
+      tokens_generated: int
+      pipeline_stages: Dict[int, str]
   
-  # Mining
+  POST /chat/production:
+    request:
+      prompt: string
+      max_new_tokens: int
+      temperature: float
+      use_blockchain: bool
+    response:
+      response: string
+      model_source: string
+      processing_time_ms: float
+  
+  # Mining & Training
   POST /mine:
     request:
-      address: string
-      block_data: bytes
-      nonce: int
-      candidate_loss: float
+      payload: bytes
+      block_type: string
+      layer_id: Optional[str]
     response:
       block_hash: string
-      reward_bly: float
+      block_index: int
   
-  # Node Management
+  POST /training/start:
+    request:
+      layer_id: string
+      learning_rate: float
+      batch_size: int
+    response:
+      job_id: string
+      status: string
+  
+  # P2P Network
   POST /p2p/register:
     request:
       node_id: string
       host: string
       port: int
-      available_experts: List[str]
+      available_layers: List[int]
+      vram_gb: float
+      compute_capability: float
     response:
       registered: bool
       auth_token: string
+  
+  GET /p2p/nodes:
+    response:
+      nodes: List[GPUNode]
+      total_nodes: int
+      healthy_nodes: int
 ```
 
 ## 6. Security Model
@@ -503,36 +545,51 @@ class ScalabilityManager:
 #### Block Structure
 ```python
 @dataclass
-class Block:
+class BlockHeader:
     index: int
     timestamp: float
-    block_type: BlockType
-    data: bytes
-    metadata: Dict[str, Any]
-    previous_hash: str
-    hash: str
-    depends_on: List[str]  # DAG dependencies
-    signature: bytes
+    prev_hash: str  # Previous block hash (linear chain)
+    chain_id: str  # "A" or "B" for dual chains
+    points_to: Optional[str]  # Cross-chain reference
+    payload_hash: str
+    payload_size: int
+    nonce: int
+    depends_on: Optional[List[str]]  # Optional dependencies
+    block_type: Literal['meta', 'dense_layer', 'delta', 'genesis_pact']
+    layer_name: Optional[str]  # For dense model layers
+    layer_id: Optional[str]
+
+@dataclass
+class Block:
+    header: BlockHeader
+    payload: bytes
+    miner_pub: Optional[str]
+    payload_sig: Optional[str]
     
-    def calculate_hash(self) -> str:
-        content = f"{self.index}{self.timestamp}{self.data}{self.previous_hash}"
-        return sha3_256(content.encode()).hexdigest()
+    def compute_hash(self) -> str:
+        content = self.header.to_json() + self.payload.hex()
+        return hashlib.sha256(content.encode()).hexdigest()
 ```
 
-#### Expert Registry
+#### GPU Node Registry
 ```python
 @dataclass
-class ExpertRecord:
-    expert_id: str
-    layer: int
-    version: str
-    block_hash: str
-    weight_cid: str  # IPFS content ID
-    size_bytes: int
-    quality_score: float
-    usage_count: int
-    last_updated: datetime
-    node_assignments: List[str]
+class GPUNode:
+    node_id: str
+    host: str
+    port: int
+    available_layers: List[int]  # Which dense model layers this node can serve
+    vram_gb: float
+    compute_capability: float
+    is_healthy: bool = True
+    last_heartbeat: float
+    current_load: float  # 0.0 to 1.0
+    region: Optional[str] = None
+    reputation_score: float = 1.0
+    
+    @property
+    def endpoint(self) -> str:
+        return f"http://{self.host}:{self.port}"
 ```
 
 ### 8.2 Economic Models
