@@ -1401,9 +1401,9 @@ async def chat(req: ChatRequest, http_request: Request = None):
                 )
     """
 
-    # Rate limiting check
-    if http_request:
-        await rate_limiter(http_request, "inference")
+    # # Rate limiting check
+    # if http_request:
+    #     await rate_limiter(http_request, "inference")
     
     try:
         # Proxy to atomic chat endpoint for consistency
