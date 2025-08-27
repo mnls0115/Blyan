@@ -1,5 +1,6 @@
 // Dynamic API Configuration
 // Auto-discovers GPU nodes or uses environment-based configuration
+// Uses nginx reverse proxy with SSL for production HTTPS support
 
 const API_CONFIG = {
     // Dynamic baseURL selection
@@ -30,8 +31,9 @@ const API_CONFIG = {
         }
         
         // Default to DigitalOcean service node (for distributed GPU inference)
-        console.log('🌐 Using DigitalOcean service node API');
-        return 'http://165.227.221.225:8000';
+        // Use the domain that has SSL certificate configured
+        console.log('🌐 Using DigitalOcean service node API via domain proxy');
+        return 'https://blyan.com/api';
     })(),
 
     // Allow runtime configuration
@@ -50,10 +52,10 @@ const API_CONFIG = {
     },
 
     // Individual endpoints
-    balance: '/balance/',
-    chain: '/chain/B/blocks?limit=10',
-    polStatus: '/pol/status',
-    health: '/health',
+    balance: '/api/balance/',
+    chain: '/api/chain/B/blocks?limit=10',
+    polStatus: '/api/pol/status',
+    health: '/api/health',
     
     // Helper function to ensure HTTPS in production
     ensureHttps: function(url) {
