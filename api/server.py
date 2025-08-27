@@ -5076,15 +5076,6 @@ async def get_gpu_resources():
     """Get available GPU resources (backward compatibility)."""
     # Redirect to new endpoint
     return await get_gpu_node_status()
-                    "capabilities": info['capabilities'],
-                    "status": "reserved" if node_id in gpu_manager.reserved_nodes else "available"
-                }
-                for node_id, info in gpu_manager.available_nodes.items()
-            ]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get GPU resources: {str(e)}")
 
 
 # Standard migration templates for easy testing
