@@ -10,7 +10,7 @@ import datetime
 import asyncio
 
 # Third-party libraries; ignore type checker if not present in local env
-from fastapi import FastAPI, HTTPException, Request, Depends, Response  # type: ignore
+from fastapi import FastAPI, HTTPException, Request, Depends, Response, Body  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from pydantic import BaseModel  # type: ignore
 
@@ -4973,61 +4973,109 @@ async def get_evolution_history():
         raise HTTPException(status_code=500, detail=f"Failed to get evolution history: {str(e)}")
 
 
-@app.post("/evolution/register_gpu_node")
-async def register_gpu_node():
-    """Register a GPU node for epoch training (simplified demo)."""
+@app.post("/gpu/register")
+async def register_gpu_node(
+    request: Request,
+    node_id: str = Body(...),
+    api_url: str = Body(...),
+    capabilities: Optional[Dict[str, Any]] = Body(default={})
+):
+    """Register a GPU node for distributed inference."""
     try:
-        # Demo GPU node registration
-        node_id = f"gpu_node_{int(time.time()) % 10000}"
+        # Get API key from header for GPU node authentication
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing or invalid authorization")
         
-        if not epoch_scheduler:
-            raise HTTPException(status_code=503, detail="Evolution scheduler not available")
-        epoch_scheduler.gpu_manager.register_gpu_node(
+        api_key = auth_header.replace("Bearer ", "")
+        
+        # Initialize GPU node manager if needed
+        global gpu_node_manager
+        if 'gpu_node_manager' not in globals():
+            from backend.p2p.gpu_node_manager import GPUNodeManager
+            gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+        
+        # Register the node
+        result = await gpu_node_manager.register_node(
             node_id=node_id,
-            gpu_count=8,                    # 8 GPUs
-            credits_per_hour=50,            # 50 credits per hour
-            capabilities=["A100", "H100"]   # GPU types
+            api_url=api_url,
+            api_key=api_key,
+            capabilities=capabilities,
+            node_type="gpu"
         )
         
+        if result["success"]:
+            logger.info(f"✅ GPU node {node_id} registered successfully")
+            return result
+        else:
+            raise HTTPException(status_code=400, detail=result["message"])
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"GPU node registration failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+
+
+@app.get("/gpu/status")
+async def get_gpu_node_status():
+    """Get status of all registered GPU nodes."""
+    try:
+        # Initialize GPU node manager if needed
+        global gpu_node_manager
+        if 'gpu_node_manager' not in globals():
+            from backend.p2p.gpu_node_manager import GPUNodeManager
+            gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+        
+        status = gpu_node_manager.get_node_status()
         return {
             "success": True,
-            "message": "GPU node registered for epoch training",
-            "node_id": node_id,
-            "gpu_count": 8,
-            "credits_per_hour": 50,
-            "available_for_next_epoch": True
+            **status
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"GPU node registration failed: {str(e)}")
+        logger.error(f"Failed to get GPU status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
+
+
+@app.post("/gpu/heartbeat")
+async def gpu_node_heartbeat(
+    request: Request,
+    node_id: str = Body(...)
+):
+    """Update heartbeat for a GPU node."""
+    try:
+        # Verify authentication
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            raise HTTPException(status_code=401, detail="Missing authorization")
+        
+        # Initialize GPU node manager if needed
+        global gpu_node_manager
+        if 'gpu_node_manager' not in globals():
+            from backend.p2p.gpu_node_manager import GPUNodeManager
+            gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+        
+        # Update heartbeat
+        success = await gpu_node_manager.update_heartbeat(node_id)
+        
+        if success:
+            return {"success": True, "message": "Heartbeat updated"}
+        else:
+            raise HTTPException(status_code=404, detail="Node not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Heartbeat update failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Heartbeat failed: {str(e)}")
 
 
 @app.get("/evolution/gpu_resources")
 async def get_gpu_resources():
-    """Get available GPU resources for epoch training."""
-    try:
-        if not epoch_scheduler:
-            raise HTTPException(status_code=503, detail="Evolution scheduler not available")
-        gpu_manager = epoch_scheduler.gpu_manager
-        
-        total_gpus = sum(info['gpu_count'] for info in gpu_manager.available_nodes.values())
-        available_nodes = len([n for n in gpu_manager.available_nodes.keys() if n not in gpu_manager.reserved_nodes])
-        reserved_nodes = len(gpu_manager.reserved_nodes)
-        
-        return {
-            "success": True,
-            "gpu_cluster_status": {
-                "total_gpu_nodes": len(gpu_manager.available_nodes),
-                "available_nodes": available_nodes,
-                "reserved_nodes": reserved_nodes,
-                "total_gpus": total_gpus,
-                "utilization_rate": reserved_nodes / max(1, len(gpu_manager.available_nodes))
-            },
-            "node_details": [
-                {
-                    "node_id": node_id,
-                    "gpu_count": info['gpu_count'],
-                    "credits_per_hour": info['credits_per_hour'],
+    """Get available GPU resources (backward compatibility)."""
+    # Redirect to new endpoint
+    return await get_gpu_node_status()
                     "capabilities": info['capabilities'],
                     "status": "reserved" if node_id in gpu_manager.reserved_nodes else "available"
                 }
