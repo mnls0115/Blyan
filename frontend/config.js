@@ -5,6 +5,14 @@ const API_CONFIG = {
     // Auto-detect: Use local API if available, otherwise production
     // This prevents rate limiting issues during development
     baseURL: (function() {
+        // Check URL parameters first (allows override)
+        const urlParams = new URLSearchParams(window.location.search);
+        const apiUrl = urlParams.get('api');
+        if (apiUrl) {
+            console.log('🎯 Using API from URL param:', apiUrl);
+            return apiUrl;
+        }
+        
         // Check if we're in local development
         const isLocalhost = window.location.hostname === 'localhost' || 
                           window.location.hostname === '127.0.0.1' ||
@@ -15,9 +23,9 @@ const API_CONFIG = {
             console.log('🏠 Using local API (http://127.0.0.1:8000)');
             return 'http://127.0.0.1:8000';
         } else {
-            // Use production API
-            console.log('🌐 Using production API (https://blyan.com/api)');
-            return 'https://blyan.com/api';
+            // Use DigitalOcean service node
+            console.log('🌐 Using DigitalOcean service node (http://165.227.221.225:8000)');
+            return 'http://165.227.221.225:8000';
         }
     })(),
 
