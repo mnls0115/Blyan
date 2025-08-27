@@ -1059,7 +1059,7 @@
             try {
                 // Use makeAuthenticatedRequest which now handles free tier users
                 // Use the correct API endpoint
-                const apiUrl = window.API_CONFIG?.baseURL || 'http://165.227.221.225:8000';
+                const apiUrl = window.API_CONFIG?.baseURL || (window.location.protocol === 'https:' ? 'https://blyan.com/api' : 'http://165.227.221.225:8000');
                 const response = await apiAuth.makeAuthenticatedRequest(`${apiUrl}/chat`, {
                     method: 'POST',
                     body: JSON.stringify({

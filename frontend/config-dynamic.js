@@ -29,11 +29,26 @@ const API_CONFIG = {
             return 'http://localhost:8000';
         }
         
-        // Default to DigitalOcean service node via nginx reverse proxy
-        console.log('🌐 Using DigitalOcean service node API via HTTPS');
-        // Use HTTPS if page is served over HTTPS, otherwise HTTP
+        // Check if accessed via IP address
+        const isIPAddress = /^\d+\.\d+\.\d+\.\d+$/.test(window.location.hostname);
+        
+        if (isIPAddress && window.location.protocol === 'https:') {
+            // If accessing via HTTPS on IP, redirect to domain
+            console.log('🔄 Redirecting from IP to domain for proper HTTPS...');
+            window.location.href = 'https://blyan.com' + window.location.pathname + window.location.search;
+            return 'https://blyan.com/api'; // Fallback (won't be reached due to redirect)
+        }
+        
+        // Default to appropriate endpoint based on protocol
+        console.log('🌐 Using DigitalOcean service node API');
         const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
-        return protocol === 'https:' ? 'https://blyan.com/api' : 'http://165.227.221.225:8000';
+        
+        if (protocol === 'https:') {
+            return 'https://blyan.com/api';
+        } else {
+            // HTTP access - likely from IP or local testing
+            return 'http://165.227.221.225:8000';
+        }
     })(),
 
     // Allow runtime configuration

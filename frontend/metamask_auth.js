@@ -13,7 +13,7 @@
 
 class BlyanAuth {
     constructor() {
-        this.apiUrl = window.API_CONFIG?.baseURL || 'http://165.227.221.225:8000';
+        this.apiUrl = window.API_CONFIG?.baseURL || (window.location.protocol === 'https:' ? 'https://blyan.com/api' : 'http://165.227.221.225:8000');
         
         this.account = null;
         this.token = null;

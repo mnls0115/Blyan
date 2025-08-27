@@ -23,9 +23,14 @@ const API_CONFIG = {
             console.log('🏠 Using local API (http://127.0.0.1:8000)');
             return 'http://127.0.0.1:8000';
         } else {
-            // Use DigitalOcean service node (HTTP only - no SSL cert for IP)
-            console.log('🌐 Using DigitalOcean service node (http://165.227.221.225:8000)');
-            return 'http://165.227.221.225:8000';
+            // Use appropriate endpoint based on protocol
+            if (window.location.protocol === 'https:') {
+                console.log('🌐 Using DigitalOcean service node via HTTPS proxy');
+                return 'https://blyan.com/api';
+            } else {
+                console.log('🌐 Using DigitalOcean service node direct HTTP');
+                return 'http://165.227.221.225:8000';
+            }
         }
     })(),
 
