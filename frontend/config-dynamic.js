@@ -29,9 +29,9 @@ const API_CONFIG = {
             return 'http://localhost:8000';
         }
         
-        // Default to main server (which can proxy to GPU nodes)
-        console.log('🌐 Using main server API');
-        return 'https://blyan.com/api';
+        // Default to DigitalOcean service node (for distributed GPU inference)
+        console.log('🌐 Using DigitalOcean service node API');
+        return 'http://165.227.221.225:8000';
     })(),
 
     // Allow runtime configuration
