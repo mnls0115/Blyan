@@ -23,9 +23,9 @@ const API_CONFIG = {
             console.log('🏠 Using local API (http://127.0.0.1:8000)');
             return 'http://127.0.0.1:8000';
         } else {
-            // Use DigitalOcean service node
-            console.log('🌐 Using DigitalOcean service node (http://165.227.221.225:8000)');
-            return 'http://165.227.221.225:8000';
+            // Use DigitalOcean service node with HTTPS proxy
+            console.log('🌐 Using DigitalOcean service node (https://165.227.221.225/api)');
+            return 'https://165.227.221.225/api';
         }
     })(),
 
