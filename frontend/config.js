@@ -40,10 +40,9 @@ const API_CONFIG = {
     health: '/health',  // Basic health check endpoint
 
     // Helper function to ensure HTTPS in production
+    // DISABLED: DigitalOcean service node uses HTTP only (no SSL cert for IP)
     ensureHttps: function(url) {
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-            return url.replace(/^http:/, 'https:');
-        }
+        // Always return URL as-is, don't convert to HTTPS
         return url;
     }
 };
