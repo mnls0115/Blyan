@@ -429,60 +429,76 @@ class UnifiedModelManager:
                 all_layers = self.param_index.get_all_layers()
                 logger.info(f"   Found {len(all_layers)} layers to load")
                 
-                # Collect block indices for batch loading
-                block_indices = []
+                # Ordered mapping of layer -> block index
                 layer_to_block = {}
-                
+                ordered_blocks = []
                 for layer_name in all_layers:
                     block_idx = self.param_index.get(layer_name)
                     if block_idx is not None:
-                        block_indices.append(block_idx)
                         layer_to_block[layer_name] = block_idx
+                        ordered_blocks.append(block_idx)
                 
-                logger.info(f"   Loading {len(block_indices)} blocks directly to {self.device}...")
+                total_blocks = len(ordered_blocks)
+                logger.info(f"   Loading {total_blocks} blocks directly to {self.device} (chunked)...")
                 
-                # Batch load all blocks to GPU
-                gpu_tensors = self.gpu_loader.batch_load_to_gpu(
-                    block_indices, 
-                    device=self.device,
-                    max_workers=int(os.getenv("GPU_LOAD_WORKERS", "8"))
-                )
+                # Load in small chunks to avoid peak VRAM spikes
+                chunk_size = int(os.getenv("GPU_DIRECT_CHUNK_SIZE", "4"))
+                max_workers = int(os.getenv("GPU_LOAD_WORKERS", "2"))
+                loaded_tensors = 0
                 
-                # Build state dict from GPU tensors
-                state_dict = {}
-                for layer_name, block_idx in layer_to_block.items():
-                    if block_idx in gpu_tensors:
-                        tensors = gpu_tensors[block_idx]
-                        # Apply delta composition if needed
-                        for key, tensor in tensors.items():
-                            final_key = key if '.' in key else f"{layer_name}.{key}"
-                            state_dict[final_key] = self._compose_layer_with_deltas(final_key, tensor)
+                # Build reverse map block_idx -> [layer_names]
+                block_to_layers: Dict[int, List[str]] = {}
+                for ln, bi in layer_to_block.items():
+                    block_to_layers.setdefault(bi, []).append(ln)
                 
-                # Load state dict into model
-                if state_dict:
-                    # Model weights are already on GPU, just assign references
-                    incompatible = self.model.load_state_dict(state_dict, strict=False)
-                    logger.info(f"✅ Loaded {len(state_dict)} tensors via GPU-Direct")
+                for start in range(0, total_blocks, chunk_size):
+                    end = min(start + chunk_size, total_blocks)
+                    chunk_indices = ordered_blocks[start:end]
+                    gpu_tensors = self.gpu_loader.batch_load_to_gpu(
+                        chunk_indices,
+                        device=self.device,
+                        max_workers=max_workers
+                    )
                     
-                    if incompatible.missing_keys:
-                        logger.warning(f"Missing keys: {incompatible.missing_keys[:5]}")
+                    # Build partial state dict and load immediately
+                    partial_state = {}
+                    for bi in chunk_indices:
+                        if bi in gpu_tensors:
+                            tensors = gpu_tensors[bi]
+                            for key, tensor in tensors.items():
+                                # There may be multiple layers mapping to same block (rare); apply to all
+                                for layer_name in block_to_layers.get(bi, []):
+                                    final_key = key if '.' in key else f"{layer_name}.{key}"
+                                    partial_state[final_key] = self._compose_layer_with_deltas(final_key, tensor)
                     
-                    # Log performance stats
-                    stats = self.gpu_loader.get_stats()
-                    logger.info(f"   📊 GPU-Direct Stats:")
-                    logger.info(f"      Cache hit rate: {stats['cache_hit_rate']:.1%}")
-                    logger.info(f"      Pinned hit rate: {stats['pinned_hit_rate']:.1%}")
-                    logger.info(f"      Avg load time: {stats['avg_load_time_ms']:.2f}ms")
-                    logger.info(f"      Avg GPU transfer: {stats['avg_gpu_transfer_ms']:.2f}ms")
-                    logger.info(f"      Pinned cache: {stats['pinned_cache_size_mb']:.1f}MB")
+                    if partial_state:
+                        incompatible = self.model.load_state_dict(partial_state, strict=False)
+                        loaded_tensors += len(partial_state)
+                        if incompatible.missing_keys:
+                            logger.debug(f"Chunk missing keys: {incompatible.missing_keys[:3]}")
+                        
+                        # Free temporary storage and defragment
+                        del partial_state
+                        torch.cuda.synchronize()
+                        torch.cuda.empty_cache()
                     
-                    # Save fused snapshot for next boot
-                    if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() == "true":
-                        self._save_fused_snapshot()
-                else:
-                    logger.error("No weights loaded via GPU-Direct")
-                    raise RuntimeError("GPU-Direct loading failed")
-                    
+                    logger.info(f"   ✅ Chunk loaded blocks {start}-{end-1} ({loaded_tensors} tensors total)")
+                
+                logger.info(f"✅ Loaded {loaded_tensors} tensors via GPU-Direct (chunked)")
+                
+                # Log performance stats
+                stats = self.gpu_loader.get_stats()
+                logger.info(f"   📊 GPU-Direct Stats:")
+                logger.info(f"      Cache hit rate: {stats['cache_hit_rate']:.1%}")
+                logger.info(f"      Pinned hit rate: {stats['pinned_hit_rate']:.1%}")
+                logger.info(f"      Avg load time: {stats['avg_load_time_ms']:.2f}ms")
+                logger.info(f"      Avg GPU transfer: {stats['avg_gpu_transfer_ms']:.2f}ms")
+                logger.info(f"      Pinned cache: {stats['pinned_cache_size_mb']:.1f}MB")
+                
+                # Save fused snapshot for next boot
+                if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() == "true":
+                    self._save_fused_snapshot()
+                
             except Exception as e:
                 logger.error(f"GPU-Direct loading failed: {e}")
                 logger.warning("Falling back to standard blockchain loading")
@@ -807,7 +823,8 @@ _global_manager: Optional[UnifiedModelManager] = None
 
 def get_model_manager(
     root_dir: Path = Path("./data"),
-    force_new: bool = False
+    force_new: bool = False,
+    **kwargs
 ) -> UnifiedModelManager:
     """
     Get or create global model manager instance.
@@ -822,7 +839,7 @@ def get_model_manager(
     global _global_manager
     
     if _global_manager is None or force_new:
-        _global_manager = UnifiedModelManager(root_dir)
+        _global_manager = UnifiedModelManager(root_dir, **kwargs)
     
     return _global_manager
 

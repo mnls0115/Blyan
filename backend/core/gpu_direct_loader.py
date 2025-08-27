@@ -154,8 +154,9 @@ class GPUDirectBlockLoader:
                 gpu_tensors[key] = gpu_tensor
                 
                 # Cache in pinned memory if enabled
+                # IMPORTANT: cache CPU pinned tensor, not the GPU tensor, to avoid VRAM duplication
                 if self.enable_pinned_cache and self._should_cache(tensor):
-                    self._add_to_pinned_cache(cache_key, gpu_tensor)
+                    self._add_to_pinned_cache(cache_key, tensor)
             
             self.stats['gpu_transfer_time'] += time.time() - transfer_start
             self.stats['total_load_time'] += time.time() - start_time
@@ -443,7 +444,7 @@ def gpu_memory_optimization():
         # Set memory fraction (tunable via env GPU_MEMORY_FRACTION)
         try:
             import os
-            fraction = float(os.getenv("GPU_MEMORY_FRACTION", "0.75"))
+            fraction = float(os.getenv("GPU_MEMORY_FRACTION", "0.95"))
             # Clamp to reasonable range
             if fraction < 0.5:
                 fraction = 0.5
@@ -452,6 +453,13 @@ def gpu_memory_optimization():
         except Exception:
             fraction = 0.75
         torch.cuda.set_per_process_memory_fraction(fraction)
+        
+        # Use expandable segments to reduce fragmentation when loading many tensors
+        if hasattr(torch.cuda, "set_allocator_settings"):
+            try:
+                torch.cuda.set_allocator_settings("expandable_segments:True")
+            except Exception:
+                pass
         
         # Enable TF32 for better performance on Ampere+
         torch.backends.cuda.matmul.allow_tf32 = True

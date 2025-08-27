@@ -654,10 +654,10 @@ class BlyanGPUNode:
             # Use blockchain-first loader - NO local models
             logger.info("  1/5: Importing unified model manager...")
             try:
-                from backend.model.manager import UnifiedModelManager
-                logger.info("    ✓ UnifiedModelManager imported")
+                from backend.model.manager import get_model_manager
+                logger.info("    ✓ Model manager accessor imported")
             except ImportError as e:
-                logger.error(f"    ✗ Failed to import UnifiedModelManager: {e}")
+                logger.error(f"    ✗ Failed to import model manager accessor: {e}")
                 return False
             
             try:
@@ -710,12 +710,14 @@ class BlyanGPUNode:
             logger.info(f"        ENABLE_FUSED_SNAPSHOT={os.getenv('ENABLE_FUSED_SNAPSHOT', 'true')}")
             logger.info(f"        BLOCK_FETCH_MAX_WORKERS={os.getenv('BLOCK_FETCH_MAX_WORKERS', '4')}")
             
-            self.model_manager = UnifiedModelManager(
-                root_dir=DATA_DIR,
+            # Enforce singleton model manager to prevent multiple loads
+            self.model_manager = get_model_manager(
+                DATA_DIR,
+                force_new=False,
                 model_name=MODEL_NAME,
                 device="cuda" if self.gpu_available else "cpu",
-                use_blockchain=True,  # Always use blockchain for inference
-                use_gpu_direct=os.getenv("USE_GPU_DIRECT", "true").lower() == "true"  # Tunable to mitigate OOM during load
+                use_blockchain=True,
+                use_gpu_direct=os.getenv("USE_GPU_DIRECT", "true").lower() == "true"
             )
             
             # Initialize zero-copy loader for efficient loading
@@ -2231,11 +2233,13 @@ class BlyanGPUNode:
         if not self.initialize_model_manager():
             logger.warning("Running without model manager")
         else:
-            # Start background GPU warmup if enabled
+            # Perform blocking warm start so the model is fully ready
             if os.getenv('ENABLE_STARTUP_WARMUP', 'true').lower() == 'true':
-                import asyncio as _asyncio
-                _asyncio.create_task(self._warmup_gpu())
-                logger.info("🧊 Warmup task scheduled (will not block startup)")
+                try:
+                    logger.info("🧊 Performing blocking warm start...")
+                    await self._warmup_gpu()
+                except Exception as _e:
+                    logger.warning(f"Warm start failed (continuing): {_e}")
 
         # 4.5 Check if we just completed an upload and need to reinit
         if hasattr(self, 'upload_completed') and self.upload_completed:

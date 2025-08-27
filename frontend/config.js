@@ -48,8 +48,8 @@ const API_CONFIG = {
     }
 };
 
-// Ensure API base URL uses HTTPS when served over HTTPS
-API_CONFIG.baseURL = API_CONFIG.ensureHttps(API_CONFIG.baseURL);
+// Do NOT force HTTPS for API URLs - the API server runs on HTTP
+// API_CONFIG.baseURL = API_CONFIG.ensureHttps(API_CONFIG.baseURL);
 
 // Export for use in other files
 window.API_CONFIG = API_CONFIG;
