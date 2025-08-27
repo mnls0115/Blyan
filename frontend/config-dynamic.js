@@ -29,9 +29,11 @@ const API_CONFIG = {
             return 'http://localhost:8000';
         }
         
-        // Default to DigitalOcean service node (for distributed GPU inference)
-        console.log('🌐 Using DigitalOcean service node API');
-        return 'http://165.227.221.225:8000';
+        // Default to DigitalOcean service node via nginx reverse proxy
+        console.log('🌐 Using DigitalOcean service node API via HTTPS');
+        // Use HTTPS if page is served over HTTPS, otherwise HTTP
+        const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        return protocol === 'https:' ? 'https://blyan.com/api' : 'http://165.227.221.225:8000';
     })(),
 
     // Allow runtime configuration
