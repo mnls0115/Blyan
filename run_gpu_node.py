@@ -2236,18 +2236,43 @@ class BlyanGPUNode:
             # Perform blocking warm start so the model is fully ready
             if os.getenv('ENABLE_STARTUP_WARMUP', 'true').lower() == 'true':
                 try:
-                    logger.info("🧊 Performing blocking warm start...")
-                    await self._warmup_gpu()
+                    # Skip warm start if upload in progress or blockchain not complete
+                    from backend.core.param_index import ParameterIndex
+                    uploading = hasattr(self, '_upload_in_progress') and self._upload_in_progress
+                    param_index = ParameterIndex(DATA_DIR / "param_index.json")
+                    have_full = len(param_index.get_all_layers()) >= 38
+                    if uploading or not have_full:
+                        logger.info("🧊 Skipping warm start (uploading or incomplete blockchain)")
+                    else:
+                        logger.info("🧊 Performing blocking warm start...")
+                        await self._warmup_gpu()
                 except Exception as _e:
                     logger.warning(f"Warm start failed (continuing): {_e}")
 
         # 4.5 Check if we just completed an upload and need to reinit
         if hasattr(self, 'upload_completed') and self.upload_completed:
-            logger.info("🔄 Upload was just completed, reinitializing model manager...")
+            logger.info("🔄 Upload was just completed, reinitializing model manager with blockchain weights...")
             # Wait a bit for filesystem to settle
             await asyncio.sleep(2)
+            # If a local/HF model is currently loaded, unload it to free VRAM
+            try:
+                if self.model_manager and getattr(self.model_manager, '_loaded_from_blockchain', False) is False:
+                    logger.info("🧹 Unloading preloaded raw model from VRAM")
+                    import torch as _torch
+                    self.model_manager.model = None
+                    _torch.cuda.empty_cache()
+                    # Force reinit from blockchain
+                    from backend.model.manager import get_model_manager as _gmm
+                    self.model_manager = _gmm(DATA_DIR, force_new=True, model_name=MODEL_NAME, device="cuda" if self.gpu_available else "cpu", use_blockchain=True, use_gpu_direct=os.getenv("USE_GPU_DIRECT", "true").lower() == "true")
+            except Exception as _e:
+                logger.warning(f"Could not unload local model: {_e}")
             if self.initialize_model_manager():
                 logger.info("✅ Model manager reinitialized with blockchain experts")
+                # Now perform warm start on the fresh blockchain model
+                try:
+                    await self._warmup_gpu()
+                except Exception as _e:
+                    logger.warning(f"Warm start after upload failed: {_e}")
             else:
                 logger.error("❌ Failed to reinitialize model manager after upload")
         

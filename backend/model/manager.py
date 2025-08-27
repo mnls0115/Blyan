@@ -51,6 +51,8 @@ class UnifiedModelManager:
         self.tokenizer = None
         self._initialized = False
         self.gpu_loader = None
+        self._loaded_from_blockchain = False
+        self._min_blockchain_layers = int(os.getenv("MIN_BLOCKCHAIN_LAYERS", "38"))
         
         if use_blockchain:
             self._init_blockchain()
@@ -108,15 +110,14 @@ class UnifiedModelManager:
             # Load cached tokenizer (or create once)
             self._load_or_cache_tokenizer()
             
-            # Check if we have blockchain weights
-            if self.use_blockchain and self._has_blockchain_weights():
-                # Skip HF completely, load from blockchain
-                os.environ["TRANSFORMERS_OFFLINE"] = "1"
-                self._load_from_blockchain()
-            elif not self.use_blockchain:
-                self._load_from_local()
+            # Blockchain-only mode: do not fallback to HF
+            if self.use_blockchain:
+                if self.is_blockchain_ready():
+                    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+                    self._load_from_blockchain()
+                else:
+                    raise RuntimeError("Blockchain model not ready (weights incomplete)")
             else:
-                logger.warning("No blockchain weights found, falling back to HF")
                 self._load_from_local()
             
             self._initialized = True
@@ -166,7 +167,7 @@ class UnifiedModelManager:
             layers = self.param_index.get_all_layers()
             logger.debug(f"Found {len(layers)} layers in param_index: {layers[:3]}...")
             
-            # Need at least embedding, one layer, and lm_head
+            # Need at least minimal set; readiness uses stronger check
             has_weights = len(layers) >= 3
             if has_weights:
                 logger.info(f"✅ Found blockchain weights: {len(layers)} components")
@@ -176,6 +177,27 @@ class UnifiedModelManager:
         except Exception as e:
             logger.warning(f"Error checking blockchain weights: {e}")
             return False
+
+    def is_blockchain_ready(self) -> bool:
+        """Return True if the blockchain has a full set of weights."""
+        try:
+            if not hasattr(self, 'param_index'):
+                return False
+            layers = self.param_index.get_all_layers()
+            return len(layers) >= self._min_blockchain_layers
+        except Exception:
+            return False
+
+    def unload_model(self) -> None:
+        """Unload current model and free GPU memory."""
+        try:
+            if self.model is not None:
+                self.model = None
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        finally:
+            self._initialized = False
+            self._loaded_from_blockchain = False
     
     def _load_or_cache_tokenizer(self) -> None:
         """Load tokenizer from cache or download once."""
@@ -499,6 +521,9 @@ class UnifiedModelManager:
                 if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() == "true":
                     self._save_fused_snapshot()
                 
+                # Mark source
+                self._loaded_from_blockchain = True
+                
             except Exception as e:
                 logger.error(f"GPU-Direct loading failed: {e}")
                 logger.warning("Falling back to standard blockchain loading")
@@ -587,6 +612,7 @@ class UnifiedModelManager:
             if state_dict:
                 self.model.load_state_dict(state_dict, strict=False)
                 logger.info(f"✅ Loaded {len(state_dict)} tensors from blockchain")
+                self._loaded_from_blockchain = True
                 
                 # Save fused snapshot for next boot
                 if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() == "true":
@@ -641,6 +667,7 @@ class UnifiedModelManager:
             self.model_name,
             **model_config
         )
+        self._loaded_from_blockchain = False
     
     def generate(
         self,
@@ -740,7 +767,7 @@ class UnifiedModelManager:
             "parameters": param_count,
             "parameters_billions": param_count / 1e9,
             "device": self.device,
-            "loaded_from": "blockchain" if self.use_blockchain else "local",
+            "loaded_from": "blockchain" if self._loaded_from_blockchain else "local",
             "dtype": str(self.model.dtype) if hasattr(self.model, 'dtype') else "unknown"
         }
         
@@ -859,3 +886,402 @@ def create_model_manager(
         New UnifiedModelManager instance
     """
     return UnifiedModelManager(root_dir, **kwargs)
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
