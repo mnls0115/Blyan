@@ -424,7 +424,7 @@
     <!-- JavaScript -->
     <script>
         let selectedFiles = [];
-        const API_BASE = 'https://blyan.com/api';
+        const API_BASE = window.API_CONFIG?.baseURL || 'http://165.227.221.225:8000';
 
         // File upload handling
         const fileUploadArea = document.getElementById('fileUploadArea');

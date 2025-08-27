@@ -405,7 +405,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         // Configuration
-        const API_BASE = 'https://blyan.com/api';
+        const API_BASE = window.API_CONFIG?.baseURL || 'http://165.227.221.225:8000';
         let userAddress = localStorage.getItem('contributorAddress') || '';
         let refreshInterval = null;
         
