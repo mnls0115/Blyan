@@ -1726,11 +1726,8 @@ async def chat_gpu(req: ChatRequest, http_request: Request = None):
             # For GPU endpoint without nodes, return a clear message
             # Don't fall back to atomic chat to avoid auth issues
             return ChatResponse(
-                text="No GPU nodes are currently available. Please try again later or use /chat endpoint.",
-                layers_used={},
-                inference_time=0,
-                tokens_generated=0,
-                success=False
+                response="No GPU nodes are currently available. Please try again later or use /chat endpoint.",
+                inference_time=0
             )
         
         logger.info(f"Forwarding to GPU node (available: {len(active_nodes)})")
@@ -1744,11 +1741,8 @@ async def chat_gpu(req: ChatRequest, http_request: Request = None):
         
         if result.get("success"):
             return ChatResponse(
-                text=result.get("response", ""),
-                layers_used={"gpu_node": result.get("node_id", "unknown")},
-                inference_time=result.get("latency_ms", 0) / 1000,
-                tokens_generated=len(result.get("response", "").split()),
-                success=True
+                response=result.get("response", ""),
+                inference_time=result.get("latency_ms", 0) / 1000
             )
         else:
             raise HTTPException(status_code=503, detail=f"GPU inference failed: {result.get('error')}")
