@@ -285,48 +285,99 @@ class AtomicChatHandler:
         start_time = time.time()
         
         try:
-            # Import GPU forwarding module
-            from backend.p2p.batch_inference import get_gpu_forwarder
-            from api.server import distributed_coordinator
+            # Try to use GPU node manager first
+            from pathlib import Path
+            gpu_manager_available = False
             
-            # Get the GPU forwarder
-            forwarder = get_gpu_forwarder(distributed_coordinator)
-            
-            # Check if we have GPU nodes for distributed inference
-            has_gpu_nodes = (distributed_coordinator and 
-                           hasattr(distributed_coordinator, 'registry') and 
-                           distributed_coordinator.registry and 
-                           hasattr(distributed_coordinator.registry, 'nodes') and
-                           distributed_coordinator.registry.nodes)
-            
-            # Use GPU forwarder for inference
-            if has_gpu_nodes:
-                # Forward inference request to GPU nodes
-                logger.info(f"Forwarding inference request to GPU nodes (prompt: {len(request.prompt)} chars)")
+            try:
+                from backend.p2p.gpu_node_manager import GPUNodeManager
                 
-                result = await forwarder.process_inference(
-                    prompt=request.prompt,
-                    max_new_tokens=request.max_new_tokens,
-                    temperature=request.temperature
-                )
+                # Get or create GPU node manager
+                if not hasattr(self, '_gpu_node_manager'):
+                    self._gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
                 
-                ctx.inference_completed = True
+                # Check if we have any active GPU nodes
+                active_nodes = self._gpu_node_manager.get_active_nodes()
+                gpu_manager_available = len(active_nodes) > 0
                 
-                # Check if request was successful
-                if result.get("response"):
-                    # Estimate tokens (rough approximation)
-                    tokens_generated = len(result["response"].split()) * 1.3
+                if gpu_manager_available:
+                    logger.info(f"Found {len(active_nodes)} active GPU nodes, forwarding request")
                     
-                    return {
-                        "response": result.get("response", ""),
-                        "layers_used": {"node": result.get("node_used", "unknown")},
-                        "inference_time": result.get("inference_time", time.time() - start_time),
-                        "tokens_generated": int(tokens_generated),
-                        "actual_cost": 0.001 * tokens_generated
-                    }
-                else:
-                    # Fallback error response
-                    error_msg = result.get("error", "GPU nodes unavailable")
+                    # Forward to GPU node
+                    result = await self._gpu_node_manager.forward_to_gpu(
+                        prompt=request.prompt,
+                        max_tokens=request.max_new_tokens,
+                        temperature=request.temperature
+                    )
+                    
+                    ctx.inference_completed = True
+                    
+                    if result.get("success"):
+                        # Estimate tokens (rough approximation)
+                        response_text = result.get("response", "")
+                        tokens_generated = len(response_text.split()) * 1.3
+                        
+                        return {
+                            "response": response_text,
+                            "layers_used": {"node": result.get("node_id", "unknown")},
+                            "inference_time": result.get("latency_ms", 0) / 1000,
+                            "tokens_generated": int(tokens_generated),
+                            "actual_cost": 0.001 * tokens_generated
+                        }
+                    else:
+                        # GPU forwarding failed, fall through to other methods
+                        logger.warning(f"GPU forwarding failed: {result.get('error', 'Unknown error')}")
+                        gpu_manager_available = False
+                        
+            except ImportError:
+                logger.debug("GPU node manager not available")
+            except Exception as e:
+                logger.warning(f"GPU manager check failed: {e}")
+            
+            # Fallback to legacy batch inference system if no GPU nodes
+            if not gpu_manager_available:
+                # Import GPU forwarding module
+                from backend.p2p.batch_inference import get_gpu_forwarder
+                from api.server import distributed_coordinator
+                
+                # Get the GPU forwarder
+                forwarder = get_gpu_forwarder(distributed_coordinator)
+                
+                # Check if we have GPU nodes for distributed inference
+                has_gpu_nodes = (distributed_coordinator and 
+                               hasattr(distributed_coordinator, 'registry') and 
+                               distributed_coordinator.registry and 
+                               hasattr(distributed_coordinator.registry, 'nodes') and
+                               distributed_coordinator.registry.nodes)
+                
+                # Use GPU forwarder for inference
+                if has_gpu_nodes:
+                    # Forward inference request to GPU nodes
+                    logger.info(f"Using legacy forwarder for inference (prompt: {len(request.prompt)} chars)")
+                    
+                    result = await forwarder.process_inference(
+                        prompt=request.prompt,
+                        max_new_tokens=request.max_new_tokens,
+                        temperature=request.temperature
+                    )
+                    
+                    ctx.inference_completed = True
+                    
+                    # Check if request was successful
+                    if result.get("response"):
+                        # Estimate tokens (rough approximation)
+                        tokens_generated = len(result["response"].split()) * 1.3
+                        
+                        return {
+                            "response": result.get("response", ""),
+                            "layers_used": {"node": result.get("node_used", "unknown")},
+                            "inference_time": result.get("inference_time", time.time() - start_time),
+                            "tokens_generated": int(tokens_generated),
+                            "actual_cost": 0.001 * tokens_generated
+                        }
+                    else:
+                        # Fallback error response
+                        error_msg = result.get("error", "GPU nodes unavailable")
                     logger.warning(f"GPU forwarding failed: {error_msg}")
                     return {
                         "response": f"Service temporarily unavailable: {error_msg}",

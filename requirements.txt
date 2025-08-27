@@ -4,6 +4,7 @@ redis>=4.5.0
 psutil
 requests
 tiktoken
+httpx
 # torch
 transformers
 huggingface-hub

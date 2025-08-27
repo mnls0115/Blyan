@@ -1657,6 +1657,62 @@ async def chat_atomic(req: AtomicChatRequest, http_request: Request = None):
     
     # Use atomic handler
     handler = get_atomic_chat_handler()
+
+
+@app.post("/chat/gpu")
+async def chat_gpu(req: ChatRequest, http_request: Request = None):
+    """
+    Direct GPU chat endpoint that explicitly uses GPU nodes for inference.
+    Falls back to atomic chat if no GPU nodes are available.
+    """
+    try:
+        # Initialize GPU node manager if needed
+        global gpu_node_manager
+        if 'gpu_node_manager' not in globals():
+            from backend.p2p.gpu_node_manager import GPUNodeManager
+            gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+        
+        # Check if we have active GPU nodes
+        active_nodes = gpu_node_manager.get_active_nodes()
+        
+        if not active_nodes:
+            logger.warning("No active GPU nodes, falling back to atomic chat")
+            # Fall back to atomic chat
+            atomic_request = AtomicChatRequest(
+                prompt=req.prompt,
+                max_new_tokens=req.max_new_tokens,
+                temperature=getattr(req, 'temperature', 0.7),
+                stream=req.stream
+            )
+            return await chat_atomic(atomic_request, http_request)
+        
+        logger.info(f"Forwarding to GPU node (available: {len(active_nodes)})")
+        
+        # Forward directly to GPU node
+        result = await gpu_node_manager.forward_to_gpu(
+            prompt=req.prompt,
+            max_tokens=req.max_new_tokens,
+            temperature=getattr(req, 'temperature', 0.7)
+        )
+        
+        if result.get("success"):
+            return ChatResponse(
+                text=result.get("response", ""),
+                layers_used={"gpu_node": result.get("node_id", "unknown")},
+                inference_time=result.get("latency_ms", 0) / 1000,
+                tokens_generated=len(result.get("response", "").split()),
+                success=True
+            )
+        else:
+            raise HTTPException(status_code=503, detail=f"GPU inference failed: {result.get('error')}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"GPU chat error: {e}")
+        raise HTTPException(status_code=500, detail=f"GPU chat failed: {str(e)}")
+
+
     
     try:
         response = await handler.process_chat(req, http_request, user_address)
