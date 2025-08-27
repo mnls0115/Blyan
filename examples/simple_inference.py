@@ -6,6 +6,7 @@ No web interface needed!
 
 import asyncio
 import sys
+import os
 sys.path.append('..')  # Add parent directory to path
 
 from client.blyan_client import BlyanClient
@@ -13,7 +14,7 @@ from client.blyan_client import BlyanClient
 
 async def main():
     # API server URL (change this to your server)
-    API_URL = "http://localhost:8000"  # or "http://api.blyan.com"
+    API_URL = os.getenv('BLYAN_API_URL', 'http://165.227.221.225:8000')
     
     print("🤖 Blyan AI Client Example")
     print(f"📡 Connecting to: {API_URL}")

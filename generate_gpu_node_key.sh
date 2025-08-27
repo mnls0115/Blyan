@@ -8,10 +8,11 @@ echo ""
 
 # Check if main node is accessible
 echo "Checking main node availability..."
-HEALTH_CHECK=$(curl -s https://blyan.com/api/health 2>/dev/null)
+MAIN_NODE_URL="${MAIN_NODE_URL:-http://165.227.221.225:8000}"
+HEALTH_CHECK=$(curl -s ${MAIN_NODE_URL}/health 2>/dev/null)
 
 if [ -z "$HEALTH_CHECK" ]; then
-    echo "❌ Cannot connect to main node at https://blyan.com/api"
+    echo "❌ Cannot connect to main node at ${MAIN_NODE_URL}"
     echo "Please ensure the main node is running."
     exit 1
 fi
@@ -27,7 +28,7 @@ echo "Generating API key for node: $NODE_ID"
 echo ""
 
 # Try to create API key using the keys endpoint
-API_RESPONSE=$(curl -s -X POST "https://blyan.com/api/keys/create" \
+API_RESPONSE=$(curl -s -X POST "${MAIN_NODE_URL}/keys/create" \
   -H "Content-Type: application/json" \
   -d '{
     "key_type": "api_key",

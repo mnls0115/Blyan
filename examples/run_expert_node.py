@@ -7,6 +7,7 @@ Contribute GPU power to the network!
 import asyncio
 import sys
 import socket
+import os
 sys.path.append('..')  # Add parent directory to path
 
 from client.blyan_client import BlyanNode, NodeRunner
@@ -28,7 +29,7 @@ def get_local_ip():
 async def main():
     # Configuration
     NODE_ID = "expert-node-1"  # Change this to a unique ID
-    API_URL = "http://localhost:8000"  # or "http://api.blyan.com"
+    API_URL = os.getenv('BLYAN_API_URL', 'http://165.227.221.225:8000')
     NODE_PORT = 8001  # Port for your node
     
     # Available experts (adjust based on your GPU memory)

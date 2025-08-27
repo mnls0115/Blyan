@@ -11,6 +11,7 @@ import time
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class BlyanClient:
     Client for interacting with Blyan AI Blockchain.
     
     Example:
-        client = BlyanClient("http://api.blyan.com")
+        client = BlyanClient(os.getenv('BLYAN_API_URL', 'http://165.227.221.225:8000'))
         
         # Register as expert node
         node = BlyanNode("my-node", "192.168.1.10", 8001, ["layer0.expert0"])
@@ -43,7 +44,7 @@ class BlyanClient:
         print(result)
     """
     
-    def __init__(self, api_url: str = "http://localhost:8000", api_key: Optional[str] = None):
+    def __init__(self, api_url: str = None, api_key: Optional[str] = None):
         """
         Initialize Blyan client.
         
@@ -51,7 +52,7 @@ class BlyanClient:
             api_url: Base URL of Blyan API server
             api_key: Optional API key for authentication
         """
-        self.api_url = api_url.rstrip("/")
+        self.api_url = (api_url or os.getenv('BLYAN_API_URL', 'http://165.227.221.225:8000')).rstrip("/")
         self.api_key = api_key
         self.session: Optional[aiohttp.ClientSession] = None
         
@@ -224,7 +225,7 @@ class NodeRunner:
         node = BlyanNode("gpu-node-1", "192.168.1.10", 8001, 
                         ["layer0.expert0", "layer1.expert1"])
         
-        runner = NodeRunner(node, api_url="http://api.blyan.com")
+        runner = NodeRunner(node, api_url=os.getenv('BLYAN_API_URL', 'http://165.227.221.225:8000'))
         await runner.run()  # Runs until interrupted
     """
     
@@ -336,7 +337,7 @@ async def example_node_registration():
 
 async def example_distributed_inference():
     """Distributed inference example."""
-    async with BlyanClient("http://api.blyan.com") as client:
+    async with BlyanClient(os.getenv('BLYAN_API_URL', 'http://165.227.221.225:8000')) as client:
         # Run secure distributed inference
         response = await client.chat(
             "Explain quantum computing",
