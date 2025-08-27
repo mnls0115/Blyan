@@ -129,13 +129,25 @@ function switchTab(tabId) {
 // API 상태 체크 함수
 async function checkAPIStatus() {
     try {
+        // Get the API base URL - check both API_CONFIG and API_BASE_URL for compatibility
+        let apiBase;
+        if (typeof API_CONFIG !== 'undefined' && API_CONFIG.baseURL) {
+            apiBase = API_CONFIG.baseURL;
+        } else if (typeof API_BASE_URL !== 'undefined') {
+            apiBase = API_BASE_URL;
+        } else {
+            // Fallback - use proper domain if on HTTPS
+            apiBase = window.location.protocol === 'https:' ? 'https://blyan.com/api' : 'http://165.227.221.225:8000';
+        }
+        
         // First check basic health endpoint
-        const healthResponse = await fetch(API_CONFIG.baseURL + '/health');
+        const healthResponse = await fetch(apiBase + '/health');
         if (healthResponse.ok) {
             // API is online, now try to get PoL status (optional)
             let polEnabled = false;
             try {
-                const polResponse = await fetch(API_CONFIG.baseURL + API_CONFIG.polStatus);
+                const polEndpoint = (typeof API_CONFIG !== 'undefined' && API_CONFIG.polStatus) ? API_CONFIG.polStatus : '/pol/status';
+                const polResponse = await fetch(apiBase + polEndpoint);
                 if (polResponse.ok) {
                     const polStatus = await polResponse.json();
                     polEnabled = polStatus.pol_enabled;
