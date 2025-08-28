@@ -2375,7 +2375,15 @@ class BlyanGPUNode:
                             if gpu_resp.status_code == 200:
                                 logger.info("✅ Registered with GPU Node Manager")
                             else:
-                                logger.warning(f"GPU Node Manager registration status: {gpu_resp.status_code}")
+                                body = None
+                                try:
+                                    body = gpu_resp.text[:300]
+                                except Exception:
+                                    body = None
+                                logger.warning(
+                                    f"GPU Node Manager registration status: {gpu_resp.status_code}" +
+                                    (f" body: {body}" if body else "")
+                                )
                         except Exception as gre:
                             logger.debug(f"GPU Node Manager registration skipped/failed: {gre}")
                 elif resp.status_code == 500:
