@@ -1426,6 +1426,8 @@ class BlyanGPUNode:
 
     async def start_server(self):
         """Start HTTP server for the node."""
+        # We may update module-level PUBLIC_PORT when auto-selecting a free port
+        global PUBLIC_PORT
         # One-time guard to avoid double-bind within the same process
         if getattr(self, 'server_started', False):
             logger.info("🟢 Server already started; skipping start_server()")
