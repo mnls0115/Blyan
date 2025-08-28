@@ -2015,9 +2015,69 @@ class BlyanGPUNode:
             logger.info(f"🔄 Flexible port mode - will increment if {port} is busy")
             logger.debug(f"   DISABLE_PORT_INCREMENT={disable_increment}, PUBLIC_PORT={PUBLIC_PORT}, port={port}")
         
+        # Optional: auto-select a free port within Vast range (bind-first, no pre-scan)
+        vast_auto_port = os.environ.get('VAST_AUTO_PORT', '').lower() in ['true', '1', 'yes']
+        vast_range = os.environ.get('VAST_PORT_RANGE', '')  # e.g. "20222-27706"
+        if vast_auto_port:
+            if requires_exact_port:
+                logger.info("🧭 VAST_AUTO_PORT enabled - overriding fixed port requirement to find a free port")
+                requires_exact_port = False
+            # Build candidate list: desired port first, then the declared range
+            candidates: List[int] = [int(port)]
+            try:
+                if '-' in vast_range:
+                    a, b = vast_range.split('-', 1)
+                    start, end = int(a), int(b)
+                    if start > end:
+                        start, end = end, start
+                    for p in range(start, end + 1):
+                        if p != port:
+                            candidates.append(p)
+            except Exception:
+                pass
+            # Deduplicate while preserving order
+            seen_c = set()
+            candidates = [p for p in candidates if (p not in seen_c and not seen_c.add(p))]
+            logger.info(f"🧪 Auto-selecting port from candidates ({len(candidates)} total)")
+            for cand in candidates:
+                # Skip RunPod reserved port
+                if (os.path.exists('/runpod') or os.path.exists('/workspace')) and cand == 8001:
+                    continue
+                try:
+                    logger.info(f"🔌 Attempting to bind to candidate port {cand}...")
+                    site = web.TCPSite(
+                        runner,
+                        '0.0.0.0',
+                        cand,
+                        reuse_port=False,
+                        reuse_address=True
+                    )
+                    await site.start()
+                    # Success
+                    self._site = site
+                    self.port = cand
+                    try:
+                        # Keep PUBLIC_PORT in sync with selected internal port for Vast 1:1 mapping
+                        global PUBLIC_PORT
+                        PUBLIC_PORT = cand
+                    except Exception:
+                        pass
+                    logger.info(f"✅ Server running on http://0.0.0.0:{cand} (auto-selected)")
+                    self.server_started = True
+                    # Register and return
+                    await self.register_with_main()
+                    return
+                except OSError as e:
+                    if "address already in use" in str(e).lower():
+                        logger.warning(f"⛔ Port {cand} busy, trying next candidate...")
+                        continue
+                    else:
+                        logger.error(f"❌ Failed to bind to port {cand}: {e}")
+                        continue
+
         # Try to start server
         max_retries = 5 if requires_exact_port else 3  # More retries for fixed port with JIT cleanup
-        
+
         for retry in range(max_retries):
             try:
                 # Just-in-time cleanup for fixed port (right before bind!)
@@ -2028,7 +2088,6 @@ class BlyanGPUNode:
                         logger.info(f"   ✅ Port {port} cleaned successfully")
                     else:
                         logger.warning(f"   ⚠️ Port {port} cleanup incomplete, attempting bind anyway")
-                    
                     # Small delay to let OS release the socket
                     await asyncio.sleep(0.5)
                 
