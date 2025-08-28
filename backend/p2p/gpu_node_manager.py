@@ -355,7 +355,8 @@ class GPUNodeManager:
                     f"{node.api_url}/chat",
                     json={
                         "prompt": prompt,
-                        "max_tokens": max_tokens,
+                        # GPU node expects 'max_new_tokens'; keep backward compat with max_tokens fallback handled by node default
+                        "max_new_tokens": max_tokens,
                         "temperature": temperature
                     },
                     headers=headers
