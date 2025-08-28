@@ -2352,6 +2352,32 @@ class BlyanGPUNode:
                         logger.info(f"✅ Registered with main node")
                         if isinstance(result, dict) and 'message' in result:
                             logger.debug(f"   Response: {result['message']}")
+                        
+                        # Also register with GPU Node Manager for atomic chat fast-path
+                        try:
+                            gpu_headers = {}
+                            if api_key:
+                                gpu_headers['Authorization'] = f'Bearer {api_key}'
+                            gpu_payload = {
+                                "node_id": self.node_id,
+                                "api_url": endpoint_url,
+                                "capabilities": {
+                                    "layers": available_experts,
+                                    "gpu_memory_gb": self.gpu_info.get("memory_gb", 0),
+                                    "supports_bf16": self.gpu_info.get("supports_bf16", True)
+                                }
+                            }
+                            gpu_resp = await client.post(
+                                f"{MAIN_NODE_URL}/gpu/register",
+                                json=gpu_payload,
+                                headers=gpu_headers
+                            )
+                            if gpu_resp.status_code == 200:
+                                logger.info("✅ Registered with GPU Node Manager")
+                            else:
+                                logger.warning(f"GPU Node Manager registration status: {gpu_resp.status_code}")
+                        except Exception as gre:
+                            logger.debug(f"GPU Node Manager registration skipped/failed: {gre}")
                 elif resp.status_code == 500:
                     # Try to get error details
                     try:
