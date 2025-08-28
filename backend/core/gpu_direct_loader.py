@@ -235,12 +235,16 @@ class GPUDirectBlockLoader:
                 future = executor.submit(self._get_mmap_view, idx)
                 futures.append((idx, future))
             
-            # Wait for all memory maps
+            # Wait for all memory maps (best-effort)
             for idx, future in futures:
                 try:
-                    future.result(timeout=10)
+                    future.result(timeout=30)
                 except Exception as e:
-                    logger.warning(f"Failed to prefetch block {idx}: {e}")
+                    from concurrent.futures import TimeoutError as _TO
+                    if isinstance(e, _TO):
+                        logger.debug(f"Prefetch timed out for block {idx}, continuing")
+                    else:
+                        logger.warning(f"Failed to prefetch block {idx}: {e}")
         
         # Now load to GPU with CUDA stream optimization
         results = {}

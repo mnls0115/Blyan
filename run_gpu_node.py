@@ -174,6 +174,8 @@ class BlyanGPUNode:
         # Precision is now auto-detected from model config
         model_config = get_model_config()
         self.precision = model_config.get('precision', 'auto')
+        # Warmup tracking
+        self._warmup_status = 'idle'
         
         # Ensure data directory exists
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -812,24 +814,61 @@ class BlyanGPUNode:
         try:
             import asyncio
             from backend.model.manager import get_model_manager
+            import os
+            import time as _time
+            import torch
             if not self.model_manager:
                 # Ensure global manager exists
                 self.model_manager = get_model_manager(DATA_DIR)
-            logger.info("🔥 Starting GPU warmup (non-blocking)...")
+            self._warmup_status = "starting"
+            logger.info("🔥 Eager warmup starting...")
 
             async def _do_warmup():
                 try:
-                    # Minimal deterministic prompt to materialize weights
-                    prompt = "Warmup"
-                    await self.model_manager.generate_async(prompt=prompt, max_new_tokens=1, temperature=0.0)
-                    logger.info("✅ GPU warmup complete")
+                    # Minimal deterministic prompt to materialize weights and KV
+                    prompt = os.getenv("WARMUP_PROMPT", "Warmup")
+                    tokens = int(os.getenv("WARMUP_TOKENS", "1"))
+                    # Track VRAM
+                    if torch.cuda.is_available():
+                        torch.cuda.reset_peak_memory_stats()
+                    t0 = _time.time()
+                    await self.model_manager.generate_async(prompt=prompt, max_new_tokens=tokens, temperature=0.0)
+                    dt = _time.time() - t0
+                    peak_gb = None
+                    cur_gb = None
+                    if torch.cuda.is_available():
+                        cur_gb = torch.cuda.memory_allocated()/(1024**3)
+                        peak_gb = torch.cuda.max_memory_allocated()/(1024**3)
+                    logger.info(f"✅ Eager warmup complete in {dt:.2f}s; VRAM current={cur_gb:.2f}GB peak={peak_gb:.2f}GB")
+                    # Log approximate breakdown for awareness (no hard budget)
+                    try:
+                        p0 = next(self.model_manager.model.parameters())
+                        dtype_size = p0.dtype.itemsize
+                        total_elems = sum(p.numel() for p in self.model_manager.model.parameters())
+                        weights_gb = (total_elems * dtype_size)/(1024**3)
+                    except Exception:
+                        weights_gb = None
+                    try:
+                        from config.model_profile import get_kv_cache_size
+                        kv_est = get_kv_cache_size(batch_size=1, seq_len=2048, num_layers=36)
+                    except Exception:
+                        kv_est = None
+                    if peak_gb is not None and (weights_gb is not None or kv_est is not None):
+                        temps_gb = None
+                        if weights_gb is not None and kv_est is not None:
+                            temps_gb = max(0.0, (peak_gb - weights_gb - kv_est))
+                        logger.info(f"   VRAM breakdown est: weights={weights_gb if weights_gb is not None else 'n/a'}GB, kv={kv_est if kv_est is not None else 'n/a'}GB, temp/frag={temps_gb if temps_gb is not None else 'n/a'}GB")
+                    self._warmup_status = "complete"
                 except Exception as we:
+                    self._warmup_status = "skipped"
                     logger.warning(f"GPU warmup skipped: {we}")
 
             await asyncio.wait_for(_do_warmup(), timeout=timeout_seconds)
         except asyncio.TimeoutError:
+            self._warmup_status = "timeout"
             logger.warning(f"GPU warmup timed out after {timeout_seconds}s - continuing")
         except Exception as e:
+            self._warmup_status = "failed"
             logger.warning(f"GPU warmup failed: {e}")
     
     async def download_and_upload_model(self):
@@ -1536,6 +1575,28 @@ class BlyanGPUNode:
                 logger.warning(f"⚠️ Health check: Model not ready for {client_ip}")
             
             return web.json_response(response)
+
+        # Metrics endpoint: VRAM telemetry and warmup status
+        async def metrics(request):
+            info = {
+                "node_id": self.node_id,
+                "model_ready": bool(self.model_manager),
+                "warmup_status": getattr(self, "_warmup_status", "idle"),
+            }
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    current = torch.cuda.memory_allocated() / (1024**3)
+                    peak = torch.cuda.max_memory_allocated() / (1024**3)
+                    reserved = torch.cuda.memory_reserved() / (1024**3)
+                    info.update({
+                        "vram_current_gb": round(current, 3),
+                        "vram_peak_gb": round(peak, 3),
+                        "vram_reserved_gb": round(reserved, 3),
+                    })
+            except Exception:
+                pass
+            return web.json_response(info)
         
         # Chain info endpoint
         async def chain_info(request):
@@ -1594,7 +1655,11 @@ class BlyanGPUNode:
                 logger.info(f"📥 Chat request from {client_ip}")
                 logger.info(f"   Headers: Origin={headers.get('Origin', 'none')}, Auth={bool(headers.get('Authorization'))}")
 
-                data = await request.json()
+                # Robust JSON parse
+                try:
+                    data = await request.json()
+                except Exception:
+                    return web.json_response({"error": "Invalid JSON body"}, status=400)
                 prompt = data.get("prompt", "")
                 max_new_tokens = data.get("max_new_tokens", 64)
                 
@@ -1607,7 +1672,7 @@ class BlyanGPUNode:
                 # Use dense model
                 if not hasattr(self, 'model_manager') or self.model_manager is None:
                     logger.error(f"❌ Model not ready for {client_ip}")
-                    return web.json_response({"error": "Model manager not initialized"}, status=500)
+                    return web.json_response({"error": "Model manager not initialized"}, status=503)
 
                 # Generate response using dense model
                 logger.info(f"   Generating response...")
@@ -1954,6 +2019,7 @@ class BlyanGPUNode:
             # Add routes with CORS
             cors.add(app.router.add_get('/', health))
             cors.add(app.router.add_get('/health', health))
+            cors.add(app.router.add_get('/metrics', metrics))
             cors.add(app.router.add_get('/debug/moe-status', debug_moe_status))
             cors.add(app.router.add_post('/chat', chat))
             cors.add(app.router.add_get('/chain/{chain_id}', chain_info))
@@ -1971,6 +2037,7 @@ class BlyanGPUNode:
             # Add routes without CORS
             app.router.add_get('/', health)
             app.router.add_get('/health', health)
+            app.router.add_get('/metrics', metrics)
             app.router.add_get('/debug/moe-status', debug_moe_status)
             app.router.add_post('/chat', chat)
             app.router.add_get('/chain/{chain_id}', chain_info)
@@ -2232,6 +2299,16 @@ class BlyanGPUNode:
         
         # Register with main node
         await self.register_with_main()
+
+        # Eager warmup after bind + register (if enabled and not uploading)
+        if os.getenv('WARMUP_ON_START', 'true').lower() == 'true':
+            if not getattr(self, '_upload_in_progress', False):
+                if not getattr(self, '_warmup_scheduled', False):
+                    self._warmup_scheduled = True
+                    logger.info("🧊 Scheduling eager warmup after register...")
+                    asyncio.create_task(self._warmup_gpu())
+            else:
+                logger.info("🧊 Warmup deferred: upload in progress")
     
     async def register_with_main(self):
         """Register this node with the main node."""
@@ -2716,10 +2793,9 @@ class BlyanGPUNode:
         if not self.initialize_model_manager():
             logger.warning("Running without model manager")
         else:
-            # Perform blocking warm start so the model is fully ready
-            if os.getenv('ENABLE_STARTUP_WARMUP', 'true').lower() == 'true':
+            # Pre-start warmup disabled by default; eager warmup runs after bind+register
+            if os.getenv('ENABLE_STARTUP_WARMUP', 'false').lower() == 'true':
                 try:
-                    # Skip warm start if upload in progress or blockchain not complete
                     from backend.core.param_index import ParameterIndex
                     uploading = hasattr(self, '_upload_in_progress') and self._upload_in_progress
                     param_index = ParameterIndex(DATA_DIR / "param_index.json")

@@ -261,13 +261,19 @@ class UnifiedModelManager:
         """Try to load from fused snapshot for instant boot."""
         if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() != "true":
             return False
+        if os.getenv("SNAPSHOT_DISABLE", "false").lower() == "true":
+            return False
         
         # Compute current snapshot key from param_index
         current_key = self._get_snapshot_key()
         if not current_key:
             return False
         
-        snapshot_path = self.root_dir / "models" / "fused" / f"{current_key}.safetensors"
+        # Allow override of snapshot directory
+        from pathlib import Path
+        snapshot_base = os.getenv("SNAPSHOT_DIR")
+        snapshot_dir = Path(snapshot_base) if snapshot_base else (self.root_dir / "models" / "fused")
+        snapshot_path = snapshot_dir / f"{current_key}.safetensors"
         
         if snapshot_path.exists():
             try:
@@ -326,13 +332,22 @@ class UnifiedModelManager:
         return False
     
     def _save_fused_snapshot(self) -> None:
-        """Save current model as fused snapshot with security metadata."""
+        """Save current model as fused snapshot with security metadata.
+        If save fails (e.g., disk quota), disable snapshot writes for this session.
+        Honors SNAPSHOT_DISABLE and SNAPSHOT_DIR envs.
+        """
+        if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() != "true":
+            return
+        if os.getenv("SNAPSHOT_DISABLE", "false").lower() == "true" or getattr(self, "_snapshot_disabled_session", False):
+            return
         try:
             snapshot_key = self._get_snapshot_key()
             if not snapshot_key:
                 return
             
-            snapshot_dir = self.root_dir / "models" / "fused"
+            from pathlib import Path
+            snapshot_base = os.getenv("SNAPSHOT_DIR")
+            snapshot_dir = Path(snapshot_base) if snapshot_base else (self.root_dir / "models" / "fused")
             snapshot_dir.mkdir(parents=True, exist_ok=True)
             snapshot_path = snapshot_dir / f"{snapshot_key}.safetensors"
             metadata_path = snapshot_path.with_suffix('.meta.json')
@@ -368,6 +383,8 @@ class UnifiedModelManager:
             
         except Exception as e:
             logger.warning(f"Failed to save snapshot: {e}")
+            # Avoid repeated attempts in this session
+            self._snapshot_disabled_session = True
     
     def _get_snapshot_key(self) -> Optional[str]:
         """Get snapshot key based on param_index state."""
@@ -471,9 +488,34 @@ class UnifiedModelManager:
                 total_blocks = len(ordered_blocks)
                 logger.info(f"   Loading {total_blocks} blocks directly to {self.device} (chunked)...")
                 
-                # Load in small chunks to avoid peak VRAM spikes
-                chunk_size = int(os.getenv("GPU_DIRECT_CHUNK_SIZE", "4"))
-                max_workers = int(os.getenv("GPU_LOAD_WORKERS", "2"))
+                # Load in small chunks to avoid peak VRAM spikes (adaptive by GPU size)
+                import torch
+                cs_env = os.getenv("GPU_DIRECT_CHUNK_SIZE")
+                mw_env = os.getenv("GPU_LOAD_WORKERS")
+                if cs_env:
+                    chunk_size = int(cs_env)
+                else:
+                    try:
+                        total_gb = self.gpu_info.get("memory_gb") or (torch.cuda.get_device_properties(0).total_memory/1e9)
+                    except Exception:
+                        total_gb = 16.0
+                    if total_gb <= 16:
+                        chunk_size = 2
+                    elif total_gb <= 24:
+                        chunk_size = 2
+                    elif total_gb <= 48:
+                        chunk_size = 3
+                    else:
+                        chunk_size = 4
+                if mw_env:
+                    max_workers = int(mw_env)
+                else:
+                    if total_gb <= 24:
+                        max_workers = 1
+                    elif total_gb <= 48:
+                        max_workers = 2
+                    else:
+                        max_workers = 3
                 loaded_tensors = 0
                 
                 # Build reverse map block_idx -> [layer_names]
@@ -529,8 +571,23 @@ class UnifiedModelManager:
                 if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() == "true":
                     self._save_fused_snapshot()
                 
+                # Free GPU-direct caches to avoid extra pinned/backing buffers
+                try:
+                    if self.gpu_loader:
+                        self.gpu_loader.clear_cache()
+                except Exception:
+                    pass
+                
                 # Mark source
                 self._loaded_from_blockchain = True
+                # Sanity: ensure BF16 dtype
+                try:
+                    import torch
+                    fp = next(self.model.parameters())
+                    if fp.dtype != torch.bfloat16:
+                        logger.error(f"Model dtype {fp.dtype} != bfloat16 (policy)")
+                except Exception:
+                    pass
                 
             except Exception as e:
                 logger.error(f"GPU-Direct loading failed: {e}")
