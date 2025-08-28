@@ -110,15 +110,19 @@ class UnifiedModelManager:
             # Load cached tokenizer (or create once)
             self._load_or_cache_tokenizer()
             
-            # Blockchain-only mode: do not fallback to HF
-            if self.use_blockchain:
-                if self.is_blockchain_ready():
-                    os.environ["TRANSFORMERS_OFFLINE"] = "1"
-                    self._load_from_blockchain()
-                else:
-                    raise RuntimeError("Blockchain model not ready (weights incomplete)")
-            else:
-                self._load_from_local()
+            # MANDATORY: Blockchain-only mode - NO fallbacks allowed
+            if not self.use_blockchain:
+                raise RuntimeError("PRODUCTION ERROR: Blockchain mode is mandatory. Set use_blockchain=True")
+            
+            if not self.is_blockchain_ready():
+                raise RuntimeError("BLOCKCHAIN ERROR: Model weights not available on blockchain. Cannot proceed without blockchain weights.")
+            
+            # Enforce offline mode - absolutely no HuggingFace downloads
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            os.environ["HF_DATASETS_OFFLINE"] = "1"
+            
+            logger.info("🔒 Loading model EXCLUSIVELY from blockchain (no fallbacks)")
+            self._load_from_blockchain()
             
             self._initialized = True
             logger.info("✅ Model ready for inference")
@@ -640,34 +644,20 @@ class UnifiedModelManager:
                     logger.warning(f"Missing layers (using random weights): {missing_layers}")
                     
         except Exception as e:
-            logger.error(f"Failed to load from blockchain: {e}")
-            logger.warning("Falling back to pretrained weights")
-            self._load_from_local()
+            logger.error(f"CRITICAL: Failed to load from blockchain: {e}")
+            raise RuntimeError(
+                f"BLOCKCHAIN LOAD FAILED: Cannot proceed without blockchain weights. "
+                f"Error: {e}. Ensure blockchain contains all model layers."
+            )
     
     def _load_from_local(self) -> None:
-        """Load model from local files."""
-        logger.info(f"Loading model from local: {self.model_name}")
-        
-        # BF16 ONLY - no fallbacks
-        if self.device != "cuda":
-            raise RuntimeError("BF16 requires CUDA. CPU mode not supported.")
-        
-        if torch.cuda.get_device_capability()[0] < 8:
-            raise RuntimeError(f"GPU compute capability {torch.cuda.get_device_capability()} does not support BF16. Minimum 8.0 required (Ampere or newer).")
-        
-        model_config = {
-            "torch_dtype": torch.bfloat16,  # BF16 ONLY
-            "low_cpu_mem_usage": True
-        }
-        
-        if self.device == "cuda":
-            model_config["device_map"] = "auto"
-        
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            **model_config
+        """DEPRECATED: Local loading is strictly forbidden in production."""
+        raise RuntimeError(
+            "PRODUCTION ERROR: Local model loading is strictly forbidden. "
+            "All models MUST be loaded from blockchain to ensure verifiable AI. "
+            "This is not a fallback option - blockchain is mandatory. "
+            "Set use_blockchain=True and ensure blockchain contains model weights."
         )
-        self._loaded_from_blockchain = False
     
     def generate(
         self,
@@ -725,6 +715,29 @@ class UnifiedModelManager:
             # Decode
             generated_ids = outputs[0][inputs['input_ids'].shape[-1]:]
             response = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+            
+            # Add cryptographic signature for verifiable AI
+            if self._loaded_from_blockchain:
+                try:
+                    from backend.core.crypto_verifier import get_verifier
+                    import time
+                    
+                    verifier = get_verifier()
+                    model_hash = self._compute_model_hash() if hasattr(self, '_compute_model_hash') else "blockchain"
+                    
+                    # Sign the response
+                    signature = verifier.sign_response(
+                        response=response,
+                        prompt=prompt,
+                        model_hash=model_hash,
+                        timestamp=time.time()
+                    )
+                    
+                    # Store signature for verification (would be returned with response)
+                    self._last_signature = signature
+                    logger.debug(f"✅ Response cryptographically signed: {signature[:16]}...")
+                except Exception as e:
+                    logger.warning(f"Failed to sign response: {e}")
             
             return response
             

@@ -1721,13 +1721,15 @@ async def chat_gpu(req: ChatRequest, http_request: Request = None):
         active_nodes = gpu_node_manager.get_active_nodes()
         
         if not active_nodes:
-            logger.warning("No active GPU nodes available")
-            
-            # For GPU endpoint without nodes, return a clear message
-            # Don't fall back to atomic chat to avoid auth issues
-            return ChatResponse(
-                response="No GPU nodes are currently available. Please try again later or use /chat endpoint.",
-                inference_time=0
+            logger.error("PRODUCTION ERROR: No GPU nodes available for inference")
+            raise HTTPException(
+                status_code=503,  # Service Unavailable
+                detail={
+                    "error": "SERVICE_UNAVAILABLE",
+                    "message": "No GPU nodes are currently available for blockchain inference",
+                    "retry_after": 30,  # Suggest retry after 30 seconds
+                    "alternatives": ["/chat", "/chat/atomic"]
+                }
             )
         
         logger.info(f"Forwarding to GPU node (available: {len(active_nodes)})")

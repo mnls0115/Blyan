@@ -59,8 +59,18 @@ except ImportError:
         return {}
 
 # Configuration
-PORT = int(os.environ.get('NODE_PORT', '8001'))
-MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL', 'http://165.227.221.225:8000')
+# Accept NODE_PORT or PORT (alias). Support 'auto' or '0' for ephemeral.
+_raw_port = os.environ.get('NODE_PORT') or os.environ.get('PORT')
+if _raw_port is None:
+    PORT = 8001
+else:
+    try:
+        PORT = 0 if str(_raw_port).lower() in ('auto', '0') else int(_raw_port)
+    except Exception:
+        PORT = 8001
+
+# Accept API_URL as alias for MAIN_NODE_URL
+MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL') or os.environ.get('API_URL') or 'http://165.227.221.225:8000'
 DATA_DIR = Path(os.environ.get('BLYAN_DATA_DIR', './data'))
 MODEL_NAME = os.environ.get('MODEL_NAME', DEFAULT_MODEL_NAME)
 
@@ -128,7 +138,15 @@ if IS_PRODUCTION:
 
 # Optional: Use custom public IP/hostname if provided, otherwise auto-detect
 PUBLIC_HOST = os.environ.get('PUBLIC_HOST', '')  # Can be IP, domain, or empty for auto-detect
-PUBLIC_PORT = int(os.environ.get('PUBLIC_PORT', str(PORT)))  # Port accessible from outside (may differ due to NAT/proxy)
+# If PUBLIC_PORT is not set and PORT is ephemeral (0), default public port to 8001 instead of 0
+_raw_public_port = os.environ.get('PUBLIC_PORT')
+if _raw_public_port is not None:
+    try:
+        PUBLIC_PORT = int(_raw_public_port)
+    except Exception:
+        PUBLIC_PORT = 80
+else:
+    PUBLIC_PORT = PORT if isinstance(PORT, int) and PORT != 0 else 8001
 
 # Model precision is now auto-detected from model config
 # FP8 for Qwen3-30B, FP16 for others
@@ -140,6 +158,7 @@ class BlyanGPUNode:
     def __init__(self):
         self.node_id = f"gpu_node_{os.getpid()}"
         self.port = PORT
+        self.server_started = False  # One-time server-start guard
         self.chains = {}
         self.model_manager = None
         self.gpu_available = False
@@ -1200,6 +1219,10 @@ class BlyanGPUNode:
     
     async def start_server(self):
         """Start HTTP server for the node."""
+        # One-time guard to avoid double-bind within the same process
+        if getattr(self, 'server_started', False):
+            logger.info("🟢 Server already started; skipping start_server()")
+            return
         try:
             from aiohttp import web
         except ImportError:
@@ -1427,14 +1450,30 @@ class BlyanGPUNode:
                 # Track which layers were used (for dense model, all layers are used)
                 from backend.model.dynamic_config import get_model_config
                 model_config = get_model_config()
-                layers_used = [f"layer_{i}" for i in range(model_config.num_layers)]
+                layers_used = list(range(model_config.num_layers))
+                
+                # Generate blockchain proof for verifiable inference
+                blockchain_proof = None
+                if self.blockchain_mode and self.param_chain:
+                    try:
+                        from backend.inference.blockchain_proof import create_proof_for_inference
+                        blockchain_proof = create_proof_for_inference(
+                            chain=self.param_chain,
+                            prompt=prompt,
+                            response=response,
+                            model_manager=self.model_manager
+                        )
+                        logger.info("✅ Generated blockchain proof for verifiable AI")
+                    except Exception as e:
+                        logger.warning(f"Failed to generate proof: {e}")
                 
                 return web.json_response({
                     "node_id": self.node_id,
                     "prompt": prompt,
                     "response": response,
-                    "layers_used": layers_used,  # Changed from experts_used
+                    "layers_used": [f"layer_{i}" for i in layers_used],
                     "blockchain_inference": True,
+                    "blockchain_proof": blockchain_proof,  # Include proof
                     "gpu_used": self.gpu_available,
                     "precision": self.precision  # Report precision used
                 })
@@ -1760,19 +1799,73 @@ class BlyanGPUNode:
         
         # Try to start server
         max_retries = 3
+        disable_increment = os.environ.get('DISABLE_PORT_INCREMENT', '').lower() in ['true', '1', 'yes']
+        
         for retry in range(max_retries):
             try:
                 site = web.TCPSite(runner, '0.0.0.0', port)
                 await site.start()
+                # If bound to ephemeral port (0), discover actual port
+                try:
+                    bound_port = None
+                    _srv = getattr(site, '_server', None)
+                    if _srv and getattr(_srv, 'sockets', None):
+                        bound_port = _srv.sockets[0].getsockname()[1]
+                    if bound_port:
+                        port = bound_port
+                except Exception:
+                    pass
                 logger.info(f"✅ Server running on http://0.0.0.0:{port}")
-                self.port = port  # Update port if changed
+                self.port = port  # Update port if changed/assigned
+                
+                # CRITICAL: Vast.ai port mapping check
+                if PUBLIC_PORT and port != PUBLIC_PORT:
+                    logger.warning("=" * 60)
+                    logger.warning(f"⚠️ VAST.AI PORT MISMATCH WARNING!")
+                    logger.warning(f"   Internal server port: {port}")
+                    logger.warning(f"   External PUBLIC_PORT: {PUBLIC_PORT}")
+                    logger.warning(f"   Problem: Vast.ai only forwards {PUBLIC_PORT} → {PUBLIC_PORT}")
+                    logger.warning(f"   Result: External connections to port {PUBLIC_PORT} won't reach this server!")
+                    logger.warning(f"   Solutions:")
+                    logger.warning(f"   1. Kill process using port {PUBLIC_PORT} and restart")
+                    logger.warning(f"   2. Set DISABLE_PORT_INCREMENT=true to prevent port changes")
+                    logger.warning(f"   3. Use a different Vast.ai port mapping")
+                    logger.warning("=" * 60)
+                
+                self.server_started = True
                 break
             except OSError as e:
                 if "address already in use" in str(e).lower():
-                    if retry < max_retries - 1:
-                        # Try next port
+                    # Enhanced diagnostic: show which process holds the port
+                    logger.warning(f"⚠️ Port {port} is already in use!")
+                    try:
+                        import subprocess as _sub
+                        _res = _sub.run(['lsof', '-nP', f'-iTCP:{port}', '-sTCP:LISTEN'], 
+                                       capture_output=True, text=True, timeout=2)
+                        if _res.stdout:
+                            logger.warning("Process using this port:")
+                            for line in _res.stdout.split('\n')[1:3]:  # Show first 2 processes
+                                if line.strip():
+                                    logger.warning(f"   {line}")
+                    except Exception:
+                        pass
+                    
+                    # Check if we should prevent incrementing (for Vast.ai)
+                    if disable_increment:
+                        logger.error("=" * 60)
+                        logger.error(f"❌ Port {port} is in use and DISABLE_PORT_INCREMENT=true")
+                        logger.error(f"   Cannot use alternative ports on Vast.ai!")
+                        logger.error(f"   You must free port {port} first:")
+                        logger.error(f"   1. Run: pkill -9 python")
+                        logger.error(f"   2. Or: lsof -i:{port} and kill the PID")
+                        logger.error("=" * 60)
+                        raise
+                    elif retry < max_retries - 1:
+                        # Try next port (but warn about Vast.ai issues)
                         port += 1
                         logger.warning(f"⚠️ Port {port-1} in use, trying port {port}...")
+                        if PUBLIC_PORT:
+                            logger.warning(f"   ⚠️ WARNING: Port {port} may not be accessible via Vast.ai!")
                     else:
                         logger.error(f"❌ Failed to start server after {max_retries} attempts")
                         logger.info("💡 Set NODE_PORT to an available port (e.g., 8000, 8002, 8003)")
@@ -1885,12 +1978,12 @@ class BlyanGPUNode:
                 if PUBLIC_PORT != self.port:
                     logger.info(f"   (Internal port: {self.port}, Public endpoint: {endpoint_url})")
                 
-                # Add API key if available
+                # Add API key with proper Authorization header
                 headers = {}
                 api_key = os.environ.get('BLYAN_API_KEY')
                 if api_key:
-                    headers['X-API-Key'] = api_key
-                    logger.debug("   Using API key for authentication")
+                    headers['Authorization'] = f'Bearer {api_key}'
+                    logger.debug("   Using Bearer token for authentication")
                 
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data, headers=headers)
                 if resp.status_code == 200:
@@ -1980,7 +2073,7 @@ class BlyanGPUNode:
                 headers = {}
                 api_key = os.environ.get('BLYAN_API_KEY')
                 if api_key:
-                    headers['X-API-Key'] = api_key
+                    headers['Authorization'] = f'Bearer {api_key}'
                 
                 resp = await client.post(f"{MAIN_NODE_URL}/p2p/register", json=data, headers=headers)
                 
