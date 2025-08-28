@@ -2060,7 +2060,6 @@ class BlyanGPUNode:
                     self.port = cand
                     try:
                         # Keep PUBLIC_PORT in sync with selected internal port for Vast 1:1 mapping
-                        global PUBLIC_PORT
                         PUBLIC_PORT = cand
                     except Exception:
                         pass
