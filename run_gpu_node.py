@@ -10,6 +10,8 @@ import logging
 import json
 import time
 import hashlib
+import atexit
+import signal as sig
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
@@ -1217,12 +1219,182 @@ class BlyanGPUNode:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     
+    async def _cleanup_port(self, port: int, force: bool = False) -> bool:
+        """
+        Clean up a specific port by killing ONLY the process using it.
+        Essential for Vast.ai where we must bind to exact port.
+        
+        Args:
+            port: Port number to cleanup
+            force: If True, cleanup even if not strictly required
+            
+        Returns:
+            True if port is free (either was free or successfully cleaned)
+        """
+        import subprocess
+        import signal
+        import shutil
+        
+        # Check if we have the tools available
+        has_lsof = shutil.which('lsof') is not None
+        has_fuser = shutil.which('fuser') is not None
+        
+        if not has_lsof and not has_fuser:
+            logger.warning(f"⚠️ Neither lsof nor fuser available for port cleanup")
+            logger.warning(f"   Cannot automatically free port {port}")
+            logger.warning(f"   Install with: apt-get install lsof OR apt-get install psmisc")
+            logger.warning(f"   Manual check: netstat -tlnp | grep {port}")
+            
+            # If we absolutely need this port, fail early
+            if force:
+                raise RuntimeError(f"Port cleanup tools not available, cannot ensure port {port} is free")
+            return False
+        
+        try:
+            # Collect all PIDs using the port (handles IPv4/IPv6)
+            pids_to_kill = set()
+            current_pid = os.getpid()
+            
+            if has_lsof:
+                logger.info(f"🔍 Checking port {port} with lsof...")
+                # Check both IPv4 and IPv6
+                for protocol in ['4', '6']:
+                    result = subprocess.run(
+                        ['lsof', '-nP', f'-i{protocol}TCP:{port}', '-sTCP:LISTEN'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    
+                    if result.stdout:
+                        lines = result.stdout.strip().split('\n')
+                        for line in lines[1:]:  # Skip header
+                            parts = line.split()
+                            if len(parts) > 1 and parts[1].isdigit():
+                                pid = int(parts[1])
+                                if pid != current_pid:
+                                    pids_to_kill.add((pid, parts[0]))  # (pid, command)
+            
+            elif has_fuser:
+                logger.info(f"🔍 Checking port {port} with fuser...")
+                result = subprocess.run(
+                    ['fuser', f'{port}/tcp'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.stdout:
+                    for pid_str in result.stdout.strip().split():
+                        if pid_str.isdigit():
+                            pid = int(pid_str)
+                            if pid != current_pid:
+                                pids_to_kill.add((pid, 'unknown'))
+            
+            if not pids_to_kill:
+                logger.info(f"✅ Port {port} is free")
+                return True
+            
+            logger.warning(f"⚠️ Port {port} is in use by {len(pids_to_kill)} process(es)")
+            for pid, cmd in pids_to_kill:
+                logger.info(f"   • {cmd} (PID {pid})")
+            
+            # Kill each PID
+            killed_count = 0
+            for pid, command in pids_to_kill:
+                logger.info(f"   → Terminating {command} (PID {pid})...")
+                
+                try:
+                    # Try graceful termination first
+                    logger.info(f"   → Sending SIGTERM to PID {pid}...")
+                    os.kill(pid, signal.SIGTERM)
+                    
+                    # Wait up to 3 seconds for graceful shutdown
+                    for _ in range(30):  # 30 * 100ms = 3 seconds
+                        await asyncio.sleep(0.1)
+                        try:
+                            os.kill(pid, 0)  # Check if still alive
+                        except ProcessLookupError:
+                            logger.info(f"   ✅ PID {pid} terminated gracefully")
+                            break
+                    else:
+                        # Process still running after 3 seconds
+                        logger.warning(f"   → Process still running, sending SIGKILL to PID {pid}...")
+                        os.kill(pid, signal.SIGKILL)
+                        
+                        # Wait briefly for force kill
+                        for _ in range(10):  # 10 * 100ms = 1 second
+                            await asyncio.sleep(0.1)
+                            try:
+                                os.kill(pid, 0)
+                            except ProcessLookupError:
+                                logger.info(f"   ✅ PID {pid} force killed")
+                                break
+                        else:
+                            logger.error(f"   ❌ Failed to kill PID {pid} - process may be protected")
+                            return False
+                
+                except PermissionError:
+                    logger.error(f"❌ Permission denied to kill PID {pid}")
+                    logger.error(f"   In container: This shouldn't happen - check container privileges")
+                    logger.error(f"   Manual cleanup: kill -9 {pid}")
+                    return False
+                except ProcessLookupError:
+                    logger.info(f"   Process {pid} already terminated")
+                
+                killed_count += 1
+            
+            # Wait for OS to release the port
+            await asyncio.sleep(0.5)
+            
+            # Double-check port is now free
+            port_free = True
+            if has_lsof:
+                for protocol in ['4', '6']:
+                    result = subprocess.run(
+                        ['lsof', '-nP', f'-i{protocol}TCP:{port}', '-sTCP:LISTEN'],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if result.stdout:
+                        port_free = False
+                        break
+            elif has_fuser:
+                result = subprocess.run(
+                    ['fuser', f'{port}/tcp'],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.stdout.strip():
+                    port_free = False
+            
+            if port_free:
+                logger.info(f"✅ Port {port} is now free (cleaned {killed_count}/{len(pids_to_kill)} processes)")
+                return True
+            else:
+                logger.error(f"❌ Port {port} is still in use after cleanup attempt")
+                logger.error(f"   Attempted to kill {killed_count} process(es)")
+                logger.error("   Manual intervention required")
+                return False
+                
+        except Exception as e:
+            logger.error(f"⚠️ Port cleanup error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return False
+
     async def start_server(self):
         """Start HTTP server for the node."""
         # One-time guard to avoid double-bind within the same process
         if getattr(self, 'server_started', False):
             logger.info("🟢 Server already started; skipping start_server()")
             return
+        
+        # Initialize runner/site references for clean shutdown
+        self._runner = None
+        self._site = None
         try:
             from aiohttp import web
         except ImportError:
@@ -1772,22 +1944,13 @@ class BlyanGPUNode:
         # Start server
         runner = web.AppRunner(app)
         await runner.setup()
+        self._runner = runner  # Store for clean shutdown
         
         # Start server on configured port
         port = self.port
-        logger.info(f"🚀 Starting server on port {port}")
+        logger.info(f"🚀 Preparing to start server on port {port}")
         
-        # Check what's using the port (diagnostic)
-        try:
-            import subprocess
-            result = subprocess.run(['lsof', '-i', f':{port}'], capture_output=True, text=True, timeout=2)
-            if result.stdout:
-                logger.warning(f"⚠️ Port {port} is already in use by:")
-                logger.warning(result.stdout)
-        except:
-            pass  # lsof might not be available
-        
-        # Check if we're in RunPod environment
+        # Check if we're in RunPod environment FIRST (before any cleanup)
         if os.path.exists('/runpod') or os.path.exists('/workspace'):
             logger.info("📍 Detected RunPod/cloud environment")
             # RunPod HTTP Service uses 8001, we need a different port
@@ -1797,14 +1960,48 @@ class BlyanGPUNode:
                 port = 8000
                 self.port = 8000
         
-        # Try to start server
-        max_retries = 3
+        # Determine if we need fixed port (Vast.ai constraint)
         disable_increment = os.environ.get('DISABLE_PORT_INCREMENT', '').lower() in ['true', '1', 'yes']
+        requires_exact_port = disable_increment or (PUBLIC_PORT and port == PUBLIC_PORT)
+        
+        # Log WHY we're doing cleanup (or not)
+        if requires_exact_port:
+            if disable_increment and PUBLIC_PORT and port == PUBLIC_PORT:
+                logger.info(f"📌 Fixed port {port} required: DISABLE_PORT_INCREMENT=true AND PUBLIC_PORT={PUBLIC_PORT}")
+            elif disable_increment:
+                logger.info(f"📌 Fixed port {port} required: DISABLE_PORT_INCREMENT=true")
+            elif PUBLIC_PORT and port == PUBLIC_PORT:
+                logger.info(f"📌 Fixed port {port} required: PUBLIC_PORT mapping constraint")
+            
+            # Attempt cleanup
+            logger.info(f"🧹 Attempting to free port {port}...")
+            port_cleaned = await self._cleanup_port(port)
+            if not port_cleaned:
+                if disable_increment:
+                    logger.error(f"❌ Could not clean port {port} and incrementing is disabled")
+                    logger.error("   Cannot proceed without the exact port")
+                    raise RuntimeError(f"Port {port} cleanup failed with fixed port requirement")
+                else:
+                    logger.warning(f"⚠️ Could not clean port {port}, will try to bind anyway")
+        else:
+            logger.info(f"🔄 Flexible port mode - will increment if {port} is busy")
+            logger.debug(f"   DISABLE_PORT_INCREMENT={disable_increment}, PUBLIC_PORT={PUBLIC_PORT}, port={port}")
+        
+        # Try to start server
+        max_retries = 3 if not requires_exact_port else 1  # Only retry if we can change ports
         
         for retry in range(max_retries):
             try:
-                site = web.TCPSite(runner, '0.0.0.0', port)
+                # Configure socket options for better reliability
+                site = web.TCPSite(
+                    runner, 
+                    '0.0.0.0', 
+                    port,
+                    reuse_port=False,  # Don't allow multiple processes on same port
+                    reuse_address=True  # Allow quick restart after shutdown
+                )
                 await site.start()
+                self._site = site  # Store for clean shutdown
                 # If bound to ephemeral port (0), discover actual port
                 try:
                     bound_port = None
@@ -1851,13 +2048,17 @@ class BlyanGPUNode:
                         pass
                     
                     # Check if we should prevent incrementing (for Vast.ai)
-                    if disable_increment:
+                    if requires_exact_port:
                         logger.error("=" * 60)
-                        logger.error(f"❌ Port {port} is in use and DISABLE_PORT_INCREMENT=true")
-                        logger.error(f"   Cannot use alternative ports on Vast.ai!")
-                        logger.error(f"   You must free port {port} first:")
-                        logger.error(f"   1. Run: pkill -9 python")
-                        logger.error(f"   2. Or: lsof -i:{port} and kill the PID")
+                        logger.error(f"❌ Port {port} is still in use after cleanup attempt")
+                        logger.error(f"   DISABLE_PORT_INCREMENT=true prevents using alternative ports")
+                        logger.error(f"   Environment configuration:")
+                        logger.error(f"   - NODE_PORT={os.environ.get('NODE_PORT', 'not set')}")
+                        logger.error(f"   - PORT={os.environ.get('PORT', 'not set')}")
+                        logger.error(f"   - PUBLIC_PORT={os.environ.get('PUBLIC_PORT', 'not set')}")
+                        logger.error(f"   Manual cleanup required:")
+                        logger.error(f"   1. Check what's using port: lsof -i:{port}")
+                        logger.error(f"   2. Kill specific process: kill -9 <PID>")
                         logger.error("=" * 60)
                         raise
                     elif retry < max_retries - 1:
@@ -2414,17 +2615,89 @@ class BlyanGPUNode:
             # Periodic health check
             if hasattr(self, 'model_manager') and self.model_manager:
                 logger.debug(f"Node {self.node_id} healthy - GPU: {self.gpu_available}")
+    
+    async def shutdown(self):
+        """Clean shutdown of the node."""
+        logger.info("🛑 Shutting down GPU node...")
+        
+        try:
+            # Stop the HTTP server if running
+            if hasattr(self, '_site') and self._site:
+                await self._site.stop()
+                logger.info("   HTTP server stopped")
+            
+            if hasattr(self, '_runner') and self._runner:
+                await self._runner.cleanup()
+                logger.info("   Runner cleaned up")
+            
+            # Clean up model resources
+            if hasattr(self, 'model_manager') and self.model_manager:
+                # Release GPU memory
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                logger.info("   GPU memory released")
+            
+            logger.info("✅ Shutdown complete")
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
+
+# Global node instance for emergency cleanup
+_global_node = None
+
+def emergency_cleanup():
+    """Synchronous emergency cleanup for atexit."""
+    global _global_node
+    if _global_node:
+        logger.info("🛑 Emergency cleanup triggered")
+        try:
+            # Try to get the event loop
+            loop = asyncio.get_event_loop()
+            if loop and not loop.is_closed():
+                loop.run_until_complete(_global_node.shutdown())
+            else:
+                # If no loop, at least try to cleanup what we can
+                logger.warning("   No event loop available for async cleanup")
+                # Release GPU memory if possible
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+        except Exception as e:
+            logger.error(f"   Emergency cleanup error: {e}")
 
 async def main():
     """Entry point."""
+    global _global_node
     node = BlyanGPUNode()
-    await node.run()
+    _global_node = node
+    
+    # Register emergency cleanup
+    atexit.register(emergency_cleanup)
+    
+    # Also handle SIGTERM for container shutdown
+    def sigterm_handler(signum, _frame):
+        logger.warning(f"⚠️ Received signal {signum}")
+        raise KeyboardInterrupt()
+    
+    sig.signal(sig.SIGTERM, sigterm_handler)
+    
+    try:
+        await node.run()
+    except KeyboardInterrupt:
+        logger.info("⚠️ Shutdown requested")
+        await node.shutdown()
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        await node.shutdown()
+        raise
+    finally:
+        _global_node = None  # Clear reference after cleanup
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Shutdown requested")
+        logger.info("✋ Interrupted")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         import traceback
