@@ -1235,15 +1235,20 @@ class BlyanGPUNode:
         import signal
         import shutil
         
-        # Check if we have the tools available
+        # Check if we have the tools available (in order of preference)
         has_lsof = shutil.which('lsof') is not None
+        has_ss = shutil.which('ss') is not None  # Most common in minimal containers
         has_fuser = shutil.which('fuser') is not None
+        has_netstat = shutil.which('netstat') is not None
         
-        if not has_lsof and not has_fuser:
-            logger.warning(f"⚠️ Neither lsof nor fuser available for port cleanup")
+        if not any([has_lsof, has_ss, has_fuser, has_netstat]):
+            logger.warning(f"⚠️ No port inspection tools available")
             logger.warning(f"   Cannot automatically free port {port}")
-            logger.warning(f"   Install with: apt-get install lsof OR apt-get install psmisc")
-            logger.warning(f"   Manual check: netstat -tlnp | grep {port}")
+            logger.warning(f"   Install one of:")
+            logger.warning(f"   - apt-get install iproute2    (for ss - recommended)")
+            logger.warning(f"   - apt-get install lsof         (for lsof)")
+            logger.warning(f"   - apt-get install psmisc       (for fuser)")
+            logger.warning(f"   - apt-get install net-tools    (for netstat)")
             
             # If we absolutely need this port, fail early
             if force:
@@ -1255,6 +1260,7 @@ class BlyanGPUNode:
             pids_to_kill = set()
             current_pid = os.getpid()
             
+            # Try tools in order of preference and availability
             if has_lsof:
                 logger.info(f"🔍 Checking port {port} with lsof...")
                 # Check both IPv4 and IPv6
@@ -1274,6 +1280,29 @@ class BlyanGPUNode:
                                 pid = int(parts[1])
                                 if pid != current_pid:
                                     pids_to_kill.add((pid, parts[0]))  # (pid, command)
+            
+            elif has_ss:
+                logger.info(f"🔍 Checking port {port} with ss (most reliable in containers)...")
+                # ss is more reliable in containers than netstat
+                result = subprocess.run(
+                    ['ss', '-tlnp'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.stdout:
+                    for line in result.stdout.split('\n'):
+                        if f':{port} ' in line and 'LISTEN' in line:
+                            # Parse ss output: users:(("process",pid=12345,fd=3))
+                            import re
+                            pid_match = re.search(r'pid=(\d+)', line)
+                            proc_match = re.search(r'\("([^"]+)"', line)
+                            if pid_match:
+                                pid = int(pid_match.group(1))
+                                proc = proc_match.group(1) if proc_match else 'unknown'
+                                if pid != current_pid:
+                                    pids_to_kill.add((pid, proc))
             
             elif has_fuser:
                 logger.info(f"🔍 Checking port {port} with fuser...")
@@ -1347,9 +1376,19 @@ class BlyanGPUNode:
             # Wait for OS to release the port
             await asyncio.sleep(0.5)
             
-            # Double-check port is now free
+            # Double-check port is now free (use fastest available tool)
             port_free = True
-            if has_lsof:
+            if has_ss:
+                # ss is fastest
+                result = subprocess.run(
+                    ['ss', '-tln'],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.stdout and f':{port} ' in result.stdout:
+                    port_free = False
+            elif has_lsof:
                 for protocol in ['4', '6']:
                     result = subprocess.run(
                         ['lsof', '-nP', f'-i{protocol}TCP:{port}', '-sTCP:LISTEN'],
@@ -1964,7 +2003,7 @@ class BlyanGPUNode:
         disable_increment = os.environ.get('DISABLE_PORT_INCREMENT', '').lower() in ['true', '1', 'yes']
         requires_exact_port = disable_increment or (PUBLIC_PORT and port == PUBLIC_PORT)
         
-        # Log WHY we're doing cleanup (or not)
+        # Log WHY we need fixed port (or not)
         if requires_exact_port:
             if disable_increment and PUBLIC_PORT and port == PUBLIC_PORT:
                 logger.info(f"📌 Fixed port {port} required: DISABLE_PORT_INCREMENT=true AND PUBLIC_PORT={PUBLIC_PORT}")
@@ -1972,27 +2011,29 @@ class BlyanGPUNode:
                 logger.info(f"📌 Fixed port {port} required: DISABLE_PORT_INCREMENT=true")
             elif PUBLIC_PORT and port == PUBLIC_PORT:
                 logger.info(f"📌 Fixed port {port} required: PUBLIC_PORT mapping constraint")
-            
-            # Attempt cleanup
-            logger.info(f"🧹 Attempting to free port {port}...")
-            port_cleaned = await self._cleanup_port(port)
-            if not port_cleaned:
-                if disable_increment:
-                    logger.error(f"❌ Could not clean port {port} and incrementing is disabled")
-                    logger.error("   Cannot proceed without the exact port")
-                    raise RuntimeError(f"Port {port} cleanup failed with fixed port requirement")
-                else:
-                    logger.warning(f"⚠️ Could not clean port {port}, will try to bind anyway")
         else:
             logger.info(f"🔄 Flexible port mode - will increment if {port} is busy")
             logger.debug(f"   DISABLE_PORT_INCREMENT={disable_increment}, PUBLIC_PORT={PUBLIC_PORT}, port={port}")
         
         # Try to start server
-        max_retries = 3 if not requires_exact_port else 1  # Only retry if we can change ports
+        max_retries = 5 if requires_exact_port else 3  # More retries for fixed port with JIT cleanup
         
         for retry in range(max_retries):
             try:
+                # Just-in-time cleanup for fixed port (right before bind!)
+                if requires_exact_port and (retry == 0 or retry > 0):
+                    logger.info(f"🧹 [Attempt {retry+1}/{max_retries}] Cleaning port {port} immediately before bind...")
+                    port_cleaned = await self._cleanup_port(port)
+                    if port_cleaned:
+                        logger.info(f"   ✅ Port {port} cleaned successfully")
+                    else:
+                        logger.warning(f"   ⚠️ Port {port} cleanup incomplete, attempting bind anyway")
+                    
+                    # Small delay to let OS release the socket
+                    await asyncio.sleep(0.5)
+                
                 # Configure socket options for better reliability
+                logger.info(f"🔌 Attempting to bind to port {port}...")
                 site = web.TCPSite(
                     runner, 
                     '0.0.0.0', 
@@ -2000,7 +2041,9 @@ class BlyanGPUNode:
                     reuse_port=False,  # Don't allow multiple processes on same port
                     reuse_address=True  # Allow quick restart after shutdown
                 )
+                # Note: site is created fresh each attempt, not reused
                 await site.start()
+                # Only store site AFTER successful start
                 self._site = site  # Store for clean shutdown
                 # If bound to ephemeral port (0), discover actual port
                 try:
@@ -2032,45 +2075,97 @@ class BlyanGPUNode:
                 self.server_started = True
                 break
             except OSError as e:
+                # Clean up any partially created site (shouldn't be needed, but safe)
+                site = None  # Let GC clean up
+                
                 if "address already in use" in str(e).lower():
-                    # Enhanced diagnostic: show which process holds the port
-                    logger.warning(f"⚠️ Port {port} is already in use!")
+                    # Enhanced diagnostic: show which process holds the port NOW
+                    logger.error(f"❌ [Attempt {retry+1}/{max_retries}] Port {port} is in use at bind time!")
+                    
+                    # Capture what's using the port RIGHT NOW (try multiple tools)
                     try:
                         import subprocess as _sub
-                        _res = _sub.run(['lsof', '-nP', f'-iTCP:{port}', '-sTCP:LISTEN'], 
-                                       capture_output=True, text=True, timeout=2)
-                        if _res.stdout:
-                            logger.warning("Process using this port:")
-                            for line in _res.stdout.split('\n')[1:3]:  # Show first 2 processes
-                                if line.strip():
-                                    logger.warning(f"   {line}")
-                    except Exception:
-                        pass
+                        import shutil
+                        
+                        captured = False
+                        
+                        # Try ss first (most common in containers)
+                        if shutil.which('ss') and not captured:
+                            _res = _sub.run(['ss', '-tlnp'], capture_output=True, text=True, timeout=2)
+                            if _res.stdout:
+                                for line in _res.stdout.split('\n'):
+                                    if f':{port} ' in line and 'LISTEN' in line:
+                                        logger.error("🔍 Process holding port (via ss):")
+                                        import re
+                                        pid_match = re.search(r'pid=(\d+)', line)
+                                        proc_match = re.search(r'\("([^"]+)"', line)
+                                        if pid_match:
+                                            pid = pid_match.group(1)
+                                            proc = proc_match.group(1) if proc_match else 'unknown'
+                                            logger.error(f"   → {proc} (PID {pid})")
+                                            captured = True
+                        
+                        # Try lsof if ss didn't work
+                        if shutil.which('lsof') and not captured:
+                            _res = _sub.run(['lsof', '-nP', f'-iTCP:{port}', '-sTCP:LISTEN'], 
+                                           capture_output=True, text=True, timeout=2)
+                            if _res.stdout:
+                                logger.error("🔍 Process holding port (via lsof):")
+                                lines = _res.stdout.strip().split('\n')
+                                for line in lines[1:]:  # Skip header
+                                    if line.strip():
+                                        parts = line.split()
+                                        if len(parts) > 1:
+                                            logger.error(f"   → {parts[0]} (PID {parts[1]})")
+                                            captured = True
+                                            break
+                        
+                        # Fall back to netstat as last resort
+                        if shutil.which('netstat') and not captured:
+                            _res = _sub.run(['netstat', '-tlnp'], capture_output=True, text=True, timeout=2)
+                            if _res.stdout:
+                                for line in _res.stdout.split('\n'):
+                                    if f':{port}' in line and 'LISTEN' in line:
+                                        logger.error("🔍 Process info (via netstat):")
+                                        logger.error(f"   → {line.strip()}")
+                                        captured = True
+                                        break
+                        
+                        if not captured:
+                            logger.error("   Could not identify process (no tools available)")
+                    except Exception as ex:
+                        logger.debug(f"   Could not identify process: {ex}")
                     
-                    # Check if we should prevent incrementing (for Vast.ai)
+                    # Handle based on whether we need exact port
                     if requires_exact_port:
-                        logger.error("=" * 60)
-                        logger.error(f"❌ Port {port} is still in use after cleanup attempt")
-                        logger.error(f"   DISABLE_PORT_INCREMENT=true prevents using alternative ports")
-                        logger.error(f"   Environment configuration:")
-                        logger.error(f"   - NODE_PORT={os.environ.get('NODE_PORT', 'not set')}")
-                        logger.error(f"   - PORT={os.environ.get('PORT', 'not set')}")
-                        logger.error(f"   - PUBLIC_PORT={os.environ.get('PUBLIC_PORT', 'not set')}")
-                        logger.error(f"   Manual cleanup required:")
-                        logger.error(f"   1. Check what's using port: lsof -i:{port}")
-                        logger.error(f"   2. Kill specific process: kill -9 <PID>")
-                        logger.error("=" * 60)
-                        raise
-                    elif retry < max_retries - 1:
-                        # Try next port (but warn about Vast.ai issues)
-                        port += 1
-                        logger.warning(f"⚠️ Port {port-1} in use, trying port {port}...")
-                        if PUBLIC_PORT:
-                            logger.warning(f"   ⚠️ WARNING: Port {port} may not be accessible via Vast.ai!")
+                        if retry < max_retries - 1:
+                            # We have more retries - wait and try again with fresh cleanup
+                            wait_time = 2.0 * (retry + 1)  # Progressive backoff: 2s, 4s, 6s...
+                            logger.warning(f"🕰️ Waiting {wait_time}s before retry {retry+2}/{max_retries}...")
+                            await asyncio.sleep(wait_time)
+                            # Loop will do cleanup again on next iteration
+                        else:
+                            # Final failure - provide detailed diagnostics
+                            logger.error("=" * 60)
+                            logger.error(f"❌ FATAL: Port {port} remains in use after {max_retries} attempts")
+                            logger.error(f"   Fixed port requirement prevents fallback")
+                            logger.error(f"   Environment:")
+                            logger.error(f"   - NODE_PORT={os.environ.get('NODE_PORT', 'not set')}")
+                            logger.error(f"   - PORT={os.environ.get('PORT', 'not set')}")
+                            logger.error(f"   - PUBLIC_PORT={os.environ.get('PUBLIC_PORT', 'not set')}")
+                            logger.error(f"   - DISABLE_PORT_INCREMENT={disable_increment}")
+                            logger.error(f"   Manual intervention required:")
+                            logger.error(f"   1. Kill the process shown above")
+                            logger.error(f"   2. Or change to a different port")
+                            logger.error("=" * 60)
+                            raise RuntimeError(f"Port {port} unavailable after {max_retries} cleanup attempts")
                     else:
-                        logger.error(f"❌ Failed to start server after {max_retries} attempts")
-                        logger.info("💡 Set NODE_PORT to an available port (e.g., 8000, 8002, 8003)")
-                        raise
+                        # Flexible mode - try next port
+                        if retry < max_retries - 1:
+                            port += 1
+                            logger.warning(f"🔄 Port {port-1} busy, trying port {port}...")
+                            if PUBLIC_PORT:
+                                logger.warning(f"   ⚠️ WARNING: Port {port} may not match PUBLIC_PORT={PUBLIC_PORT}!")
                 else:
                     logger.error(f"❌ Failed to start server: {e}")
                     raise
@@ -2584,11 +2679,15 @@ class BlyanGPUNode:
         # Final summary
         total_time = time.time() - startup_begin
         mins, secs = divmod(int(total_time), 60)
-        # Get expert count for summary
-        expert_count = 0
-        if self.model_manager and hasattr(self.model_manager, '_available_experts_cache'):
-            if self.model_manager._available_experts_cache:
-                expert_count = len(self.model_manager._available_experts_cache)
+        # Get layer count for summary (dense model has layers, not experts)
+        layer_count = 32  # Qwen3-8B has 32 layers
+        if self.model_manager:
+            try:
+                from backend.model.dynamic_config import get_model_config
+                config = get_model_config()
+                layer_count = config.num_layers if hasattr(config, 'num_layers') else 32
+            except:
+                pass
         
         logger.info("\n" + "=" * 60)
         logger.info(f"🚀 NODE STARTUP COMPLETE")
