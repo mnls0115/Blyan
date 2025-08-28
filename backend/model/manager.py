@@ -185,8 +185,12 @@ class UnifiedModelManager:
     def is_blockchain_ready(self) -> bool:
         """Return True if the blockchain has a full set of weights."""
         try:
-            if not hasattr(self, 'param_index'):
+            # Always reload the parameter index from disk to avoid stale cache
+            from backend.core.param_index import ParameterIndex
+            index_path = self.root_dir / "param_index.json"
+            if not index_path.exists():
                 return False
+            self.param_index = ParameterIndex(index_path)
             layers = self.param_index.get_all_layers()
             return len(layers) >= self._min_blockchain_layers
         except Exception:
