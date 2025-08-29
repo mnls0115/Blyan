@@ -164,8 +164,9 @@ class OptimizedChain:
         miner_pub: Optional[str] = None,
         payload_sig: Optional[str] = None,
         depends_on: Optional[List[str]] = None,
-        block_type: Literal['meta', 'expert', 'router', 'genesis_pact', 'dataset'] = 'meta',
+        block_type: Literal['meta', 'expert', 'router', 'genesis_pact', 'dataset', 'layer', 'dense_layer'] = 'meta',
         expert_name: Optional[str] = None,
+        layer_name: Optional[str] = None,
         layer_id: Optional[str] = None,
     ) -> Block:
         """Create, mine, and persist a new block."""
@@ -195,6 +196,7 @@ class OptimizedChain:
             depends_on=final_depends_on,
             block_type=block_type,
             expert_name=expert_name,
+            layer_name=layer_name,
             layer_id=layer_id,
         )
 
