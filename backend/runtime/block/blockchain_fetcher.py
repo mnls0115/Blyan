@@ -41,25 +41,41 @@ class BlockchainLayerFetcher:
         layer_name = f"layer_{layer_id}" if layer_id >= 0 else ("embedding" if layer_id == -1 else "lm_head")
         
         try:
-            # Search for layer block in chain
+            # 1) Fast path: use param_index to directly locate block by index (O(1))
+            try:
+                from backend.core.param_index import ParameterIndex
+                param_index_path = Path("./data/param_index.json")
+                if param_index_path.exists():
+                    param_index = ParameterIndex(param_index_path)
+                    block_idx = param_index.get(layer_name)
+                    if block_idx is not None and hasattr(self.chain, 'storage'):
+                        block = self.chain.storage.get_block_by_index(int(block_idx))
+                        if block is not None:
+                            expert_data = pickle.loads(block.payload)
+                            result = {}
+                            for key, value in expert_data.items():
+                                if isinstance(value, torch.Tensor):
+                                    result[key] = value
+                                else:
+                                    result[key] = torch.tensor(value, dtype=torch.bfloat16)  # BF16 ONLY
+                            logger.info(f"Loaded layer {layer_name} from param_index @ block {block_idx}")
+                            return result
+            except Exception as e:
+                logger.debug(f"Param index fast-path unavailable: {e}")
+
+            # 2) Fallback: search by type if small chain or index missing (O(n))
             if hasattr(self.chain, 'get_blocks_by_type'):
                 layer_blocks = self.chain.get_blocks_by_type('dense_layer')
-                
                 for block in layer_blocks:
                     if hasattr(block.header, 'layer_name') and block.header.layer_name == layer_name:
-                        # Found the layer block, deserialize payload
                         expert_data = pickle.loads(block.payload)
-                        
-                        # Convert to tensors if needed
                         result = {}
                         for key, value in expert_data.items():
                             if isinstance(value, torch.Tensor):
                                 result[key] = value
                             else:
-                                # Convert numpy or list to tensor
                                 result[key] = torch.tensor(value, dtype=torch.bfloat16)  # BF16 ONLY
-                        
-                        logger.info(f"Loaded layer {layer_name} from blockchain")
+                        logger.info(f"Loaded layer {layer_name} from blockchain (scan)")
                         return result
             
             # Alternative: Direct file access for performance

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import hashlib
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -36,12 +37,98 @@ class BlockStorage:
                 json.dump(block_dict, fp)
                 fp.flush()  # Force write to disk
                 # OS will close file when exiting 'with' block
+            
+            # Append to header index for fast verification
+            self._append_to_header_index(block)
+            
         except (TypeError, ValueError) as e:
             # If JSON serialization fails, try to identify the issue
             import sys
             print(f"ERROR: Failed to save block {block.header.index}: {e}", file=sys.stderr)
             print(f"Block type: {block.header.block_type}, Expert: {getattr(block.header, 'expert_name', 'N/A')}", file=sys.stderr)
             raise
+    
+    def _append_to_header_index(self, block: Block) -> None:
+        """Append header record to index after saving block."""
+        try:
+            from .header_index import HeaderIndex, HeaderRecord
+            
+            # Get header index for this chain
+            header_index = HeaderIndex(self.dir_path)
+            
+            # Compute cumulative digest
+            prev_record = header_index.get_last_record()
+            prev_cum_digest = bytes.fromhex(prev_record.cum_digest) if prev_record else bytes(32)
+            
+            # Create header record
+            block_hash = block.compute_hash()
+            payload_hash = hashlib.sha256(block.payload).hexdigest()
+            
+            cum_digest = header_index.compute_cum_digest_for_record(
+                index=block.header.index,
+                block_hash=block_hash,
+                prev_hash=block.header.prev_hash,
+                payload_hash=payload_hash,
+                prev_cum_digest=prev_cum_digest
+            )
+            
+            record = HeaderRecord(
+                index=block.header.index,
+                hash=block_hash,
+                prev_hash=block.header.prev_hash,
+                payload_hash=payload_hash,
+                cum_digest=cum_digest
+            )
+            
+            # Append to index
+            header_index.append(record)
+            
+            # Update finality anchor if needed (every FINALITY_DEPTH blocks)
+            self._update_finality_anchor_if_needed(block.header.index, cum_digest)
+            
+        except Exception as e:
+            # Log but don't fail block save if index update fails
+            print(f"WARNING: Failed to update header index: {e}", file=sys.stderr)
+    
+    def _update_finality_anchor_if_needed(self, height: int, cum_digest: str) -> None:
+        """Update finality anchor every FINALITY_DEPTH blocks."""
+        import os
+        from datetime import datetime
+        
+        FINALITY_DEPTH = int(os.getenv('FINALITY_DEPTH', '512'))
+        
+        # Check if we should update anchor
+        # Maintain per-chain anchor file to avoid conflicts between A/B
+        anchor_file = self.dir_path.parent / f"finality_anchor_{self.dir_path.name}.json"
+        
+        # Load existing anchor if any
+        last_anchor_height = -1
+        if anchor_file.exists():
+            try:
+                with open(anchor_file, 'r') as f:
+                    anchor_data = json.load(f)
+                    last_anchor_height = anchor_data.get('height', -1)
+            except:
+                pass
+        
+        # Update if we've advanced FINALITY_DEPTH blocks
+        if height >= last_anchor_height + FINALITY_DEPTH:
+            try:
+                anchor_data = {
+                    'height': height,
+                    'cum_digest': cum_digest,
+                    'updated_at': datetime.utcnow().isoformat() + 'Z'
+                }
+                
+                # Write atomically
+                anchor_file.parent.mkdir(parents=True, exist_ok=True)
+                temp_file = anchor_file.with_suffix('.tmp')
+                with open(temp_file, 'w') as f:
+                    json.dump(anchor_data, f, indent=2)
+                temp_file.replace(anchor_file)
+                
+            except Exception as e:
+                print(f"WARNING: Failed to update finality anchor: {e}", file=sys.stderr)
 
     def load_block(self, index: int) -> Optional[Block]:
         path = self._block_path(index)

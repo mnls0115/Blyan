@@ -1,27 +1,4 @@
 {
-  "snapshot_1756352879_29285ba6": {
-    "snapshot_id": "snapshot_1756352879_29285ba6",
-    "timestamp": 1756352879.709204,
-    "size_bytes": 10800,
-    "chains_included": [
-      "A",
-      "B",
-      "D"
-    ],
-    "block_count": {
-      "A": 1,
-      "B": 1,
-      "D": 0
-    },
-    "integrity_hash": "13174893d925045fa743a44129b6ed1b",
-    "compression_ratio": 3.374537037037037,
-    "creation_time_seconds": 0.022114992141723633,
-    "description": "Automatic snapshot 2025-08-28 12:47:59",
-    "tags": [
-      "automatic"
-    ],
-    "verified": false
-  },
   "snapshot_1756390872_e989f296": {
     "snapshot_id": "snapshot_1756390872_e989f296",
     "timestamp": 1756390872.030431,
@@ -109,6 +86,75 @@
     "compression_ratio": 3.374537037037037,
     "creation_time_seconds": 0.020521163940429688,
     "description": "Automatic snapshot 2025-08-29 02:21:12",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
+  },
+  "snapshot_1756437823_0c2e961a": {
+    "snapshot_id": "snapshot_1756437823_0c2e961a",
+    "timestamp": 1756437823.940835,
+    "size_bytes": 10800,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 1,
+      "D": 0
+    },
+    "integrity_hash": "13174893d925045fa743a44129b6ed1b",
+    "compression_ratio": 3.374537037037037,
+    "creation_time_seconds": 0.02078390121459961,
+    "description": "Automatic snapshot 2025-08-29 12:23:43",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
+  },
+  "snapshot_1756448129_715af498": {
+    "snapshot_id": "snapshot_1756448129_715af498",
+    "timestamp": 1756448129.355704,
+    "size_bytes": 10800,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 1,
+      "D": 0
+    },
+    "integrity_hash": "13174893d925045fa743a44129b6ed1b",
+    "compression_ratio": 3.374537037037037,
+    "creation_time_seconds": 0.016813039779663086,
+    "description": "Automatic snapshot 2025-08-29 15:15:29",
+    "tags": [
+      "automatic"
+    ],
+    "verified": false
+  },
+  "snapshot_1756451729_5c80ecbe": {
+    "snapshot_id": "snapshot_1756451729_5c80ecbe",
+    "timestamp": 1756451729.360641,
+    "size_bytes": 10800,
+    "chains_included": [
+      "A",
+      "B",
+      "D"
+    ],
+    "block_count": {
+      "A": 1,
+      "B": 1,
+      "D": 0
+    },
+    "integrity_hash": "13174893d925045fa743a44129b6ed1b",
+    "compression_ratio": 3.374537037037037,
+    "creation_time_seconds": 0.018670082092285156,
+    "description": "Automatic snapshot 2025-08-29 16:15:29",
     "tags": [
       "automatic"
     ],

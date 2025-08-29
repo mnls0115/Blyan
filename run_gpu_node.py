@@ -176,6 +176,23 @@ class BlyanGPUNode:
         self.precision = model_config.get('precision', 'auto')
         # Warmup tracking
         self._warmup_status = 'idle'
+        # VRAM health tracking
+        self.vram_healthy = True
+        self.vram_oom_count = 0
+        self.degraded_mode = False
+        # Background auditor
+        self.background_auditor = None
+        
+        # Queue management
+        self.queue_manager = None
+        # Support both JOB_CAPACITY and MAX_CONCURRENT_JOBS (JOB_CAPACITY takes precedence)
+        self.max_concurrent_jobs = int(os.environ.get('JOB_CAPACITY', os.environ.get('MAX_CONCURRENT_JOBS', '1')))
+        # Alias used in some responses
+        self.job_capacity = self.max_concurrent_jobs
+        self.active_jobs = 0
+        self._job_lock = asyncio.Lock()
+        self._admission_task = None
+        self._sse_clients = {}  # ticket_id -> SSE response
         
         # Ensure data directory exists
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -281,9 +298,13 @@ class BlyanGPUNode:
     def initialize_chains(self) -> bool:
         """Initialize or sync blockchain chains."""
         try:
-            # Use standard chain loading (simpler and more reliable)
-            from backend.core.chain import Chain
-            logger.info("🔗 Using standard chain loading")
+            # Choose chain implementation (optimized by default, no env required)
+            try:
+                from backend.core.chain_optimized import OptimizedChain as ChainCls
+                logger.info("🔗 Using optimized chain loading (default)")
+            except Exception as e:
+                from backend.core.chain import Chain as ChainCls
+                logger.warning(f"Optimized chain unavailable, using standard: {e}")
             logger.info(f"   Data dir: {DATA_DIR}")
             logger.info(f"   Skip PoL: {SKIP_POL}")
             logger.info(f"   Verify on start: {os.getenv('VERIFY_ON_START', 'false')}")
@@ -308,8 +329,8 @@ class BlyanGPUNode:
                 logger.info("   📝 Creating new chains (first node)...")
             
             # Initialize chains (creates or loads existing)
-            self.chains['A'] = Chain(DATA_DIR, "A", skip_pol=SKIP_POL)  # Meta chain
-            self.chains['B'] = Chain(DATA_DIR, "B", skip_pol=SKIP_POL)  # Parameter chain
+            self.chains['A'] = ChainCls(DATA_DIR, "A", skip_pol=SKIP_POL)  # Meta chain
+            self.chains['B'] = ChainCls(DATA_DIR, "B", skip_pol=SKIP_POL)  # Parameter chain
             self.chains['D'] = DatasetChain(DATA_DIR, "D", skip_pol=SKIP_POL)  # Dataset chain
             
             # Log chain status (optimized to avoid loading all blocks)
@@ -376,51 +397,46 @@ class BlyanGPUNode:
             # Dense model expects 36 layers
             progress["expected_layers"] = 36
             
-            # OPTIMIZATION: Skip expensive block type check if we have many blocks
-            logger.info("📊 Counting blocks in chain B...")
-            start_time = time.time()
+            # Prefer ParameterIndex to avoid scanning blocks (O(1))
+            from backend.core.param_index import ParameterIndex
+            param_index_path = DATA_DIR / "param_index.json"
+            layer_blocks = []
+            if param_index_path.exists():
+                try:
+                    param_index = ParameterIndex(param_index_path)
+                    existing_layers = set(param_index.get_all_layers())
+                    progress["layer_blocks"] = len(existing_layers)
+                    # Determine missing layers from param index
+                    expected = [f"layer_{i}" for i in range(36)]
+                    for layer_name in expected:
+                        if layer_name not in existing_layers:
+                            progress["missing_layers"].append(layer_name)
+                            if len(progress["missing_layers"]) >= 10:
+                                progress["missing_layers"].append("... and more")
+                                break
+                except Exception as e:
+                    logger.debug(f"Param index not available: {e}; falling back to scan")
             
-            # Try to use index first
-            if hasattr(self.chains['B'], '_hash_index'):
-                chain_b_blocks = len(self.chains['B']._hash_index)
-                logger.info(f"✅ Chain B has {chain_b_blocks} blocks (from index)")
-            else:
-                # Fallback if no index (shouldn't happen)
-                chain_b_blocks = 0
-                logger.info(f"✅ Chain B has {chain_b_blocks} blocks")
-            
-            if chain_b_blocks > 1000:
-                # Assume most blocks are layers if we have many
-                progress["layer_blocks"] = min(36, chain_b_blocks)  # Dense model has max 36 layers
-                logger.info(f"⚡ Skipping expensive block type check (estimated {progress['layer_blocks']} layers from {chain_b_blocks} blocks)")
-                # Skip the expensive missing layer check too
-                progress["missing_layers"] = []
-                layer_blocks = []  # Empty list to skip iteration below
-            else:
-                # Only do expensive check for small chains
-                # Include both legacy 'layer' and new 'dense_layer' types
+            if progress["layer_blocks"] == 0:
+                # Fallback: scan only if param index absent (small chains)
+                logger.info("📊 Counting blocks in chain B (fallback scan)...")
                 legacy_blocks = self.chains['B'].get_blocks_by_type('layer')
                 dense_blocks = self.chains['B'].get_blocks_by_type('dense_layer')
                 layer_blocks = legacy_blocks + dense_blocks
                 progress["layer_blocks"] = len(layer_blocks)
             
             # Find missing layers (skip if we have many blocks)
-            existing_layers = set()
-            if len(layer_blocks) > 0:
+            if layer_blocks:
+                existing_layers = set()
                 for block in layer_blocks:
-                    # Prefer layer_name for dense model; fallback to layer_id
                     if getattr(block.header, 'layer_name', None):
                         existing_layers.add(block.header.layer_name)
                     elif getattr(block.header, 'layer_id', None) is not None:
                         existing_layers.add(f"layer_{block.header.layer_id}")
-            
-            # Check which layers are missing (skip for large chains)
-            if chain_b_blocks < 1000:
                 expected = [f"layer_{i}" for i in range(36)]
                 for layer_name in expected:
-                    if layer_name not in existing_layers:
+                    if layer_name not in existing_layers and layer_name not in progress["missing_layers"]:
                         progress["missing_layers"].append(layer_name)
-                        # Only track first 10 missing for readability
                         if len(progress["missing_layers"]) >= 10:
                             progress["missing_layers"].append("... and more")
                             break
@@ -449,31 +465,103 @@ class BlyanGPUNode:
             return progress
     
     def verify_block_integrity(self) -> bool:
-        """Verify blockchain integrity using O(1) last block check."""
+        """Verify blockchain integrity using header index and tail verification."""
         try:
             if not self.chains:
                 logger.error("No chains initialized")
                 return False
             
+            # Import header index module
+            from backend.core.header_index import HeaderIndex
+            
             # Verify each chain
             for chain_id in ['A', 'B']:
                 chain = self.chains.get(chain_id)
-                if chain and hasattr(chain, '_hash_index'):
-                    count = len(chain._hash_index)
-                    if count > 0:
-                        if not self._verify_last_block_integrity(chain, chain_id, count):
+                if not chain:
+                    continue
+                
+                # Get chain directory
+                chain_dir = DATA_DIR / chain_id
+                if not chain_dir.exists():
+                    logger.debug(f"Chain {chain_id} directory doesn't exist (OK for new chain)")
+                    continue
+                
+                # Initialize header index
+                header_index = HeaderIndex(chain_dir)
+                
+                # Build index if missing (one-time migration)
+                if not (chain_dir / "headers.idx.jsonl").exists():
+                    logger.info(f"Building header index for chain {chain_id}...")
+                    header_index.build_from_chain(chain)
+                
+                # Load header records
+                records = header_index.load()
+                if len(records) == 0:
+                    logger.debug(f"Chain {chain_id} empty (OK)")
+                    continue
+                
+                # Load or create finality anchor (per-chain)
+                anchor_file = DATA_DIR / f"finality_anchor_{chain_id}.json"
+                anchor_data = None
+                
+                if anchor_file.exists():
+                    try:
+                        with open(anchor_file, 'r') as f:
+                            anchor_data = json.load(f)
+                    except Exception as e:
+                        logger.warning(f"Could not load finality anchor: {e}")
+                
+                # Create bootstrap anchor if missing
+                if not anchor_data:
+                    FINALITY_DEPTH = int(os.getenv('FINALITY_DEPTH', '512'))
+                    anchor_height = max(0, len(records) - FINALITY_DEPTH)
+                    if anchor_height >= 0 and anchor_height < len(records):
+                        anchor_record = records[anchor_height]
+                        anchor_data = {
+                            'height': anchor_height,
+                            'cum_digest': anchor_record.cum_digest,
+                            'updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+                        }
+                        # Save bootstrap anchor
+                        try:
+                            with open(anchor_file, 'w') as f:
+                                json.dump(anchor_data, f, indent=2)
+                            logger.info(f"Created bootstrap finality anchor at height {anchor_height}")
+                        except Exception as e:
+                            logger.warning(f"Could not save bootstrap anchor: {e}")
+                
+                # Verify header chain to anchor
+                if anchor_data:
+                    anchor_height = anchor_data.get('height', 0)
+                    anchor_digest = anchor_data.get('cum_digest', '')
+                    
+                    if anchor_height < len(records):
+                        # Verify up to anchor height (inclusive)
+                        if not header_index.verify_to_height(anchor_height, anchor_digest):
+                            logger.error(f"Chain {chain_id}: Header verification failed to anchor")
                             return False
-                    else:
-                        logger.debug(f"Chain {chain_id} empty (OK)")
+                        logger.info(f"Chain {chain_id}: Headers verified to anchor at height {anchor_height}")
+                
+                # Verify tail bodies
+                TAIL_VERIFY_DEPTH = int(os.getenv('TAIL_VERIFY_DEPTH', '128'))
+                start_idx = max(0, len(records) - TAIL_VERIFY_DEPTH)
+                end_idx = len(records)
+                
+                if end_idx > start_idx:
+                    success, error_msg = header_index.verify_tail_bodies(chain, start_idx, end_idx)
+                    if not success:
+                        logger.error(f"Chain {chain_id}: Tail verification failed - {error_msg}")
+                        return False
+                    logger.info(f"Chain {chain_id}: Verified {end_idx - start_idx} tail blocks")
             
-            logger.debug("Blockchain integrity verified")
+            logger.info("✅ Blockchain integrity verified")
             return True
             
         except Exception as e:
             logger.error(f"Integrity check failed: {e}")
             return False
     
-    def _verify_last_block_integrity(self, chain, chain_id: str, block_count: int) -> bool:
+    def _verify_last_block_integrity_legacy(self, chain, chain_id: str, block_count: int) -> bool:
         """Verify chain integrity using cached hash index - O(1) operation.
         
         OPTIMIZED: Uses in-memory hash index instead of loading blocks from disk.
@@ -497,30 +585,116 @@ class BlyanGPUNode:
                     logger.error(f"Chain {chain_id}: Index mismatch - expected {block_count}, found {index_count}")
                     return False
             
-            # Fallback: Load only last block for basic verification (still faster than loading all blocks)
+            # Fallback: verify a small tail window for stronger assurance
+            # Default to a safer tail depth by default (no env required)
+            tail = max(1, int(os.getenv('FAST_RECHECK_DEPTH', '128')))
+            start_idx = max(0, block_count - tail)
+            loader = None
             if hasattr(chain, 'get_block_by_index'):
-                last_block = chain.get_block_by_index(block_count - 1)
-            elif hasattr(chain, 'storage') and chain.storage:
-                last_block = chain.storage.get_block_by_index(block_count - 1)
+                loader = chain.get_block_by_index
+            elif hasattr(chain, 'storage') and chain.storage and hasattr(chain.storage, 'get_block_by_index'):
+                loader = chain.storage.get_block_by_index
             else:
-                # No blocks to verify for empty chain
                 logger.info(f"Chain {chain_id}: Empty chain, nothing to verify")
                 return True
-            
-            if not last_block:
-                logger.error(f"Chain {chain_id}: Failed to load last block (index {block_count - 1})")
-                return False
-            
-            # Basic verification - just check the last block exists and has valid hash
-            computed_hash = last_block.compute_hash()
-            
+
+            prev_hash = None
+            verified = 0
+            for idx in range(start_idx, block_count):
+                blk = loader(idx)
+                if not blk:
+                    logger.error(f"Chain {chain_id}: Missing block at index {idx}")
+                    return False
+                # Verify payload hash matches header
+                if hashlib.sha256(blk.payload).hexdigest() != blk.header.payload_hash:
+                    logger.error(f"Chain {chain_id}: Payload hash mismatch at index {idx}")
+                    return False
+                # Verify prev linkage (skip genesis)
+                if idx > 0:
+                    if prev_hash is None:
+                        prev = loader(idx - 1)
+                        if not prev:
+                            logger.error(f"Chain {chain_id}: Missing prev block at index {idx-1}")
+                            return False
+                        prev_hash = prev.compute_hash()
+                    if blk.header.prev_hash != prev_hash:
+                        logger.error(f"Chain {chain_id}: Broken prev_hash at index {idx}")
+                        return False
+                    prev_hash = blk.compute_hash()
+                else:
+                    prev_hash = blk.compute_hash()
+                verified += 1
+
             elapsed = time.time() - start_time
-            logger.info(f"Chain {chain_id}: {block_count} blocks verified via last block {computed_hash[:16]}... ({elapsed:.3f}s)")
+            logger.info(f"Chain {chain_id}: verified last {verified} blocks link+payload in {elapsed:.3f}s")
             return True
             
         except Exception as e:
             logger.error(f"Error verifying chain {chain_id}: {e}")
             return False
+    
+    async def acquire_job_slot(self) -> bool:
+        """Try to acquire a job slot."""
+        async with self._job_lock:
+            if self.active_jobs < self.max_concurrent_jobs:
+                self.active_jobs += 1
+                logger.debug(f"Acquired job slot ({self.active_jobs}/{self.max_concurrent_jobs})")
+                return True
+            return False
+    
+    async def release_job_slot(self) -> None:
+        """Release a job slot."""
+        async with self._job_lock:
+            if self.active_jobs > 0:
+                self.active_jobs -= 1
+                logger.debug(f"Released job slot ({self.active_jobs}/{self.max_concurrent_jobs})")
+                
+                # Trigger admission check when slot freed
+                if self.queue_manager:
+                    asyncio.create_task(self._try_admit())
+    
+    async def _try_admit(self) -> None:
+        """Try to admit queued requests."""
+        if not self.queue_manager:
+            return
+        
+        async with self._job_lock:
+            available_slots = self.max_concurrent_jobs - self.active_jobs
+            if available_slots > 0:
+                admitted = await self.queue_manager.admit_next(available_slots)
+                for ticket in admitted:
+                    # Notify via SSE if client is listening
+                    await self._notify_ticket_update(ticket.ticket_id)
+    
+    async def _notify_ticket_update(self, ticket_id: str) -> None:
+        """Notify SSE clients about ticket updates."""
+        if ticket_id in self._sse_clients:
+            # Will be implemented with SSE endpoints
+            pass
+    
+    def _handle_vram_oom(self, context: str) -> None:
+        """Handle VRAM out-of-memory errors gracefully."""
+        self.vram_oom_count += 1
+        self.vram_healthy = False
+        
+        logger.error(f"🚨 VRAM OOM during {context} (count: {self.vram_oom_count})")
+        
+        # Enter degraded mode after 2 OOMs
+        if self.vram_oom_count >= 2 and not self.degraded_mode:
+            self.degraded_mode = True
+            logger.warning("⚠️ Entering degraded mode - reducing service capacity")
+            
+            # Try to free memory
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    # Log current VRAM usage
+                    allocated = torch.cuda.memory_allocated() / (1024**3)
+                    reserved = torch.cuda.memory_reserved() / (1024**3)
+                    logger.info(f"VRAM after cleanup: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
+            except Exception as e:
+                logger.error(f"Failed to clear VRAM: {e}")
     
     def reset_blockchain(self, chain_id: str = None):
         """Reset blockchain to clean state."""
@@ -540,11 +714,15 @@ class BlyanGPUNode:
                         shutil.rmtree(chain_dir)
                         chain_dir.mkdir(parents=True, exist_ok=True)
                     
-                    # Reinitialize chain
-                    from backend.core.chain import Chain
-                    logger.info("Using standard chain loading")
+                    # Reinitialize chain (optimized by default)
+                    try:
+                        from backend.core.chain_optimized import OptimizedChain as ChainCls
+                        logger.info("Using optimized chain loading")
+                    except Exception:
+                        from backend.core.chain import Chain as ChainCls
+                        logger.info("Using standard chain loading")
                     
-                    self.chains[cid] = Chain(DATA_DIR, cid, skip_pol=True)
+                    self.chains[cid] = ChainCls(DATA_DIR, cid, skip_pol=True)
                     
                     # Re-add genesis for meta chain
                     if cid == 'A' and self.genesis_hash:
@@ -700,6 +878,13 @@ class BlyanGPUNode:
             # Initialize parameter index
             logger.info("  2/5: Loading parameter index...")
             param_index = ParameterIndex(DATA_DIR / "param_index.json")
+            # Auto-rebuild if checksum mismatch detected
+            try:
+                rebuilt = param_index.rebuild_if_corrupted(self.chains.get('B'))
+                if rebuilt:
+                    logger.warning("    ⚠️ Param index was corrupted and has been rebuilt")
+            except Exception as e:
+                logger.warning(f"    ⚠️ Could not verify/rebuild param index: {e}")
             
             # Check blockchain compatibility
             logger.info("  3/5: Checking blockchain compatibility...")
@@ -860,6 +1045,13 @@ class BlyanGPUNode:
                         logger.info(f"   VRAM breakdown est: weights={weights_gb if weights_gb is not None else 'n/a'}GB, kv={kv_est if kv_est is not None else 'n/a'}GB, temp/frag={temps_gb if temps_gb is not None else 'n/a'}GB")
                     self._warmup_status = "complete"
                 except Exception as we:
+                    # Detect CUDA OOM specifically
+                    try:
+                        import torch
+                        if isinstance(we, torch.cuda.OutOfMemoryError):
+                            self._handle_vram_oom("warmup")
+                    except Exception:
+                        pass
                     self._warmup_status = "skipped"
                     logger.warning(f"GPU warmup skipped: {we}")
 
@@ -1499,7 +1691,38 @@ class BlyanGPUNode:
                 logger.warning("CORS support not available")
                 CORS_AVAILABLE = False
         
-        app = web.Application()
+        # Enforce request size limit to protect memory
+        try:
+            max_req_mb = float(os.getenv('MAX_REQUEST_SIZE_MB', '2'))
+        except Exception:
+            max_req_mb = 2.0
+        client_max_size = int(max(0.5, min(max_req_mb, 16.0)) * 1024 * 1024)  # clamp 0.5MB..16MB
+        app = web.Application(client_max_size=client_max_size)
+        
+        # Initialize queued prompts storage (shared reference for cleanup)
+        app['queued_prompts'] = {}
+        self._queued_prompts = app['queued_prompts']
+
+        # Unified Retry-After configuration (seconds)
+        try:
+            retry_chat_cap = int(os.getenv('RETRY_AFTER_CHAT_CAPACITY_SECONDS', '5'))
+        except Exception:
+            retry_chat_cap = 5
+        try:
+            retry_queue_full = int(os.getenv('RETRY_AFTER_QUEUE_FULL_SECONDS', '30'))
+        except Exception:
+            retry_queue_full = 30
+        try:
+            retry_rate_limit = int(os.getenv('RETRY_AFTER_RATE_LIMIT_SECONDS', '10'))
+        except Exception:
+            retry_rate_limit = 10
+        try:
+            retry_start_cap = int(os.getenv('RETRY_AFTER_START_CAPACITY_SECONDS', '3'))
+        except Exception:
+            retry_start_cap = 3
+        
+        # Import queue exceptions
+        from backend.runtime.queue_manager import QueueFull, LimitExceeded
         
         # Add request logging middleware
         @web.middleware
@@ -1537,6 +1760,17 @@ class BlyanGPUNode:
                 return response
             except Exception as ex:
                 elapsed = time.time() - start_time
+                # Handle too-large payloads explicitly
+                try:
+                    from aiohttp.web_exceptions import HTTPRequestEntityTooLarge
+                    if isinstance(ex, HTTPRequestEntityTooLarge):
+                        logger.warning(f"← ⚠️ 413 Payload Too Large for {path} ({elapsed:.2f}s)")
+                        return web.json_response({
+                            "error": "Payload too large",
+                            "max_request_size_mb": round(client_max_size/(1024*1024), 2)
+                        }, status=413)
+                except Exception:
+                    pass
                 logger.error(f"← ❌ Exception for {path} ({elapsed:.2f}s): {ex}")
                 raise
         
@@ -1559,15 +1793,77 @@ class BlyanGPUNode:
         async def health(request):
             client_ip = request.remote
             logger.debug(f"🩺 Health check from {client_ip}")
+            # Collect detailed health
+            finality_anchor_height = 0
+            try:
+                anchor_file = DATA_DIR / "finality_anchor_B.json"
+                if anchor_file.exists():
+                    with open(anchor_file, 'r') as f:
+                        anchor_data = json.load(f)
+                        finality_anchor_height = anchor_data.get('height', 0)
+            except Exception:
+                pass
+            header_index_ok = (DATA_DIR / "B" / "headers.idx.jsonl").exists()
+            tail_verified = int(os.getenv('TAIL_VERIFY_DEPTH', '128'))
+            # Param index checksum quick check
+            param_index_ok = True
+            try:
+                import hashlib
+                idx = DATA_DIR / "param_index.json"
+                sha = DATA_DIR / "param_index.sha256"
+                if idx.exists() and sha.exists():
+                    with open(idx, 'rb') as f:
+                        h = hashlib.sha256()
+                        for chunk in iter(lambda: f.read(4096), b''):
+                            h.update(chunk)
+                        actual = h.hexdigest()
+                    expected = sha.read_text().strip()
+                    param_index_ok = (actual == expected)
+            except Exception:
+                pass
+            # Background auditor stats
+            auditor_stats = {}
+            if getattr(self, 'background_auditor', None):
+                try:
+                    auditor_stats = self.background_auditor.get_stats()
+                except Exception:
+                    pass
+            degraded = (not self.vram_healthy) or self.degraded_mode or (self.model_manager is None)
+            # Get queue metrics
+            queue_info = {}
+            try:
+                if hasattr(self, 'queue_manager') and self.queue_manager:
+                    queue_metrics = await self.queue_manager.metrics()
+                    queue_info = {
+                        "queue_length": queue_metrics.get('queue_length', 0),
+                        "active_jobs": queue_metrics.get('active_jobs', 0),
+                        "capacity": {
+                            "total": self.job_capacity,
+                            "used": self.active_jobs,
+                            "available": self.job_capacity - self.active_jobs
+                        }
+                    }
+            except Exception:
+                pass
             
             response = {
-                "status": "healthy",
+                "status": "healthy" if not degraded else "degraded",
                 "node_id": self.node_id,
                 "gpu": self.gpu_info.get("name", "None"),
                 "gpu_available": self.gpu_available,
                 "chains": list(self.chains.keys()),
                 "model_ready": self.model_manager is not None,
-                "port": self.port
+                "port": self.port,
+                "degraded": degraded,
+                "vram_ok": getattr(self, 'vram_healthy', True),
+                "vram_oom_count": getattr(self, 'vram_oom_count', 0),
+                "finality_anchor_height": finality_anchor_height,
+                "header_index_ok": header_index_ok,
+                "tail_verified": tail_verified,
+                "param_index_ok": param_index_ok,
+                "auditor": auditor_stats,
+                "queue": queue_info,
+                "max_request_size_mb": round(client_max_size/(1024*1024), 2)
             }
             
             # Log if model not ready (common issue)
@@ -1661,7 +1957,19 @@ class BlyanGPUNode:
                 except Exception:
                     return web.json_response({"error": "Invalid JSON body"}, status=400)
                 prompt = data.get("prompt", "")
+                # Basic input sanitation
+                if not isinstance(prompt, str):
+                    return web.json_response({"error": "prompt must be a string"}, status=400)
                 max_new_tokens = data.get("max_new_tokens", 64)
+                try:
+                    max_new_tokens = int(max_new_tokens)
+                except Exception:
+                    return web.json_response({"error": "max_new_tokens must be an integer"}, status=400)
+                # Clamp tokens to safe bounds
+                if max_new_tokens < 1:
+                    max_new_tokens = 1
+                if max_new_tokens > 1024:
+                    max_new_tokens = 1024
                 
                 logger.info(f"   Prompt: '{prompt[:50]}...' (tokens: {max_new_tokens})")
 
@@ -1673,11 +1981,58 @@ class BlyanGPUNode:
                 if not hasattr(self, 'model_manager') or self.model_manager is None:
                     logger.error(f"❌ Model not ready for {client_ip}")
                     return web.json_response({"error": "Model manager not initialized"}, status=503)
+                
+                # Check if we're at capacity and should queue
+                if hasattr(self, 'job_capacity') and self.active_jobs >= self.job_capacity:
+                    logger.info(f"⏳ At capacity ({self.active_jobs}/{self.job_capacity}), redirecting to queue")
+                    response = web.json_response({
+                        "error": "At capacity, please use /chat/admit to queue your request",
+                        "queue_available": True,
+                        "capacity": {
+                            "total": self.job_capacity,
+                            "used": self.active_jobs,
+                            "available": 0
+                        }
+                    }, status=503)
+                    response.headers['Retry-After'] = str(retry_chat_cap)
+                    return response
+                
+                # Try to acquire a job slot
+                if not await self.acquire_job_slot():
+                    response = web.json_response({
+                        "error": "Unable to acquire job slot, please use /chat/admit to queue",
+                        "queue_available": True
+                    }, status=503)
+                    response.headers['Retry-After'] = str(retry_chat_cap)
+                    return response
 
                 # Generate response using dense model
                 logger.info(f"   Generating response...")
-                answer = self.model_manager.generate(prompt, max_new_tokens=max_new_tokens)
+                try:
+                    answer = self.model_manager.generate(prompt, max_new_tokens=max_new_tokens)
+                except Exception as ge:
+                    # Release job slot on error
+                    await self.release_job_slot()
+                    
+                    # Handle VRAM OOM gracefully
+                    try:
+                        import torch
+                        if isinstance(ge, torch.cuda.OutOfMemoryError):
+                            self._handle_vram_oom("chat")
+                            return web.json_response({
+                                "error": "GPU out of memory",
+                                "degraded": True
+                            }, status=503)
+                        # Handle common invalid inputs gracefully
+                        if isinstance(ge, (ValueError, AssertionError)):
+                            return web.json_response({"error": str(ge)}, status=400)
+                    except Exception:
+                        pass
+                    raise
                 inference_time = time.time() - start_time
+                
+                # Release job slot after successful completion
+                await self.release_job_slot()
                 
                 logger.info(f"✅ Chat success for {client_ip} - {inference_time:.2f}s")
 
@@ -1689,6 +2044,10 @@ class BlyanGPUNode:
                 })
 
             except Exception as exc:
+                # Release job slot on any error
+                if hasattr(self, 'release_job_slot'):
+                    await self.release_job_slot()
+                
                 logger.error(f"❌ Chat error for {request.remote}: {exc}")
                 import traceback
                 logger.error(f"   Traceback: {traceback.format_exc()}")
@@ -1699,7 +2058,17 @@ class BlyanGPUNode:
             try:
                 data = await request.json()
                 prompt = data.get("prompt", "")
+                if not isinstance(prompt, str):
+                    return web.json_response({"error": "prompt must be a string"}, status=400)
                 max_tokens = data.get("max_new_tokens", data.get("max_length", 100))
+                try:
+                    max_tokens = int(max_tokens)
+                except Exception:
+                    return web.json_response({"error": "max_new_tokens must be an integer"}, status=400)
+                if max_tokens < 1:
+                    max_tokens = 1
+                if max_tokens > 1024:
+                    max_tokens = 1024
                 # Dense model doesn't need layer selection - uses all layers
                 required_precision = data.get("precision", self.precision)
                 
@@ -1719,11 +2088,26 @@ class BlyanGPUNode:
                 logger.info(f"Performing dense model inference")
                 
                 # Perform blockchain-first inference with dense model
-                response = await asyncio.to_thread(
-                    self.model_manager.generate,
-                    prompt,
-                    max_tokens
-                )
+                try:
+                    response = await asyncio.to_thread(
+                        self.model_manager.generate,
+                        prompt,
+                        max_tokens
+                    )
+                except Exception as ge:
+                    try:
+                        import torch
+                        if isinstance(ge, torch.cuda.OutOfMemoryError):
+                            self._handle_vram_oom("inference")
+                            return web.json_response({
+                                "error": "GPU out of memory",
+                                "degraded": True
+                            }, status=503)
+                        if isinstance(ge, (ValueError, AssertionError)):
+                            return web.json_response({"error": str(ge)}, status=400)
+                    except Exception:
+                        pass
+                    raise
                 
                 # Track which layers were used (for dense model, all layers are used)
                 from backend.model.dynamic_config import get_model_config
@@ -1801,11 +2185,24 @@ class BlyanGPUNode:
                     hidden_states = torch.tensor(hidden_states.get("data", []))
                 
                 # Process through specific layers
-                output = await asyncio.to_thread(
-                    self._process_pipeline_stage,
-                    stage,
-                    hidden_states
-                )
+                try:
+                    output = await asyncio.to_thread(
+                        self._process_pipeline_stage,
+                        stage,
+                        hidden_states
+                    )
+                except Exception as ge:
+                    try:
+                        import torch
+                        if isinstance(ge, torch.cuda.OutOfMemoryError):
+                            self._handle_vram_oom("pipeline_stage")
+                            return web.json_response({
+                                "error": "GPU out of memory",
+                                "degraded": True
+                            }, status=503)
+                    except Exception:
+                        pass
+                    raise
                 
                 # Serialize output for transport using binary format
                 import base64
@@ -2013,6 +2410,292 @@ class BlyanGPUNode:
             except Exception as e:
                 return web.json_response({"error": str(e)}, status=500)
         
+        # Queue management endpoints
+        async def chat_admit(request):
+            """Enqueue a chat request and get a ticket."""
+            try:
+                data = await request.json()
+                prompt = data.get("prompt", "")
+                if not isinstance(prompt, str):
+                    return web.json_response({"error": "prompt must be a string"}, status=400)
+                
+                # Enforce prompt length cap (default 8192 chars)
+                max_prompt_length = int(os.getenv('MAX_PROMPT_LENGTH', '8192'))
+                if len(prompt) > max_prompt_length:
+                    return web.json_response({
+                        "error": f"Prompt too long ({len(prompt)} chars, max: {max_prompt_length})"
+                    }, status=400)
+                
+                # Get user key (IP or auth ID)
+                user_key = request.headers.get('X-User-ID', request.remote)
+                
+                # Create prompt metadata for scheduling
+                prompt_meta = {
+                    "length": len(prompt),
+                    "max_tokens": data.get("max_new_tokens", 64)
+                }
+                
+                # Enqueue request
+                try:
+                    ticket = await self.queue_manager.enqueue(user_key, prompt_meta)
+                    
+                    # Store prompt for later execution
+                    request.app['queued_prompts'][ticket.ticket_id] = {
+                        "prompt": prompt,
+                        "max_new_tokens": data.get("max_new_tokens", 64),
+                        "user_key": user_key
+                    }
+                    
+                    return web.json_response({
+                        "ticket_id": ticket.ticket_id,
+                        "position": ticket.position,
+                        "eta_seconds": ticket.eta_seconds,
+                        "state": ticket.state
+                    })
+                    
+                except QueueFull:
+                    # Suggest retry later when queue is full
+                    response = web.json_response({"error": "Queue is full, please try again later"}, status=503)
+                    response.headers['Retry-After'] = str(retry_queue_full)
+                    return response
+                except LimitExceeded as e:
+                    # Suggest retry for rate limiting per user
+                    response = web.json_response({"error": str(e)}, status=429)
+                    response.headers['Retry-After'] = str(retry_rate_limit)
+                    return response
+                    
+            except Exception as e:
+                logger.error(f"Admit error: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+        
+        async def queue_status(request):
+            """Get status of a queued ticket."""
+            try:
+                ticket_id = request.match_info.get('ticket_id')
+                if not ticket_id:
+                    return web.json_response({"error": "ticket_id required"}, status=400)
+                
+                # Validate ticket_id format (32 hex chars for UUID)
+                import re
+                if not re.match(r'^[a-f0-9]{32}$', ticket_id):
+                    return web.json_response({"error": "Invalid ticket_id format"}, status=400)
+                
+                ticket = await self.queue_manager.get(ticket_id)
+                if not ticket:
+                    return web.json_response({"error": "Ticket not found"}, status=404)
+                
+                # Update position and ETA
+                position = await self.queue_manager.position(ticket_id)
+                eta = await self.queue_manager.eta(ticket_id)
+                
+                return web.json_response({
+                    "ticket_id": ticket.ticket_id,
+                    "state": ticket.state,
+                    "position": position,
+                    "eta_seconds": eta,
+                    "created_at": ticket.created_at,
+                    "assigned_at": ticket.assigned_at,
+                    "started_at": ticket.started_at,
+                    "completed_at": ticket.completed_at
+                })
+                
+            except Exception as e:
+                logger.error(f"Status error: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+        
+        async def queue_stream(request):
+            """SSE stream for live queue updates."""
+            response = web.StreamResponse()
+            response.headers['Content-Type'] = 'text/event-stream'
+            response.headers['Cache-Control'] = 'no-cache'
+            response.headers['X-Accel-Buffering'] = 'no'
+            await response.prepare(request)
+            
+            try:
+                # Get ticket ID from query params
+                ticket_id = request.query.get('ticket_id')
+                if not ticket_id:
+                    await response.write(b'data: {"error": "ticket_id required"}\n\n')
+                    return response
+                
+                # Validate ticket_id format
+                import re
+                if not re.match(r'^[a-f0-9]{32}$', ticket_id):
+                    await response.write(b'data: {"error": "Invalid ticket_id format"}\n\n')
+                    return response
+                
+                # Send updates every second
+                while True:
+                    ticket = await self.queue_manager.get(ticket_id)
+                    if not ticket:
+                        await response.write(b'data: {"error": "ticket not found"}\n\n')
+                        break
+                    
+                    # Get current position and ETA
+                    position = await self.queue_manager.position(ticket_id)
+                    eta = await self.queue_manager.eta(ticket_id)
+                    
+                    # Send SSE event
+                    event_data = {
+                        "ticket_id": ticket.ticket_id,
+                        "state": ticket.state,
+                        "position": position,
+                        "eta_seconds": eta
+                    }
+                    
+                    await response.write(f'data: {json.dumps(event_data)}\n\n'.encode())
+                    
+                    # Stop streaming if ticket is done
+                    if ticket.state in {"done", "failed", "canceled", "expired"}:
+                        break
+                    
+                    # Stop streaming if started (client should switch to chat endpoint)
+                    if ticket.state == "started":
+                        await response.write(b'data: {"event": "ready_to_start"}\n\n')
+                        break
+                    
+                    await asyncio.sleep(1)
+                    
+            except asyncio.CancelledError:
+                pass
+            finally:
+                await response.write_eof()
+            
+            return response
+        
+        async def queue_cancel(request):
+            """Cancel a queued ticket."""
+            try:
+                ticket_id = request.match_info.get('ticket_id')
+                if not ticket_id:
+                    return web.json_response({"error": "ticket_id required"}, status=400)
+                
+                # Validate ticket_id format
+                import re
+                if not re.match(r'^[a-f0-9]{32}$', ticket_id):
+                    return web.json_response({"error": "Invalid ticket_id format"}, status=400)
+                
+                # Get user key for authorization
+                user_key = request.headers.get('X-User-ID', request.remote)
+                
+                success = await self.queue_manager.cancel(ticket_id, user_key)
+                if success:
+                    # Clean up stored prompt
+                    if 'queued_prompts' in request.app:
+                        request.app['queued_prompts'].pop(ticket_id, None)
+                    
+                    return web.json_response({"status": "canceled"})
+                else:
+                    return web.json_response({"error": "Cannot cancel ticket"}, status=403)
+                    
+            except Exception as e:
+                logger.error(f"Cancel error: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+        
+        async def chat_start(request):
+            """Start processing an admitted ticket."""
+            try:
+                data = await request.json()
+                ticket_id = data.get("ticket_id")
+                if not ticket_id:
+                    return web.json_response({"error": "ticket_id required"}, status=400)
+                
+                # Validate ticket_id format
+                import re
+                if not re.match(r'^[a-f0-9]{32}$', ticket_id):
+                    return web.json_response({"error": "Invalid ticket_id format"}, status=400)
+                
+                # Get ticket
+                ticket = await self.queue_manager.get(ticket_id)
+                if not ticket:
+                    return web.json_response({"error": "Ticket not found"}, status=404)
+                
+                # Check if assigned
+                if ticket.state != "assigned":
+                    return web.json_response({
+                        "error": f"Ticket not ready (state: {ticket.state})"
+                    }, status=400)
+                
+                # Get stored prompt
+                prompt_data = request.app['queued_prompts'].get(ticket_id)
+                if not prompt_data:
+                    return web.json_response({"error": "Prompt data not found"}, status=404)
+                
+                # Acquire a job slot before starting
+                if not await self.acquire_job_slot():
+                    resp = web.json_response({
+                        "error": "At capacity, please wait and retry start",
+                        "capacity": {
+                            "total": self.job_capacity,
+                            "used": self.active_jobs,
+                            "available": max(0, self.job_capacity - self.active_jobs)
+                        }
+                    }, status=503)
+                    # Use unified start capacity retry hint
+                    resp.headers['Retry-After'] = str(retry_start_cap)
+                    return resp
+
+                # Mark as started
+                await self.queue_manager.start(ticket_id)
+                
+                try:
+                    # Perform inference
+                    if not self.model_manager:
+                        raise RuntimeError("Model not ready")
+                    
+                    import time
+                    start_time = time.time()
+                    
+                    response = self.model_manager.generate(
+                        prompt_data["prompt"],
+                        max_new_tokens=prompt_data["max_new_tokens"]
+                    )
+                    
+                    inference_time = time.time() - start_time
+                    
+                    # Mark as completed
+                    await self.queue_manager.complete(ticket_id, success=True)
+                    
+                    # Clean up stored prompt
+                    request.app['queued_prompts'].pop(ticket_id, None)
+                    
+                    # Release job slot
+                    await self.release_job_slot()
+                    
+                    return web.json_response({
+                        "response": response,
+                        "inference_time": inference_time,
+                        "ticket_id": ticket_id
+                    })
+                    
+                except Exception as e:
+                    # Mark as failed
+                    await self.queue_manager.complete(ticket_id, success=False)
+                    
+                    # Clean up and release slot
+                    request.app['queued_prompts'].pop(ticket_id, None)
+                    await self.release_job_slot()
+                    
+                    logger.error(f"Inference failed for ticket {ticket_id}: {e}")
+                    return web.json_response({"error": str(e)}, status=500)
+                    
+            except Exception as e:
+                logger.error(f"Start error: {e}")
+                return web.json_response({"error": str(e)}, status=500)
+        
+        async def queue_metrics(request):
+            """Get queue metrics."""
+            try:
+                metrics = await self.queue_manager.metrics()
+                metrics['capacity'] = {
+                    'total': self.job_capacity,
+                    'used': self.active_jobs,
+                    'available': self.job_capacity - self.active_jobs
+                }
+                return web.json_response(metrics)
+            except Exception as e:
+                return web.json_response({"error": str(e)}, status=500)
+        
         # Register routes
         enable_learning = os.getenv('ENABLE_LEARNING_ENDPOINTS', 'false').lower() == 'true'
         if cors:
@@ -2026,6 +2709,14 @@ class BlyanGPUNode:
             cors.add(app.router.add_post('/inference', inference))
             cors.add(app.router.add_post('/inference/stage', inference_stage))  # Add pipeline stage endpoint
             cors.add(app.router.add_get('/pol/status', lambda r: web.json_response({"status": "ok"})))
+            
+            # Queue management routes with CORS
+            cors.add(app.router.add_post('/chat/admit', chat_admit))
+            cors.add(app.router.add_get('/queue/status/{ticket_id}', queue_status))
+            cors.add(app.router.add_get('/queue/stream', queue_stream))
+            cors.add(app.router.add_post('/queue/cancel/{ticket_id}', queue_cancel))
+            cors.add(app.router.add_post('/chat/start', chat_start))
+            cors.add(app.router.add_get('/queue/metrics', queue_metrics))
             
             # Learning routes with CORS (optional)
             if enable_learning:
@@ -2043,6 +2734,15 @@ class BlyanGPUNode:
             app.router.add_get('/chain/{chain_id}', chain_info)
             app.router.add_post('/inference', inference)
             app.router.add_get('/pol/status', lambda r: web.json_response({"status": "ok"}))
+            
+            # Queue management routes
+            app.router.add_post('/chat/admit', chat_admit)
+            app.router.add_get('/queue/status/{ticket_id}', queue_status)
+            app.router.add_get('/queue/stream', queue_stream)
+            app.router.add_post('/queue/cancel/{ticket_id}', queue_cancel)
+            app.router.add_post('/chat/start', chat_start)
+            app.router.add_get('/queue/metrics', queue_metrics)
+            
             if enable_learning:
                 app.router.add_post('/learning/start', learning_start)
                 app.router.add_post('/learning/data', learning_data_allocation)
@@ -2573,6 +3273,42 @@ class BlyanGPUNode:
                 logger.info(f"📅 Will retry again in {retry_delay} seconds")
                 asyncio.create_task(self._delayed_registration_retry(retry_delay))
     
+    async def _admission_scheduler(self) -> None:
+        """Periodically check for admission opportunities."""
+        while True:
+            try:
+                await asyncio.sleep(0.5)  # Check every 500ms
+                await self._try_admit()
+                # Opportunistic cleanup of stale prompts (bounded per tick)
+                await self._cleanup_stale_prompts(limit=50)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Admission scheduler error: {e}")
+
+    async def _cleanup_stale_prompts(self, limit: int = 50) -> None:
+        """Remove stored prompts for tickets that have terminated or expired.
+
+        Args:
+            limit: Maximum number of entries to inspect per call to bound work
+        """
+        try:
+            if not hasattr(self, '_queued_prompts') or not self._queued_prompts:
+                return
+            if not self.queue_manager:
+                return
+            removed = 0
+            # Iterate over a snapshot of keys to avoid RuntimeError on size change
+            for ticket_id in list(self._queued_prompts.keys()):
+                if removed >= limit:
+                    break
+                ticket = await self.queue_manager.get(ticket_id)
+                if (ticket is None) or (ticket.state in {"done", "failed", "canceled", "expired"}):
+                    self._queued_prompts.pop(ticket_id, None)
+                    removed += 1
+        except Exception as e:
+            logger.debug(f"Prompt cleanup error: {e}")
+    
     async def periodic_sync(self):
         """Periodically attempt to sync with main node."""
         retry_interval = 30  # Start with 30 seconds
@@ -2735,7 +3471,27 @@ class BlyanGPUNode:
         current_step += 1
         log_step(startup_steps[current_step-1], current_step)
         if not self.initialize_chains():
-            logger.error("Failed to initialize chains")
+            # Degrade gracefully: write minimal health and still start server
+            logger.error("Failed to initialize chains — starting in degraded mode")
+            progress = {
+                "meta_blocks": 0,
+                "layer_blocks": 0,
+                "expected_layers": 36,
+                "missing_layers": [],
+                "integrity_valid": False,
+                "progress_percentage": 0.0
+            }
+            # Generate health summary with error and start server anyway
+            degraded_manifest = {"hosted_count": 0, "verified_count": 0, "missing_layers": [], "ready_to_serve": False}
+            try:
+                self._generate_node_health_summary(progress, degraded_manifest)
+            except Exception:
+                pass
+            # Attempt to start server so ops can query status
+            try:
+                await self.start_server()
+            except Exception as e:
+                logger.error(f"Failed to start server in degraded mode: {e}")
             return
         
         # 3. Check block progress
@@ -2761,6 +3517,12 @@ class BlyanGPUNode:
                 # Continue anyway but with warnings
         else:
             logger.info("✅ Integrity check passed")
+        
+        # 4.5 Build layer manifest and verify partial node
+        layer_manifest_summary = self._build_and_verify_layer_manifest()
+        
+        # 4.6 Generate node health summary
+        self._generate_node_health_summary(progress, layer_manifest_summary)
         
         # Continue building blocks if needed
         self.continue_block_building(progress)
@@ -2846,6 +3608,39 @@ class BlyanGPUNode:
         
         # Registration already happens in start_server()
         
+        # Initialize queue manager
+        try:
+            from backend.runtime.queue_manager import QueueManager
+            max_queue_length = int(os.getenv('MAX_QUEUE_LENGTH', '200'))
+            max_user_concurrency = int(os.getenv('MAX_USER_CONCURRENCY', '1'))
+            admission_timeout = int(os.getenv('ADMISSION_TIMEOUT_S', '600'))
+            job_timeout = int(os.getenv('JOB_TIMEOUT_S', '600'))
+            
+            self.queue_manager = QueueManager(
+                max_queue_length=max_queue_length,
+                max_user_concurrency=max_user_concurrency,
+                admission_timeout_s=admission_timeout,
+                job_timeout_s=job_timeout
+            )
+            logger.info(f"📋 Queue manager initialized (capacity: {self.max_concurrent_jobs}, queue: {max_queue_length})")
+            
+            # Start admission scheduler
+            self._admission_task = asyncio.create_task(self._admission_scheduler())
+            
+        except Exception as e:
+            logger.warning(f"Could not initialize queue manager: {e}")
+        
+        # Start background auditor if enabled
+        if os.getenv('ENABLE_BACKGROUND_AUDIT', 'true').lower() == 'true':
+            try:
+                from backend.core.background_auditor import BackgroundAuditor
+                self.background_auditor = BackgroundAuditor(DATA_DIR, self.chains)
+                audit_interval = int(os.getenv('AUDIT_INTERVAL_SECONDS', '300'))
+                await self.background_auditor.start(audit_interval)
+                logger.info(f"🔍 Background auditor started (interval: {audit_interval}s)")
+            except Exception as e:
+                logger.warning(f"Could not start background auditor: {e}")
+        
         # Final summary
         total_time = time.time() - startup_begin
         mins, secs = divmod(int(total_time), 60)
@@ -2885,11 +3680,163 @@ class BlyanGPUNode:
             if hasattr(self, 'model_manager') and self.model_manager:
                 logger.debug(f"Node {self.node_id} healthy - GPU: {self.gpu_available}")
     
+    def _build_and_verify_layer_manifest(self) -> Dict:
+        """Build and verify layer manifest for partial node support."""
+        try:
+            from backend.runtime.block.layer_manifest import LayerManifest
+            
+            logger.info("📋 Building layer manifest...")
+            
+            # Initialize manifest
+            manifest = LayerManifest(DATA_DIR)
+            
+            # Build from param_index if available
+            if (DATA_DIR / "param_index.json").exists():
+                chain_b = self.chains.get('B')
+                if chain_b:
+                    manifest.build_from_param_index(chain_b)
+                    
+                    # Verify hosted layers
+                    summary = manifest.verify_hosted_layers(chain_b)
+                    
+                    # Get expected layers for dense model
+                    expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head"]
+                    missing = manifest.get_missing_layers(expected_layers)
+                    summary['missing_from_full_model'] = missing
+                    
+                    return summary
+                else:
+                    logger.warning("Chain B not available for manifest building")
+            else:
+                logger.info("No param_index.json found, skipping manifest")
+            
+            return {
+                'hosted_count': 0,
+                'verified_count': 0,
+                'missing_layers': [],
+                'ready_to_serve': False
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to build layer manifest: {e}")
+            return {
+                'hosted_count': 0,
+                'verified_count': 0,
+                'missing_layers': [],
+                'ready_to_serve': False,
+                'error': str(e)
+            }
+    
+    def _generate_node_health_summary(self, progress: Dict, layer_manifest: Dict) -> None:
+        """Generate and save node health summary."""
+        try:
+            # Get chain heights
+            chain_a_height = len(self.chains['A']._hash_index) if hasattr(self.chains['A'], '_hash_index') else 0
+            chain_b_height = len(self.chains['B']._hash_index) if hasattr(self.chains['B'], '_hash_index') else 0
+            
+            # Load B-chain finality anchor if exists (weights chain)
+            anchor_file = DATA_DIR / "finality_anchor_B.json"
+            finality_anchor_height = 0
+            if anchor_file.exists():
+                try:
+                    with open(anchor_file, 'r') as f:
+                        anchor_data = json.load(f)
+                        finality_anchor_height = anchor_data.get('height', 0)
+                except:
+                    pass
+            
+            # Get current VRAM status
+            vram_stats = {}
+            if self.gpu_available:
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        vram_stats = {
+                            'allocated_gb': torch.cuda.memory_allocated() / (1024**3),
+                            'reserved_gb': torch.cuda.memory_reserved() / (1024**3),
+                            'max_allocated_gb': torch.cuda.max_memory_allocated() / (1024**3)
+                        }
+                except:
+                    pass
+            
+            # Get background auditor stats
+            auditor_stats = {}
+            if self.background_auditor:
+                auditor_stats = self.background_auditor.get_stats()
+            
+            # Create health summary
+            health_summary = {
+                'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                'node_id': self.node_id,
+                'chain_a_height': chain_a_height,
+                'chain_b_height': chain_b_height,
+                'finality_anchor_height': finality_anchor_height,
+                'header_index_ok': (DATA_DIR / "B" / "headers.idx.jsonl").exists(),
+                'tail_verified': int(os.getenv('TAIL_VERIFY_DEPTH', '128')),
+                'hosted_layers': layer_manifest.get('hosted_count', 0),
+                'hosted_layers_verified': layer_manifest.get('verified_count', 0),
+                'ready_to_serve': layer_manifest.get('ready_to_serve', False),
+                'gpu_available': self.gpu_available,
+                'model_ready': self.model_manager is not None,
+                'integrity_valid': progress.get('integrity_valid', False),
+                'progress_percentage': progress.get('progress_percentage', 0),
+                'vram_ok': self.vram_healthy,
+                'vram_oom_count': self.vram_oom_count,
+                'degraded_mode': self.degraded_mode,
+                'vram_stats': vram_stats,
+                'background_auditor': auditor_stats
+            }
+            
+            # Save to file
+            health_file = DATA_DIR / "node_health.json"
+            with open(health_file, 'w') as f:
+                json.dump(health_summary, f, indent=2)
+            
+            # Log summary
+            logger.info("📊 Node Health Summary:")
+            logger.info(f"  Chain A: {chain_a_height} blocks")
+            logger.info(f"  Chain B: {chain_b_height} blocks")
+            logger.info(f"  Finality anchor: {finality_anchor_height}")
+            logger.info(f"  Hosted layers: {health_summary['hosted_layers']}")
+            logger.info(f"  Verified layers: {health_summary['hosted_layers_verified']}")
+            logger.info(f"  Ready to serve: {'✅' if health_summary['ready_to_serve'] else '❌'}")
+            
+        except Exception as e:
+            logger.error(f"Failed to generate health summary: {e}")
+    
     async def shutdown(self):
         """Clean shutdown of the node."""
         logger.info("🛑 Shutting down GPU node...")
         
         try:
+            # Stop admission scheduler
+            if hasattr(self, '_admission_task') and self._admission_task:
+                self._admission_task.cancel()
+                try:
+                    await self._admission_task
+                except asyncio.CancelledError:
+                    pass
+                logger.info("   Admission scheduler stopped")
+            
+            # Shutdown queue manager
+            if hasattr(self, 'queue_manager') and self.queue_manager:
+                await self.queue_manager.shutdown()
+                logger.info("   Queue manager shut down")
+                # Clear any stored prompts
+                try:
+                    if hasattr(self, '_queued_prompts') and isinstance(self._queued_prompts, dict):
+                        cleared = len(self._queued_prompts)
+                        self._queued_prompts.clear()
+                        if cleared:
+                            logger.info(f"   Cleared {cleared} queued prompt(s)")
+                except Exception as e:
+                    logger.debug(f"   Prompt map cleanup error: {e}")
+            
+            # Stop background auditor
+            if hasattr(self, 'background_auditor') and self.background_auditor:
+                await self.background_auditor.stop()
+                logger.info("   Background auditor stopped")
+            
             # Stop the HTTP server if running
             if hasattr(self, '_site') and self._site:
                 await self._site.stop()
