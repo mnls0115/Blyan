@@ -36,11 +36,27 @@ class ExpertMetadata:
     precision: str = "fp16"  # fp16, bf16, int8, fp8, etc.
 
 
+# Backward/forward-compatibility alias for dense layer metadata
+# Many runtimes treat a single dense layer similarly to a legacy "expert" unit.
+# Expose LayerMetadata as an alias to ExpertMetadata so imports remain stable.
+LayerMetadata = ExpertMetadata
+
+
 @dataclass
 class ExpertData:
     """Loaded expert data with metadata."""
     metadata: ExpertMetadata
     weights: torch.Tensor
+    verified: bool
+    cache_hit: bool
+    fetch_latency_ms: float
+
+
+@dataclass
+class LayerData:
+    """Loaded layer data with metadata (dense-layer friendly type)."""
+    metadata: LayerMetadata
+    weights: Any  # torch.Tensor in practice
     verified: bool
     cache_hit: bool
     fetch_latency_ms: float
