@@ -1045,11 +1045,12 @@ class BlyanGPUNode:
                         logger.info(f"   VRAM breakdown est: weights={weights_gb if weights_gb is not None else 'n/a'}GB, kv={kv_est if kv_est is not None else 'n/a'}GB, temp/frag={temps_gb if temps_gb is not None else 'n/a'}GB")
                     self._warmup_status = "complete"
                 except Exception as we:
-                    # Detect CUDA OOM specifically
+                    # Detect CUDA OOM specifically (avoid shadowing torch in local scope)
                     try:
-                        import torch
-                        if isinstance(we, torch.cuda.OutOfMemoryError):
-                            self._handle_vram_oom("warmup")
+                        if 'torch' in globals():
+                            # torch is imported in the outer scope of _warmup_gpu
+                            if isinstance(we, torch.cuda.OutOfMemoryError):
+                                self._handle_vram_oom("warmup")
                     except Exception:
                         pass
                     self._warmup_status = "skipped"
@@ -1082,8 +1083,8 @@ class BlyanGPUNode:
         param_index = ParameterIndex(DATA_DIR / "param_index.json")
         existing_layers = param_index.get_all_layers()
         
-        # Check if we already have the model uploaded
-        expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head"]
+        # Check if we already have the model uploaded (including ALL components)
+        expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm", "other_weights"]
         
         if os.getenv("SKIP_UPLOAD_IF_PARAM_INDEX_MATCHES", "true").lower() == "true":
             if set(existing_layers) >= set(expected_layers):
@@ -1232,9 +1233,9 @@ class BlyanGPUNode:
             # Get model state dict - keep on GPU for zero-copy
             state_dict = model.state_dict()
             
-            # Expected number of layers (36 layers + embedding + lm_head)
+            # Expected number of layers (36 layers + embedding + lm_head + model_norm + other_weights)
             num_layers = 36  # Dense model has 36 layers
-            expected_names = ["embedding"] + [f"layer_{i}" for i in range(num_layers)] + ["lm_head"]
+            expected_names = ["embedding"] + [f"layer_{i}" for i in range(num_layers)] + ["lm_head", "model_norm", "other_weights"]
             
             logger.info(f"📦 Uploading dense model: {num_layers} layers + embedding + lm_head")
             
@@ -1377,6 +1378,106 @@ class BlyanGPUNode:
                     
                 except Exception as e:
                     logger.error(f"Failed to upload LM head: {e}")
+            
+            # 4. Upload model.norm (final layer normalization) - CRITICAL FOR OUTPUT
+            norm_keys = [k for k in state_dict.keys() if 'norm' in k and 'layers.' not in k]
+            if norm_keys:
+                logger.info(f"📦 Found norm keys to upload: {norm_keys}")
+                try:
+                    buffer = io.BytesIO()
+                    tensors_to_save = {}
+                    for key in norm_keys:
+                        # ENSURE BFLOAT16 before saving to blockchain
+                        tensor = state_dict[key]
+                        if tensor.dtype != torch.bfloat16:
+                            tensor = tensor.to(torch.bfloat16)
+                        tensors_to_save[key] = tensor
+                    
+                    torch.save(tensors_to_save, buffer)
+                    payload = buffer.getvalue()
+                    
+                    # Calculate content hash
+                    content_hash = hashlib.sha256(payload).hexdigest()[:16]
+                    
+                    block = self.chains['B'].add_block(
+                        payload,
+                        block_type='dense_layer',
+                        layer_name="model_norm"
+                    )
+                    
+                    # Update parameter index with block index
+                    param_index.set("model_norm", block.header.index)
+                    uploaded_names.append("model_norm")
+                    
+                    logger.info(f"✅ Uploaded model norm ({len(payload) / 1024 / 1024:.1f} MB, hash: {content_hash})")
+                    num_uploaded += 1
+                    
+                    # Cleanup
+                    del tensors_to_save, buffer, payload
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    
+                except Exception as e:
+                    logger.error(f"Failed to upload model norm: {e}")
+            else:
+                logger.warning("⚠️ No model.norm keys found - model will produce garbled output!")
+            
+            # 5. Upload any remaining keys (rotary embeddings, etc.) as "other_weights"
+            # These are essential for proper model operation
+            uploaded_keys = set()
+            for name in uploaded_names:
+                if name == "embedding":
+                    uploaded_keys.update([k for k in state_dict.keys() if 'embed_tokens' in k])
+                elif name == "lm_head":
+                    uploaded_keys.update([k for k in state_dict.keys() if 'lm_head' in k])
+                elif name == "model_norm":
+                    uploaded_keys.update([k for k in state_dict.keys() if 'norm' in k and 'layers.' not in k])
+                elif name.startswith("layer_"):
+                    layer_idx = int(name.split("_")[1])
+                    uploaded_keys.update([k for k in state_dict.keys() if f'layers.{layer_idx}.' in k])
+            
+            remaining_keys = set(state_dict.keys()) - uploaded_keys
+            if remaining_keys:
+                logger.warning(f"⚠️ Found {len(remaining_keys)} unhandled keys: {list(remaining_keys)[:5]}...")
+                try:
+                    buffer = io.BytesIO()
+                    tensors_to_save = {}
+                    for key in remaining_keys:
+                        # ENSURE BFLOAT16 before saving to blockchain
+                        tensor = state_dict[key]
+                        if tensor.dtype != torch.bfloat16:
+                            tensor = tensor.to(torch.bfloat16)
+                        tensors_to_save[key] = tensor
+                    
+                    torch.save(tensors_to_save, buffer)
+                    payload = buffer.getvalue()
+                    
+                    # Calculate content hash
+                    content_hash = hashlib.sha256(payload).hexdigest()[:16]
+                    
+                    block = self.chains['B'].add_block(
+                        payload,
+                        block_type='dense_layer',
+                        layer_name="other_weights"
+                    )
+                    
+                    # Update parameter index with block index
+                    param_index.set("other_weights", block.header.index)
+                    uploaded_names.append("other_weights")
+                    
+                    logger.info(f"✅ Uploaded other weights ({len(payload) / 1024 / 1024:.1f} MB, hash: {content_hash})")
+                    logger.info(f"   Keys included: {list(remaining_keys)}")
+                    num_uploaded += 1
+                    
+                    # Cleanup
+                    del tensors_to_save, buffer, payload
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    
+                except Exception as e:
+                    logger.error(f"Failed to upload other weights: {e}")
             
             # Parameter index auto-saves on each set() call
             
@@ -3706,8 +3807,8 @@ class BlyanGPUNode:
                     # Verify hosted layers
                     summary = manifest.verify_hosted_layers(chain_b)
                     
-                    # Get expected layers for dense model
-                    expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head"]
+                    # Get expected layers for dense model (including ALL components)
+                    expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm", "other_weights"]
                     missing = manifest.get_missing_layers(expected_layers)
                     summary['missing_from_full_model'] = missing
                     

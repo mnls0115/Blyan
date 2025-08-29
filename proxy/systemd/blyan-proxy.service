@@ -1,0 +1,48 @@
+[Unit]
+Description=Blyan Dynamic API Proxy
+Documentation=https://github.com/blyan/proxy
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=blyan
+Group=blyan
+WorkingDirectory=/opt/blyan/proxy
+
+# Environment
+Environment="NODE_ENV=production"
+EnvironmentFile=/opt/blyan/proxy/.env
+
+# Process management
+ExecStart=/usr/bin/node /opt/blyan/proxy/server.js
+ExecReload=/bin/kill -USR2 $MAINPID
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=200
+StartLimitBurst=5
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/blyan/proxy/data
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+MemoryLimit=512M
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=blyan-proxy
+
+[Install]
+WantedBy=multi-user.target
