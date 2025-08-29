@@ -28,6 +28,22 @@ class ExpertVerificationError(BlockRuntimeError):
         super().__init__(f"Expert verification failed for CID {cid}: {reason}")
 
 
+# Dense-layer aligned exceptions (aliases for clarity in dense runtime)
+class LayerNotFoundError(BlockRuntimeError):
+    """Raised when a dense layer cannot be found."""
+    def __init__(self, layer_name: str | int):
+        self.layer_name = layer_name
+        super().__init__(f"Layer not found: {layer_name}")
+
+
+class LayerVerificationError(BlockRuntimeError):
+    """Raised when dense layer verification fails."""
+    def __init__(self, layer_name: str | int, reason: str):
+        self.layer_name = layer_name
+        self.reason = reason
+        super().__init__(f"Layer verification failed for {layer_name}: {reason}")
+
+
 class FetchTimeoutError(BlockRuntimeError):
     """Raised when expert fetch times out."""
     def __init__(self, expert_id: str, timeout_ms: int):
