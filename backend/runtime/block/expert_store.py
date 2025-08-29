@@ -14,7 +14,7 @@ import aiohttp
 from cachetools import TTLCache, LRUCache
 import logging
 
-from .types import LayerMetadata, LayerData, FetchStrategy, CacheConfig
+from .types import LayerMetadata, ExpertMetadata, LayerData, FetchStrategy, CacheConfig
 from .errors import (
     LayerNotFoundError, 
     LayerVerificationError,

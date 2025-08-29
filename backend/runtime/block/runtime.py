@@ -17,7 +17,7 @@ from .types import (
     FetchStrategy,
     StreamToken
 )
-from .expert_store import ExpertStore
+from .expert_store import LayerStore as ExpertStore
 from .execution_engine import ExecutionEngine
 from .streamer import Streamer
 from .metrics import MetricsCollector
