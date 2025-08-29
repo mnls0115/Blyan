@@ -2692,6 +2692,13 @@ class BlyanGPUNode:
                     'used': self.active_jobs,
                     'available': self.job_capacity - self.active_jobs
                 }
+                # Add Retry-After configuration for visibility
+                metrics['retry_after_config'] = {
+                    'chat_capacity': retry_chat_cap,
+                    'queue_full': retry_queue_full,
+                    'rate_limit': retry_rate_limit,
+                    'start_capacity': retry_start_cap
+                }
                 return web.json_response(metrics)
             except Exception as e:
                 return web.json_response({"error": str(e)}, status=500)

@@ -691,6 +691,161 @@
             }
         }
         
+        /* Queue Status Panel */
+        .queue-status-panel {
+            padding: 16px 20px;
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(245, 158, 11, 0.05));
+            border-left: 4px solid #f59e0b;
+            margin: 0;
+            display: none;
+            align-items: center;
+            gap: 16px;
+            animation: slideDown 0.3s ease-out;
+        }
+        
+        .queue-status-panel.active {
+            display: flex;
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .queue-status-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .queue-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(245, 158, 11, 0.3);
+            border-top-color: #f59e0b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .queue-status-text {
+            color: var(--color-text-primary);
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+        
+        .queue-position {
+            padding: 4px 8px;
+            background: rgba(245, 158, 11, 0.15);
+            border-radius: 4px;
+            font-weight: 600;
+            color: #d97706;
+        }
+        
+        .queue-eta {
+            color: var(--color-text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .queue-cancel-btn {
+            padding: 8px 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 6px;
+            color: #dc2626;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .queue-cancel-btn:hover {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.5);
+            transform: translateY(-1px);
+        }
+        
+        .queue-note {
+            font-size: 0.85rem;
+            opacity: 0.8;
+            color: #d97706;
+            margin-left: 8px;
+            font-style: italic;
+        }
+        
+        .queue-metrics {
+            display: flex;
+            gap: 12px;
+            padding: 8px 0;
+            font-size: 0.85rem;
+            color: var(--color-text-secondary);
+        }
+        
+        .queue-metric {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .queue-metric-label {
+            opacity: 0.7;
+        }
+        
+        .queue-metric-value {
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+        
+        /* Dark mode adjustments */
+        [data-theme="dark"] .queue-status-panel {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(245, 158, 11, 0.03));
+        }
+        
+        [data-theme="dark"] .queue-position {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+        
+        [data-theme="dark"] .queue-cancel-btn {
+            background: rgba(239, 68, 68, 0.08);
+            color: #f87171;
+        }
+        
+        /* Mobile adjustments */
+        @media (max-width: 768px) {
+            .queue-status-panel {
+                padding: 12px 16px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+            }
+            
+            .queue-status-content {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            
+            .queue-metrics {
+                flex-wrap: wrap;
+            }
+            
+            .queue-cancel-btn {
+                width: 100%;
+                text-align: center;
+            }
+        }
+        
         /* Keyboard handling for iOS */
         @supports (height: 100dvh) {
             .chat-messages {
@@ -752,6 +907,34 @@
                 </div>
             </div>
 
+            <!-- Queue Status Panel -->
+            <div class="queue-status-panel" id="queueStatusPanel">
+                <div class="queue-status-content">
+                    <div class="queue-spinner"></div>
+                    <div class="queue-status-text">
+                        <span>In queue</span>
+                        <span class="queue-position">Position: <span id="queuePosition">--</span></span>
+                        <span class="queue-eta">• ETA: <span id="queueEta">--</span>s</span>
+                        <span style="font-style: italic; opacity: 0.8;">• We'll auto-start when ready</span>
+                    </div>
+                    <div class="queue-metrics" id="queueMetrics" style="display: none;">
+                        <div class="queue-metric">
+                            <span class="queue-metric-label">Queue:</span>
+                            <span class="queue-metric-value" id="queueLength">--</span>
+                        </div>
+                        <div class="queue-metric">
+                            <span class="queue-metric-label">Capacity:</span>
+                            <span class="queue-metric-value"><span id="queueAvailable">--</span>/<span id="queueTotal">--</span></span>
+                        </div>
+                        <div class="queue-metric">
+                            <span class="queue-metric-label">Retry:</span>
+                            <span class="queue-metric-value" id="queueRetryAfter">--s</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="queue-cancel-btn" id="queueCancelBtn" onclick="cancelQueuedRequest()">Cancel</button>
+            </div>
+            
             <div class="chat-messages" id="chatMessages">
                 <div class="empty-state">
                     <div class="empty-state-icon">🤖</div>
@@ -786,12 +969,15 @@
     </button>
 
     <script src="config.js?v=7"></script>
+    <script src="chat-optimized.js"></script>
     <script src="rate_limit_handler.js?v=2"></script>
     <script src="api-auth.js?v=4"></script>
     <script src="common-header.js?v=7"></script>
     <script>
         let conversationId = null;
         let isTyping = false;
+        let optimizedChat = null; // Will be initialized after DOM loads
+        let queueMetricsInterval = null; // periodic queue metrics refresh while queued
 
         // Mobile functionality
         let lastScrollTop = 0;
@@ -911,6 +1097,13 @@
         }
         
         document.addEventListener('DOMContentLoaded', async () => {
+            // Initialize OptimizedChat
+            optimizedChat = new OptimizedChat();
+            // Use standard `/chat` endpoint to work with run_gpu_node queueing
+            if (optimizedChat && typeof optimizedChat.toggleProductionMode === 'function') {
+                optimizedChat.toggleProductionMode(false);
+            }
+            
             // Initialize theme
             const savedTheme = localStorage.getItem('theme') || 'light';
             document.documentElement.setAttribute('data-theme', savedTheme);
@@ -1057,74 +1250,122 @@
             addTypingIndicator();
             
             try {
-                // Use makeAuthenticatedRequest which now handles free tier users
-                // Use the correct API endpoint
-                const apiUrl = window.API_CONFIG?.baseURL || (window.location.protocol === 'https:' ? 'https://blyan.com/api' : 'http://165.227.221.225:8000');
-                const response = await apiAuth.makeAuthenticatedRequest(`${apiUrl}/chat`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        prompt: message,
-                        conversation_id: conversationId,
-                        free_tier: !apiAuth.hasValidApiKey()  // Indicate free tier usage
-                    })
+                // Hook up queue UI callbacks
+                optimizedChat._showQueuePanel = showQueuePanel;
+                optimizedChat._updateQueuePanel = updateQueuePanel;
+                optimizedChat._hideQueuePanel = hideQueuePanel;
+                
+                // Use OptimizedChat with queue support
+                const result = await optimizedChat.sendMessage(message, {
+                    maxTokens: 150
                 });
                 
                 removeTypingIndicator();
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    addMessage(data.response, 'assistant');
-                    conversationId = data.conversation_id || conversationId || `local-${Date.now()}`;
+                if (result && !result.error) {
+                    addMessage(result.response, 'assistant');
+                    conversationId = result.requestId || conversationId || `local-${Date.now()}`;
                     
-                    // Save to local storage for free tier users
+                    // Save to local storage
                     saveLocalChatHistory(conversationId, message, true);
-                    saveLocalChatHistory(conversationId, data.response, false);
-                    
-                    // 성공적인 채팅 시 사용량 증가
-                    incrementUsedChats();
+                    saveLocalChatHistory(conversationId, result.response, false);
                     
                     // Update usage count and refresh chat history
+                    incrementUsedChats();
                     await updateChatUsage();
                     await loadChatHistory();
-                } else if (response.status === 403) {
-                    // Free tier limit reached or authentication required
-                    const usedChats = parseInt(localStorage.getItem('usedFreeChats') || '0');
-                    if (usedChats >= 5) {
-                        addMessage(t('freeTierLimitReached') || 'You have reached the free tier limit of 5 messages. Please connect a wallet to continue.', 'assistant');
-                    } else {
-                        addMessage(t('authenticationRequired') || 'Authentication required. Please try again later.', 'assistant');
+                    
+                    // Fetch queue metrics if we were queued
+                    if (optimizedChat.activeTicket) {
+                        updateQueueMetrics();
                     }
-                } else if (response.status >= 400 && response.status < 500) {
-                    // Other client errors (4xx)
-                    const errorData = await response.json().catch(() => ({}));
-                    const errorMessage = errorData.detail || errorData.message || 'Request failed';
-                    addMessage(t('requestFailed') || `Request failed: ${errorMessage}`, 'assistant');
-                } else {
-                    // Server errors (5xx)
-                    addMessage(t('serverError') || 'Server error. Please try again later.', 'assistant');
+                } else if (result && result.error) {
+                    addMessage(result.response, 'assistant');
                 }
             } catch (error) {
                 removeTypingIndicator();
-                
-                if (error instanceof RateLimitError) {
-                    // Rate limit error - show specific message
-                    console.log('Rate limit error:', error.message);
-                    addMessage(t('rateLimitExceeded') || 'Rate limit exceeded. Please try again later.', 'assistant');
-                    // Show rate limit modal with details
-                    if (window.rateLimitHandler) {
-                        window.rateLimitHandler.showRateLimitModal();
-                    }
-                } else if (error instanceof AuthenticationError) {
-                    // For free tier users, this is expected - just show a simple message
-                    console.log('Free tier user - authentication not required');
-                    addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');
-                } else {
-                    // Network or other errors
-                    addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');
-                }
+                console.error('Chat error:', error);
+                addMessage(t('connectionError') || 'Connection error. Please check your network and try again.', 'assistant');
             } finally {
                 isTyping = false;
                 updateSendButton();
+            }
+        }
+        
+        // Queue UI functions
+        function showQueuePanel(info) {
+            const panel = document.getElementById('queueStatusPanel');
+            if (panel) {
+                panel.classList.add('active');
+                updateQueuePanel(info);
+                
+                // Start fetching queue metrics periodically while queued
+                updateQueueMetrics();
+                if (queueMetricsInterval) clearInterval(queueMetricsInterval);
+                queueMetricsInterval = setInterval(updateQueueMetrics, 5000);
+            }
+        }
+        
+        function updateQueuePanel(info, customMessage) {
+            const positionEl = document.getElementById('queuePosition');
+            const etaEl = document.getElementById('queueEta');
+            const textEl = document.querySelector('.queue-status-text');
+            
+            if (positionEl) positionEl.textContent = info.position || '--';
+            if (etaEl) etaEl.textContent = info.eta || '--';
+            
+            if (customMessage && textEl) {
+                textEl.innerHTML = customMessage;
+            }
+        }
+        
+        function hideQueuePanel() {
+            const panel = document.getElementById('queueStatusPanel');
+            if (panel) {
+                panel.classList.remove('active');
+            }
+            if (queueMetricsInterval) {
+                clearInterval(queueMetricsInterval);
+                queueMetricsInterval = null;
+            }
+        }
+        
+        function cancelQueuedRequest() {
+            if (optimizedChat && optimizedChat.activeTicket) {
+                optimizedChat._cancelTicket(optimizedChat.activeTicket);
+                removeTypingIndicator();
+                isTyping = false;
+                updateSendButton();
+            }
+        }
+        
+        async function updateQueueMetrics() {
+            if (!optimizedChat) return;
+            
+            try {
+                const metrics = await optimizedChat.getQueueMetrics();
+                if (metrics) {
+                    const metricsEl = document.getElementById('queueMetrics');
+                    const lengthEl = document.getElementById('queueLength');
+                    const availableEl = document.getElementById('queueAvailable');
+                    const totalEl = document.getElementById('queueTotal');
+                    const retryEl = document.getElementById('queueRetryAfter');
+                    
+                    if (lengthEl) lengthEl.textContent = metrics.queue_length || 0;
+                    if (availableEl && metrics.capacity) availableEl.textContent = metrics.capacity.available || 0;
+                    if (totalEl && metrics.capacity) totalEl.textContent = metrics.capacity.total || 0;
+                    if (retryEl && metrics.retry_after_config) {
+                        // Show start_capacity as the most relevant hint during start retries
+                        const hint = metrics.retry_after_config.start_capacity || metrics.retry_after_config.chat_capacity || 0;
+                        retryEl.textContent = `${hint}s`;
+                    }
+                    
+                    if (metricsEl && metrics.queue_length > 0) {
+                        metricsEl.style.display = 'flex';
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch queue metrics:', error);
             }
         }
 
