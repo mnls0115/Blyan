@@ -225,7 +225,7 @@ class UnifiedModelManager:
             self.tokenizer.pad_token = self.tokenizer.eos_token
     
     def _create_empty_model_structure(self) -> torch.nn.Module:
-        """Create model structure without loading weights from HF."""
+        """Create model structure without loading weights from HF - ENFORCES BF16."""
         # For Qwen3-8B architecture
         from transformers import AutoConfig
         from transformers.models.qwen2 import Qwen2ForCausalLM
@@ -233,12 +233,19 @@ class UnifiedModelManager:
         # Load config from cache or minimal download
         config = AutoConfig.from_pretrained(self.model_name)
         
+        # CRITICAL: Force BF16 dtype in config
+        config.torch_dtype = torch.bfloat16
+        
         # Create empty model with config (no weight download)
         with torch.device("meta"):
             model = Qwen2ForCausalLM(config)
         
-        # Move to target device
-        model = model.to_empty(device=self.device)
+        # Move to target device WITH BF16 DTYPE
+        model = model.to_empty(device=self.device, dtype=torch.bfloat16)
+        
+        # Verify dtype is correct
+        logger.info(f"Created empty model structure with dtype: {torch.bfloat16}")
+        
         return model
     
     def _load_block_direct(self, block_index: int) -> Optional[Dict]:
@@ -580,14 +587,16 @@ class UnifiedModelManager:
                 
                 # Mark source
                 self._loaded_from_blockchain = True
-                # Sanity: ensure BF16 dtype
+                # CRITICAL: Enforce BF16 dtype
                 try:
                     import torch
                     fp = next(self.model.parameters())
                     if fp.dtype != torch.bfloat16:
-                        logger.error(f"Model dtype {fp.dtype} != bfloat16 (policy)")
-                except Exception:
-                    pass
+                        logger.error(f"Model dtype {fp.dtype} != bfloat16 (policy), converting...")
+                        self.model = self.model.to(dtype=torch.bfloat16, device=self.device)
+                        logger.info("✅ Converted model to BF16 after GPU-direct load")
+                except Exception as e:
+                    logger.warning(f"Could not verify/enforce BF16: {e}")
                 
             except Exception as e:
                 logger.error(f"GPU-Direct loading failed: {e}")
@@ -678,6 +687,12 @@ class UnifiedModelManager:
                 self.model.load_state_dict(state_dict, strict=False)
                 logger.info(f"✅ Loaded {len(state_dict)} tensors from blockchain")
                 self._loaded_from_blockchain = True
+                
+                # CRITICAL: Enforce BF16 dtype after loading
+                if next(self.model.parameters()).dtype != torch.bfloat16:
+                    logger.warning(f"Model dtype {next(self.model.parameters()).dtype} != bfloat16, converting...")
+                    self.model = self.model.to(dtype=torch.bfloat16, device=self.device)
+                    logger.info("✅ Converted model to BF16")
                 
                 # Save fused snapshot for next boot
                 if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() == "true":
