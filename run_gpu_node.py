@@ -1083,8 +1083,9 @@ class BlyanGPUNode:
         param_index = ParameterIndex(DATA_DIR / "param_index.json")
         existing_layers = param_index.get_all_layers()
         
-        # Check if we already have the model uploaded (including ALL components)
-        expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm", "other_weights"]
+        # Check if we already have the model uploaded (including ALL required components)
+        # Note: other_weights is optional - only required if model has extra tensors
+        expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm"]
         
         if os.getenv("SKIP_UPLOAD_IF_PARAM_INDEX_MATCHES", "true").lower() == "true":
             if set(existing_layers) >= set(expected_layers):
@@ -1233,9 +1234,10 @@ class BlyanGPUNode:
             # Get model state dict - keep on GPU for zero-copy
             state_dict = model.state_dict()
             
-            # Expected number of layers (36 layers + embedding + lm_head + model_norm + other_weights)
+            # Expected number of layers (36 layers + embedding + lm_head + model_norm)
             num_layers = 36  # Dense model has 36 layers
-            expected_names = ["embedding"] + [f"layer_{i}" for i in range(num_layers)] + ["lm_head", "model_norm", "other_weights"]
+            expected_names = ["embedding"] + [f"layer_{i}" for i in range(num_layers)] + ["lm_head", "model_norm"]
+            # Note: other_weights will be added dynamically if there are remaining keys
             
             logger.info(f"📦 Uploading dense model: {num_layers} layers + embedding + lm_head")
             
@@ -1440,6 +1442,8 @@ class BlyanGPUNode:
             remaining_keys = set(state_dict.keys()) - uploaded_keys
             if remaining_keys:
                 logger.warning(f"⚠️ Found {len(remaining_keys)} unhandled keys: {list(remaining_keys)[:5]}...")
+                # Only add other_weights to expected if there are actually remaining keys
+                expected_names.append("other_weights")
                 try:
                     buffer = io.BytesIO()
                     tensors_to_save = {}
@@ -3807,8 +3811,11 @@ class BlyanGPUNode:
                     # Verify hosted layers
                     summary = manifest.verify_hosted_layers(chain_b)
                     
-                    # Get expected layers for dense model (including ALL components)
-                    expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm", "other_weights"]
+                    # Get expected layers for dense model (model_norm required, other_weights optional)
+                    expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm"]
+                    # Include other_weights in expected list only if it exists in param_index
+                    if "other_weights" in manifest.get_hosted_layers():
+                        expected_layers.append("other_weights")
                     missing = manifest.get_missing_layers(expected_layers)
                     summary['missing_from_full_model'] = missing
                     

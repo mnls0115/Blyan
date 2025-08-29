@@ -689,7 +689,11 @@ class UnifiedModelManager:
             # Check if we have minimum required layers
             available_layers = self.param_index.get_all_layers() if hasattr(self, 'param_index') else []
             loaded_count = len(available_layers)
-            expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm", "other_weights"]  # Dense model structure with ALL components
+            # Required components (other_weights is optional - only if model has extra tensors)
+            expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm"]
+            # Include other_weights in check only if it exists
+            if "other_weights" in available_layers:
+                expected_layers.append("other_weights")
             missing_layers = set(expected_layers) - set(available_layers)
             
             if loaded_count < 3:  # Need at least embedding, one layer, and lm_head
