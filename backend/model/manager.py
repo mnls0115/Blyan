@@ -240,8 +240,11 @@ class UnifiedModelManager:
         with torch.device("meta"):
             model = Qwen2ForCausalLM(config)
         
-        # Move to target device WITH BF16 DTYPE
-        model = model.to_empty(device=self.device, dtype=torch.bfloat16)
+        # Move to target device (to_empty doesn't support dtype in all versions)
+        model = model.to_empty(device=self.device)
+        
+        # CRITICAL: Ensure BF16 dtype after moving to device
+        model = model.to(dtype=torch.bfloat16)
         
         # Verify dtype is correct
         logger.info(f"Created empty model structure with dtype: {torch.bfloat16}")
