@@ -1711,14 +1711,12 @@ async def chat_gpu(req: ChatRequest, http_request: Request = None):
     Falls back to atomic chat if no GPU nodes are available.
     """
     try:
-        # Initialize GPU node manager if needed
-        global gpu_node_manager
-        if 'gpu_node_manager' not in globals():
-            from backend.p2p.gpu_node_manager import GPUNodeManager
-            gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+        # Get Redis-backed GPU node manager
+        from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
+        gpu_node_manager = await get_gpu_node_manager()
         
         # Check if we have active GPU nodes
-        active_nodes = gpu_node_manager.get_active_nodes()
+        active_nodes = await gpu_node_manager.get_active_nodes()
         
         if not active_nodes:
             logger.error("PRODUCTION ERROR: No GPU nodes available for inference")
@@ -5041,11 +5039,9 @@ async def register_gpu_node(
         
         api_key = auth_header.replace("Bearer ", "")
         
-        # Initialize GPU node manager if needed
-        global gpu_node_manager
-        if 'gpu_node_manager' not in globals():
-            from backend.p2p.gpu_node_manager import GPUNodeManager
-            gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+        # Get Redis-backed GPU node manager
+        from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
+        gpu_node_manager = await get_gpu_node_manager()
         
         # Register the node
         result = await gpu_node_manager.register_node(
@@ -5073,13 +5069,11 @@ async def register_gpu_node(
 async def get_gpu_node_status():
     """Get status of all registered GPU nodes."""
     try:
-        # Initialize GPU node manager if needed
-        global gpu_node_manager
-        if 'gpu_node_manager' not in globals():
-            from backend.p2p.gpu_node_manager import GPUNodeManager
-            gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+        # Get Redis-backed GPU node manager
+        from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
+        gpu_node_manager = await get_gpu_node_manager()
         
-        status = gpu_node_manager.get_node_status()
+        status = await gpu_node_manager.get_node_status()
         return {
             "success": True,
             **status
@@ -5102,11 +5096,9 @@ async def gpu_node_heartbeat(
         if not auth_header:
             raise HTTPException(status_code=401, detail="Missing authorization")
         
-        # Initialize GPU node manager if needed
-        global gpu_node_manager
-        if 'gpu_node_manager' not in globals():
-            from backend.p2p.gpu_node_manager import GPUNodeManager
-            gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+        # Get Redis-backed GPU node manager
+        from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
+        gpu_node_manager = await get_gpu_node_manager()
         
         # Update heartbeat
         success = await gpu_node_manager.update_heartbeat(node_id)
@@ -5121,6 +5113,42 @@ async def gpu_node_heartbeat(
     except Exception as e:
         logger.error(f"Heartbeat update failed: {e}")
         raise HTTPException(status_code=500, detail=f"Heartbeat failed: {str(e)}")
+
+
+@app.post("/gpu/cleanup")
+async def cleanup_stale_gpu_nodes(
+    force: bool = False,
+    auth: str = Depends(verify_main_node)
+):
+    """
+    Manually trigger cleanup of stale GPU nodes.
+    
+    Args:
+        force: If True, remove all inactive nodes regardless of timeout
+    
+    Returns:
+        Cleanup results including removed and marked inactive nodes
+    """
+    try:
+        # Get Redis-backed GPU node manager
+        from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
+        gpu_node_manager = await get_gpu_node_manager()
+        
+        # Run cleanup
+        result = await gpu_node_manager.cleanup_stale_nodes(force=force)
+        
+        if result["success"]:
+            logger.info(f"GPU cleanup completed: {result['total_removed']} nodes removed, "
+                       f"{result['total_marked_inactive']} marked inactive")
+            return result
+        else:
+            raise HTTPException(status_code=500, detail=result.get("error", "Cleanup failed"))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"GPU cleanup failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
 
 
 @app.get("/evolution/gpu_resources")

@@ -290,21 +290,20 @@ class AtomicChatHandler:
             gpu_manager_available = False
             
             try:
-                from backend.p2p.gpu_node_manager import GPUNodeManager
+                from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
                 
-                # Get or create GPU node manager
-                if not hasattr(self, '_gpu_node_manager'):
-                    self._gpu_node_manager = GPUNodeManager(data_dir=Path("./data"))
+                # Get singleton GPU node manager with Redis backend
+                gpu_node_manager = await get_gpu_node_manager()
                 
                 # Check if we have any active GPU nodes
-                active_nodes = self._gpu_node_manager.get_active_nodes()
+                active_nodes = await gpu_node_manager.get_active_nodes()
                 gpu_manager_available = len(active_nodes) > 0
                 
                 if gpu_manager_available:
                     logger.info(f"Found {len(active_nodes)} active GPU nodes, forwarding request")
                     
                     # Forward to GPU node
-                    result = await self._gpu_node_manager.forward_to_gpu(
+                    result = await gpu_node_manager.forward_to_gpu(
                         prompt=request.prompt,
                         max_tokens=request.max_new_tokens,
                         temperature=request.temperature
