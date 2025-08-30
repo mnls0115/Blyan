@@ -3263,6 +3263,8 @@ class BlyanGPUNode:
                             )
                             if gpu_resp.status_code == 200:
                                 logger.info("✅ Registered with GPU Node Manager")
+                                # Start heartbeat task
+                                asyncio.create_task(self._heartbeat_loop())
                             else:
                                 body = None
                                 try:
@@ -3312,6 +3314,42 @@ class BlyanGPUNode:
                 asyncio.create_task(self._delayed_registration_retry(retry_delay))
             else:
                 logger.warning("❌ Max registration retries reached. Running in standalone mode.")
+    
+    async def _heartbeat_loop(self):
+        """Send periodic heartbeats to keep registration alive."""
+        logger.info("💓 Starting heartbeat loop (15s interval)")
+        
+        while True:
+            try:
+                await asyncio.sleep(15)  # Send heartbeat every 15 seconds
+                
+                import httpx
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    headers = {}
+                    api_key = os.environ.get('BLYAN_API_KEY')
+                    if api_key:
+                        headers['Authorization'] = f'Bearer {api_key}'
+                    
+                    # Send heartbeat
+                    resp = await client.post(
+                        f"{MAIN_NODE_URL}/gpu/heartbeat",
+                        json={"node_id": self.node_id},
+                        headers=headers
+                    )
+                    
+                    if resp.status_code == 200:
+                        logger.debug(f"💓 Heartbeat sent successfully")
+                    else:
+                        logger.warning(f"💔 Heartbeat failed: {resp.status_code}")
+                        # Re-register if heartbeat fails
+                        if resp.status_code in [401, 404]:
+                            logger.info("📝 Re-registering due to heartbeat failure")
+                            await self.register_with_main()
+                            break  # Exit this loop, registration will start new one
+                            
+            except Exception as e:
+                logger.debug(f"Heartbeat error: {e}")
+                # Continue heartbeating even on errors
     
     async def _delayed_registration_retry(self, delay: int):
         """Retry registration after a delay."""
