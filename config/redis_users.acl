@@ -1,0 +1,20 @@
+# Redis ACL Configuration for Blyan GPU Node Manager
+# Define users and their permissions
+
+# Default user - disabled in production
+user default on nopass ~* &* +@all
+
+# API Server user - full access to GPU node data
+user api-server on >${API_SERVER_PASSWORD} ~gpu:* ~metrics:* +@all
+
+# GPU Node user - limited to registration and heartbeat
+user gpu-node on >${GPU_NODE_PASSWORD} ~gpu:nodes:* ~gpu:heartbeat:* ~gpu:all_nodes ~gpu:active_nodes +@read +@write +@list +@set +@hash -flushdb -flushall -config
+
+# Monitoring user - read-only access
+user monitoring on >${MONITORING_PASSWORD} ~* +@read +ping +info +client +config|get
+
+# Backup user - read-only for persistence
+user backup on >${BACKUP_PASSWORD} ~* +@read +bgsave +lastsave
+
+# Admin user - full access (use sparingly)
+user admin on >${ADMIN_PASSWORD} ~* &* +@all

@@ -101,13 +101,20 @@ class GPUNodeManagerRedis:
     
     UPDATE_METRICS_SCRIPT = """
     local key = KEYS[1]
-    local load = ARGV[1]
+    local load_delta = ARGV[1]
     local incr_req = ARGV[2]
     local is_success = ARGV[3]
     local latency = ARGV[4]
     
-    if load ~= "" then
-        redis.call("hset", key, "current_load", load)
+    if load_delta ~= "" then
+        -- Use HINCRBYFLOAT for atomic load updates
+        local new_load = redis.call("hincrbyfloat", key, "current_load", load_delta)
+        -- Ensure load stays within bounds [0.0, 1.0]
+        if tonumber(new_load) < 0 then
+            redis.call("hset", key, "current_load", "0")
+        elseif tonumber(new_load) > 1 then
+            redis.call("hset", key, "current_load", "1")
+        end
     end
     
     if incr_req == "1" then
@@ -131,13 +138,28 @@ class GPUNodeManagerRedis:
         self,
         redis_url: Optional[str] = None,
         data_dir: Optional[Path] = None,
-        stale_timeout_hours: float = 1.0
+        stale_timeout_hours: float = 1.0,
+        redis_username: Optional[str] = None,
+        redis_password: Optional[str] = None,
+        redis_ssl: Optional[bool] = None
     ):
-        """Initialize with production features."""
+        """Initialize with production features.
+        
+        Args:
+            redis_url: Redis connection URL
+            data_dir: Data directory (deprecated, kept for compatibility)
+            stale_timeout_hours: Hours before node is considered stale
+            redis_username: Redis ACL username (for Redis 6+)
+            redis_password: Redis password
+            redis_ssl: Enable SSL/TLS connection
+        """
         if not REDIS_AVAILABLE:
             raise RuntimeError("Redis is required for distributed GPU node management")
         
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        self.redis_username = redis_username or os.getenv("REDIS_USERNAME")
+        self.redis_password = redis_password or os.getenv("REDIS_PASSWORD")
+        self.redis_ssl = redis_ssl if redis_ssl is not None else os.getenv("REDIS_SSL", "").lower() == "true"
         self.redis_client: Optional[Redis] = None
         self._background_task = None
         self._health_check_task = None
@@ -177,14 +199,40 @@ class GPUNodeManagerRedis:
         
         for attempt in range(self.MAX_RETRIES):
             try:
+                # Build connection kwargs
+                connection_kwargs = {
+                    "decode_responses": False,
+                    "max_connections": 50,
+                    "socket_connect_timeout": 5,
+                    "socket_timeout": 5,
+                    "retry_on_timeout": True,
+                    "health_check_interval": 30
+                }
+                
+                # Add authentication if provided
+                if self.redis_username:
+                    connection_kwargs["username"] = self.redis_username
+                if self.redis_password:
+                    connection_kwargs["password"] = self.redis_password
+                
+                # Add SSL if enabled
+                if self.redis_ssl:
+                    connection_kwargs["ssl"] = True
+                    connection_kwargs["ssl_cert_reqs"] = "required"
+                    # Optional: specify SSL cert paths
+                    ssl_certfile = os.getenv("REDIS_SSL_CERTFILE")
+                    ssl_keyfile = os.getenv("REDIS_SSL_KEYFILE")
+                    ssl_ca_certs = os.getenv("REDIS_SSL_CA_CERTS")
+                    if ssl_certfile:
+                        connection_kwargs["ssl_certfile"] = ssl_certfile
+                    if ssl_keyfile:
+                        connection_kwargs["ssl_keyfile"] = ssl_keyfile
+                    if ssl_ca_certs:
+                        connection_kwargs["ssl_ca_certs"] = ssl_ca_certs
+                
                 self.redis_client = Redis.from_url(
                     self.redis_url,
-                    decode_responses=False,
-                    max_connections=50,
-                    socket_connect_timeout=5,
-                    socket_timeout=5,
-                    retry_on_timeout=True,
-                    health_check_interval=30
+                    **connection_kwargs
                 )
                 
                 await self.redis_client.ping()
@@ -433,17 +481,24 @@ class GPUNodeManagerRedis:
     async def update_metrics(
         self,
         node_id: str,
-        load: Optional[float] = None,
+        load_delta: Optional[float] = None,
         latency: Optional[float] = None,
         success: Optional[bool] = None
     ):
-        """Update metrics atomically using Redis hash and Lua script."""
+        """Update metrics atomically using Redis hash and Lua script.
+        
+        Args:
+            node_id: Node identifier
+            load_delta: Change in load (e.g., +0.1 or -0.1), not absolute value
+            latency: Request latency in ms
+            success: Whether the request succeeded
+        """
         try:
             metrics_key = f"{self.METRICS_PREFIX}{node_id}"
             
             # Prepare arguments
             args = [
-                str(load).encode() if load is not None else b"",
+                str(load_delta).encode() if load_delta is not None else b"",
                 b"1" if success is not None else b"0",
                 b"0" if success is False else b"1",
                 str(latency).encode() if latency is not None else b""
@@ -693,8 +748,8 @@ class GPUNodeManagerRedis:
         
         node_id = node["node_id"]
         
-        # Update load
-        await self.update_metrics(node_id, load=min(1.0, node.get("current_load", 0) + 0.1))
+        # Increment load atomically (+0.1)
+        await self.update_metrics(node_id, load_delta=0.1)
         
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -717,12 +772,12 @@ class GPUNodeManagerRedis:
                 if response.status_code == 200:
                     result = response.json()
                     
-                    # Update metrics
+                    # Update metrics - decrement load and record success
                     await self.update_metrics(
                         node_id,
                         latency=latency,
                         success=True,
-                        load=max(0.0, node.get("current_load", 0) - 0.1)
+                        load_delta=-0.1  # Decrement load atomically
                     )
                     
                     return {
@@ -736,10 +791,11 @@ class GPUNodeManagerRedis:
                     raise ValueError(f"GPU node returned {response.status_code}")
                     
         except Exception as e:
+            # Decrement load on failure
             await self.update_metrics(
                 node_id,
                 success=False,
-                load=max(0.0, node.get("current_load", 0) - 0.1)
+                load_delta=-0.1  # Decrement load atomically
             )
             logger.error(f"Failed to forward to GPU node {node_id}: {e}")
             raise
