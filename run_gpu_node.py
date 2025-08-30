@@ -99,6 +99,33 @@ def apply_production_optimizations():
     
     logger.info("🚀 Auto-applying production optimizations...")
     
+    # GPU Memory optimizations
+    if not os.environ.get('PYTORCH_CUDA_ALLOC_CONF'):
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = "expandable_segments:True,max_split_size_mb:128"
+        logger.info("  ✅ Set PYTORCH_CUDA_ALLOC_CONF for better memory management")
+    
+    # Reduce memory fragmentation
+    if not os.environ.get('GPU_DIRECT_CHUNK_SIZE'):
+        os.environ['GPU_DIRECT_CHUNK_SIZE'] = "1"
+        logger.info("  ✅ Set GPU_DIRECT_CHUNK_SIZE=1 for tight VRAM")
+    
+    if not os.environ.get('GPU_LOAD_WORKERS'):
+        os.environ['GPU_LOAD_WORKERS'] = "1"
+        logger.info("  ✅ Set GPU_LOAD_WORKERS=1 to prevent memory spikes")
+    
+    # CPU optimizations to reduce memory pressure
+    if not os.environ.get('OMP_NUM_THREADS'):
+        os.environ['OMP_NUM_THREADS'] = "1"
+    if not os.environ.get('MKL_NUM_THREADS'):
+        os.environ['MKL_NUM_THREADS'] = "1"
+    logger.info("  ✅ Limited CPU threads to reduce memory usage")
+    
+    # Disable tokenizer parallelism warnings
+    os.environ['TOKENIZERS_PARALLELISM'] = "false"
+    
+    # Mark optimizations as applied
+    os.environ['OPTIMIZATIONS_APPLIED'] = "true"
+    
     # Always safe optimizations
     os.environ.setdefault('ENABLE_FUSED_SNAPSHOT', 'true')
     os.environ.setdefault('BLOCK_FETCH_MAX_WORKERS', '4')
@@ -158,7 +185,23 @@ class BlyanGPUNode:
     """Integrated GPU node with blockchain and model support."""
     
     def __init__(self):
-        self.node_id = f"gpu_node_{os.getpid()}"
+        # Generate and validate node ID
+        import re
+        
+        # Use environment variable or generate from PID
+        if os.environ.get('NODE_ID'):
+            self.node_id = os.environ.get('NODE_ID')
+        else:
+            self.node_id = f"gpu_node_{os.getpid()}"
+        
+        # Validate node ID format
+        if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', self.node_id):
+            logger.error(f"Invalid node_id format: '{self.node_id}'")
+            logger.error("Node ID must be alphanumeric with _ or -, max 64 chars")
+            # Auto-fix by replacing invalid characters
+            self.node_id = re.sub(r'[^a-zA-Z0-9_-]', '_', self.node_id)[:64]
+            logger.info(f"Auto-corrected node_id to: '{self.node_id}'")
+        
         self.port = PORT
         self.server_started = False  # One-time server-start guard
         self.chains = {}
@@ -2255,8 +2298,6 @@ class BlyanGPUNode:
                 data = await request.json()
                 stage = data.get("stage")  # Which layers to process
                 hidden_states = data.get("hidden_states")  # Input tensor
-                temperature = data.get("temperature", 0.7)
-                
                 if not self.model_manager:
                     return web.json_response({
                         "error": "Model manager not initialized"
@@ -2272,7 +2313,6 @@ class BlyanGPUNode:
                 
                 # Convert hidden states to tensor - handle both JSON and binary
                 import torch
-                import numpy as np
                 import base64
                 import io
                 
@@ -3326,13 +3366,46 @@ class BlyanGPUNode:
     async def _heartbeat_loop(self):
         """Send periodic heartbeats to keep registration alive."""
         logger.info("💓 Starting heartbeat loop (15s interval)")
+        consecutive_failures = 0
+        max_consecutive_failures = 3
         
         while True:
             try:
                 await asyncio.sleep(15)  # Send heartbeat every 15 seconds
                 
-                import httpx
-                async with httpx.AsyncClient(timeout=5.0) as client:
+                # Heartbeat with retry logic
+                success = await self._send_heartbeat_with_retry()
+                
+                if success:
+                    consecutive_failures = 0
+                    logger.debug(f"💓 Heartbeat sent successfully")
+                else:
+                    consecutive_failures += 1
+                    logger.warning(f"💔 Heartbeat failed (attempt {consecutive_failures}/{max_consecutive_failures})")
+                    
+                    # Re-register after multiple failures
+                    if consecutive_failures >= max_consecutive_failures:
+                        logger.info("📝 Re-registering due to multiple heartbeat failures")
+                        await self.register_with_main()
+                        break  # Exit this loop, registration will start new one
+                            
+            except Exception as e:
+                logger.debug(f"Heartbeat loop error: {e}")
+                consecutive_failures += 1
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.warning("Too many heartbeat errors, attempting re-registration")
+                    await self.register_with_main()
+                    break
+    
+    async def _send_heartbeat_with_retry(self, max_retries: int = 3) -> bool:
+        """Send heartbeat with exponential backoff retry."""
+        import httpx
+        
+        for attempt in range(max_retries):
+            try:
+                # Increase timeout for slower networks
+                timeout = httpx.Timeout(10.0, connect=5.0)
+                async with httpx.AsyncClient(timeout=timeout) as client:
                     headers = {}
                     api_key = os.environ.get('BLYAN_API_KEY')
                     if api_key:
@@ -3341,23 +3414,49 @@ class BlyanGPUNode:
                     # Send heartbeat
                     resp = await client.post(
                         f"{MAIN_NODE_URL}/gpu/heartbeat",
-                        json={"node_id": self.node_id},
+                        json=self.node_id,  # Raw JSON string body
                         headers=headers
                     )
                     
                     if resp.status_code == 200:
-                        logger.debug(f"💓 Heartbeat sent successfully")
+                        return True
+                    elif resp.status_code == 404:
+                        # Node not found, need to re-register
+                        logger.warning("Node not found in registry, will re-register")
+                        return False
+                    elif resp.status_code == 401:
+                        try:
+                            detail = resp.json().get('detail', 'Unknown')
+                        except:
+                            detail = resp.text[:200] if resp.text else 'No details'
+                        logger.error(f"Authentication failed: {detail}")
+                        logger.error("Check BLYAN_API_KEY environment variable")
+                        return False
+                    elif resp.status_code == 422:
+                        try:
+                            detail = resp.json().get('detail', 'Unknown')
+                        except:
+                            detail = resp.text[:200] if resp.text else 'No details'
+                        logger.error(f"Invalid request format: {detail}")
+                        logger.error(f"Node ID: '{self.node_id}' - check if it contains valid characters")
+                        return False
                     else:
-                        logger.warning(f"💔 Heartbeat failed: {resp.status_code}")
-                        # Re-register if heartbeat fails
-                        if resp.status_code in [401, 404]:
-                            logger.info("📝 Re-registering due to heartbeat failure")
-                            await self.register_with_main()
-                            break  # Exit this loop, registration will start new one
-                            
+                        logger.warning(f"Unexpected status code: {resp.status_code}")
+                        try:
+                            logger.debug(f"Response: {resp.text[:200]}")
+                        except:
+                            pass
+                        
+            except httpx.TimeoutException:
+                logger.warning(f"Heartbeat timeout (attempt {attempt + 1}/{max_retries})")
             except Exception as e:
-                logger.debug(f"Heartbeat error: {e}")
-                # Continue heartbeating even on errors
+                logger.debug(f"Heartbeat error (attempt {attempt + 1}/{max_retries}): {e}")
+            
+            # Exponential backoff if not the last attempt
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)
+        
+        return False
     
     async def _delayed_registration_retry(self, delay: int):
         """Retry registration after a delay."""

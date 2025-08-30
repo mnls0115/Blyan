@@ -5036,13 +5036,27 @@ async def register_gpu_node(
     capabilities: Optional[Dict[str, Any]] = Body(default={})
 ):
     """Register a GPU node for distributed inference."""
+    import re
+    
     try:
-        # Get API key from header for GPU node authentication
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+        # Validate node_id format first
+        if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', node_id):
+            raise HTTPException(status_code=422, detail="Invalid node_id format. Must be alphanumeric with _ or -, max 64 chars")
         
-        api_key = auth_header.replace("Bearer ", "")
+        # Get API key from header for GPU node authentication - handle edge cases
+        auth_header = request.headers.get("Authorization", "").strip()
+        if not auth_header:
+            raise HTTPException(status_code=401, detail="Missing authorization")
+            
+        # More robust Bearer token extraction
+        if auth_header.lower().startswith("bearer "):
+            parts = auth_header.split(None, 1)
+            api_key = parts[1] if len(parts) > 1 else ""
+        else:
+            api_key = auth_header
+            
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Invalid authorization format")
         
         # Get Redis-backed GPU node manager
         from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
@@ -5090,29 +5104,74 @@ async def get_gpu_node_status():
 
 
 @app.post("/gpu/heartbeat")
-async def gpu_node_heartbeat(
-    request: Request,
-    node_id: str = Body(...)
-):
-    """Update heartbeat for a GPU node."""
+async def gpu_node_heartbeat(request: Request):
+    """Update heartbeat for a GPU node.
+
+    Accepts either a raw JSON string body ("node-id") or an object {"node_id": "..."} for backwards compatibility.
+    """
+    import re
+    
     try:
-        # Verify authentication
-        auth_header = request.headers.get("Authorization")
+        # Verify authentication - accept Bearer token format with edge case handling
+        auth_header = request.headers.get("Authorization", "").strip()
         if not auth_header:
             raise HTTPException(status_code=401, detail="Missing authorization")
         
+        # Extract token from "Bearer <token>" format - handle case variations and extra spaces
+        if auth_header.lower().startswith("bearer "):
+            # Split on whitespace and take everything after "bearer"
+            parts = auth_header.split(None, 1)
+            token = parts[1] if len(parts) > 1 else ""
+        else:
+            token = auth_header
+        
+        if not token:
+            raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+        # Parse body as JSON, accept both string and object forms
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid JSON body")
+
+        node_id: Optional[str] = None
+        if isinstance(body, str):
+            node_id = body
+        elif isinstance(body, dict) and isinstance(body.get("node_id"), str):
+            node_id = body["node_id"]
+
+        if not node_id:
+            raise HTTPException(status_code=422, detail="Expected string body or {\"node_id\": \"...\"}")
+        
+        # Validate node_id format to prevent injection and JSON issues
+        if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', node_id):
+            raise HTTPException(status_code=422, detail="Invalid node_id format. Must be alphanumeric with _ or -, max 64 chars")
+
         # Get Redis-backed GPU node manager
         from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
         gpu_node_manager = await get_gpu_node_manager()
         
+        # Per-node API key validation: Check if node has a stored API key
+        # This enables multi-node deployments with different keys
+        node_data = await gpu_node_manager.get_node(node_id)
+        if node_data and node_data.get('api_key'):
+            # Node has a stored API key, validate against it
+            if token != node_data['api_key']:
+                raise HTTPException(status_code=401, detail="Invalid API key for this node")
+        else:
+            # Fall back to global API key validation
+            expected_key = os.environ.get('BLYAN_API_KEY')
+            if expected_key and token != expected_key:
+                raise HTTPException(status_code=401, detail="Invalid API key")
+
         # Update heartbeat
         success = await gpu_node_manager.update_heartbeat(node_id)
-        
+
         if success:
             return {"success": True, "message": "Heartbeat updated"}
         else:
             raise HTTPException(status_code=404, detail="Node not found")
-            
+
     except HTTPException:
         raise
     except Exception as e:

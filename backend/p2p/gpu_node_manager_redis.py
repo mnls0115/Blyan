@@ -478,6 +478,30 @@ class GPUNodeManagerRedis:
             logger.error(f"Failed to update heartbeat for {node_id}: {e}")
             return False
     
+    async def get_node(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """Get node data by ID.
+        
+        Args:
+            node_id: The node identifier
+            
+        Returns:
+            Node data dictionary with api_key, capabilities, etc. or None if not found
+        """
+        try:
+            node_key = f"{self.NODE_PREFIX}{node_id}"
+            node_data = await self._with_retry(
+                self.redis_client.get,
+                node_key
+            )
+            
+            if node_data:
+                return json.loads(node_data)
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get node {node_id}: {e}")
+            return None
+    
     async def update_metrics(
         self,
         node_id: str,

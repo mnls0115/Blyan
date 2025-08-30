@@ -37,7 +37,10 @@ Layers assigned: [0, 1, 2, 3, 4, 5, 6, 7]
 - ✅ No per-instance isolation issues
 
 ### Heartbeat & TTL
-- ✅ Heartbeat endpoint works: `POST /api/gpu/heartbeat` with string body
+- ✅ Heartbeat endpoint works: `POST /api/gpu/heartbeat` with flexible body formats
+  - Accepts raw JSON string: `"node-id"`
+  - Accepts object format: `{"node_id": "node-id"}`
+- ✅ Authentication: Requires `Authorization: Bearer <API_KEY>` header
 - ✅ TTL-based expiration: Nodes marked inactive after 30s without heartbeat
 - ✅ Automatic cleanup prevents stale nodes
 
@@ -83,11 +86,17 @@ curl -X POST https://blyan.com/api/gpu/register \
     "capabilities": {"gpu_memory_gb": 24, "layers": [0,1,2,3]}
   }'
 
-# Send heartbeat (string body!)
+# Send heartbeat (string body format)
 curl -X POST https://blyan.com/api/gpu/heartbeat \
   -H "Authorization: Bearer YOUR_KEY" \
   -H "Content-Type: application/json" \
   -d '"test-node"'
+
+# Send heartbeat (object body format - backwards compatible)
+curl -X POST https://blyan.com/api/gpu/heartbeat \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"node_id": "test-node"}'
 
 # Test inference
 curl -X POST https://blyan.com/api/chat/gpu \

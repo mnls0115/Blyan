@@ -7,6 +7,7 @@ Supports delta composition for learning updates.
 """
 
 import logging
+import threading
 import torch
 import io
 import os
@@ -53,11 +54,55 @@ class UnifiedModelManager:
         self.gpu_loader = None
         self._loaded_from_blockchain = False
         self._min_blockchain_layers = int(os.getenv("MIN_BLOCKCHAIN_LAYERS", "38"))
+        # Concurrency guard for one-time model loading
+        self._load_lock = threading.RLock()
+        self._load_cv = threading.Condition(self._load_lock)
+        self._load_in_progress = False
+        # Best-effort GPU info for chunk sizing (avoid AttributeError)
+        try:
+            if device == "cuda" and torch.cuda.is_available():
+                total_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+                self.gpu_info = {"memory_gb": total_gb}
+                
+                # Apply memory optimization settings
+                self._apply_memory_optimizations()
+            else:
+                self.gpu_info = {}
+        except Exception:
+            self.gpu_info = {}
         
         if use_blockchain:
             self._init_blockchain()
         else:
             self._init_local()
+    
+    def _apply_memory_optimizations(self):
+        """Apply GPU memory optimization settings to prevent OOM."""
+        try:
+            # Clear any existing cache before starting
+            torch.cuda.empty_cache()
+            
+            # Enable TF32 for better performance and memory efficiency on Ampere GPUs
+            if hasattr(torch.backends.cuda, 'matmul'):
+                torch.backends.cuda.matmul.allow_tf32 = True
+            if hasattr(torch.backends.cudnn, 'allow_tf32'):
+                torch.backends.cudnn.allow_tf32 = True
+            
+            # Disable cudnn benchmark to prevent memory spikes during warmup
+            torch.backends.cudnn.benchmark = False
+            
+            # Set deterministic behavior for consistent memory usage
+            torch.backends.cudnn.deterministic = True
+            
+            # Log optimizations
+            logger.info("✅ Applied GPU memory optimizations:")
+            logger.info("   - Cleared CUDA cache")
+            logger.info("   - Enabled TF32 for Ampere+ GPUs")
+            logger.info("   - Disabled cudnn benchmark (prevents memory spikes)")
+            logger.info("   - Set deterministic mode for consistent memory usage")
+            
+        except Exception as e:
+            logger.warning(f"Could not apply all memory optimizations: {e}")
     
     def _init_blockchain(self) -> None:
         """Initialize blockchain-based model loading."""
@@ -103,10 +148,28 @@ class UnifiedModelManager:
     
     def _ensure_model_loaded(self) -> None:
         """Ensure model and tokenizer are loaded - FAST PATH."""
+        # Fast path
         if self._initialized:
             return
-            
+        
+        # Concurrency control: ensure only one loader runs
+        with self._load_lock:
+            if self._initialized:
+                return
+            # If another thread is loading, wait for it to finish
+            while self._load_in_progress:
+                self._load_cv.wait(timeout=120.0)
+                if self._initialized:
+                    return
+            # Mark as loading and proceed outside the lock
+            self._load_in_progress = True
+
         try:
+            # Clear GPU cache before loading to maximize available memory
+            if self.device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug("Cleared CUDA cache before model loading")
+            
             # Load cached tokenizer (or create once)
             self._load_or_cache_tokenizer()
             
@@ -126,10 +189,15 @@ class UnifiedModelManager:
             
             self._initialized = True
             logger.info("✅ Model ready for inference")
-            
+
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
+        finally:
+            # Notify waiters regardless of success or failure
+            with self._load_lock:
+                self._load_in_progress = False
+                self._load_cv.notify_all()
     
     def _apply_lora_delta(self, base_tensor: torch.Tensor, delta: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
