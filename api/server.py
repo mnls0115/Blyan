@@ -881,6 +881,8 @@ def _startup():
             # Initialize GPU forwarder with coordinator
             from backend.p2p.batch_inference import get_gpu_forwarder
             gpu_forwarder = get_gpu_forwarder(distributed_coordinator)
+            
+            # Legacy->Redis bridge will be started in async startup handler
             logger.info("✅ GPU node forwarder initialized")
         except Exception as e:
             logger.warning(f"Failed to initialize distributed coordinator: {e}")
@@ -5022,6 +5024,36 @@ async def get_evolution_history():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get evolution history: {str(e)}")
 
+
+# Legacy->Redis bridge for node migration
+_legacy_bridge = None
+
+@app.on_event("startup")
+async def startup_legacy_bridge():
+    """Start the legacy to Redis bridge for node migration."""
+    global _legacy_bridge
+    
+    if not MINIMAL_MODE and distributed_coordinator:
+        try:
+            from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
+            from backend.p2p.legacy_redis_bridge import start_legacy_bridge
+            
+            gpu_manager = await get_gpu_node_manager()
+            _legacy_bridge = await start_legacy_bridge(distributed_coordinator, gpu_manager)
+            logger.info("✅ Legacy->Redis bridge started for automatic node migration")
+        except Exception as e:
+            logger.warning(f"Failed to start legacy bridge: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_legacy_bridge():
+    """Stop the legacy bridge on shutdown."""
+    global _legacy_bridge
+    
+    if _legacy_bridge:
+        from backend.p2p.legacy_redis_bridge import stop_legacy_bridge
+        await stop_legacy_bridge()
+        _legacy_bridge = None
+        logger.info("Legacy bridge stopped")
 
 @app.post("/gpu/register")
 async def register_gpu_node(

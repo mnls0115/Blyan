@@ -285,161 +285,58 @@ class AtomicChatHandler:
         start_time = time.time()
         
         try:
-            # Try to use GPU node manager first
-            from pathlib import Path
-            gpu_manager_available = False
+            # Use Redis-backed GPU node manager (single source of truth)
+            from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
             
-            try:
-                from backend.p2p.gpu_node_manager_redis import get_gpu_node_manager
-                
-                # Get singleton GPU node manager with Redis backend
-                gpu_node_manager = await get_gpu_node_manager()
-                
-                # Check if we have any active GPU nodes
-                active_nodes = await gpu_node_manager.get_active_nodes()
-                gpu_manager_available = len(active_nodes) > 0
-                
-                if gpu_manager_available:
-                    logger.info(f"Found {len(active_nodes)} active GPU nodes, forwarding request")
-                    
-                    # Forward to GPU node
-                    result = await gpu_node_manager.forward_to_gpu(
-                        prompt=request.prompt,
-                        max_tokens=request.max_new_tokens,
-                        temperature=request.temperature
-                    )
-                    
-                    ctx.inference_completed = True
-                    
-                    if result.get("success"):
-                        # Estimate tokens (rough approximation)
-                        response_text = result.get("response", "")
-                        tokens_generated = len(response_text.split()) * 1.3
-                        
-                        return {
-                            "response": response_text,
-                            "layers_used": {"node": result.get("node_id", "unknown")},
-                            "inference_time": result.get("latency_ms", 0) / 1000,
-                            "tokens_generated": int(tokens_generated),
-                            "actual_cost": 0.001 * tokens_generated
-                        }
-                    else:
-                        # GPU forwarding failed, fall through to other methods
-                        logger.warning(f"GPU forwarding failed: {result.get('error', 'Unknown error')}")
-                        gpu_manager_available = False
-                        
-            except ImportError:
-                logger.debug("GPU node manager not available")
-            except Exception as e:
-                logger.warning(f"GPU manager check failed: {e}")
+            # Get singleton GPU node manager with Redis backend
+            gpu_node_manager = await get_gpu_node_manager()
             
-            # Fallback to legacy batch inference system if no GPU nodes
-            if not gpu_manager_available:
-                # Import GPU forwarding module
-                from backend.p2p.batch_inference import get_gpu_forwarder
-                from api.server import distributed_coordinator
+            # Check if we have any active GPU nodes
+            active_nodes = await gpu_node_manager.get_active_nodes()
+            
+            if active_nodes:
+                logger.info(f"Found {len(active_nodes)} active GPU nodes in Redis, forwarding request")
                 
-                # Get the GPU forwarder
-                forwarder = get_gpu_forwarder(distributed_coordinator)
-                
-                # Check if we have GPU nodes for distributed inference
-                has_gpu_nodes = (distributed_coordinator and 
-                               hasattr(distributed_coordinator, 'registry') and 
-                               distributed_coordinator.registry and 
-                               hasattr(distributed_coordinator.registry, 'nodes') and
-                               distributed_coordinator.registry.nodes)
-                
-                # Use GPU forwarder for inference
-                if has_gpu_nodes:
-                    # Forward inference request to GPU nodes
-                    logger.info(f"Using legacy forwarder for inference (prompt: {len(request.prompt)} chars)")
-                    
-                    result = await forwarder.process_inference(
-                        prompt=request.prompt,
-                        max_new_tokens=request.max_new_tokens,
-                        temperature=request.temperature
-                    )
-                    
-                    ctx.inference_completed = True
-                    
-                    # Check if request was successful
-                    if result.get("response"):
-                        # Estimate tokens (rough approximation)
-                        tokens_generated = len(result["response"].split()) * 1.3
-                        
-                        return {
-                            "response": result.get("response", ""),
-                            "layers_used": {"node": result.get("node_used", "unknown")},
-                            "inference_time": result.get("inference_time", time.time() - start_time),
-                            "tokens_generated": int(tokens_generated),
-                            "actual_cost": 0.001 * tokens_generated
-                        }
-                    else:
-                        # Fallback error response
-                        error_msg = result.get("error", "GPU nodes unavailable")
-                    logger.warning(f"GPU forwarding failed: {error_msg}")
-                    return {
-                        "response": f"Service temporarily unavailable: {error_msg}",
-                        "layers_used": {},
-                        "inference_time": time.time() - start_time,
-                        "tokens_generated": 0,
-                        "actual_cost": 0.0
-                    }
-            else:
-                # No GPU nodes available - try forwarding anyway (might get registered nodes)
-                logger.warning("No GPU nodes in registry, attempting to forward anyway...")
-                
-                result = await forwarder.process_inference(
+                # Forward to GPU node using selection policy
+                result = await gpu_node_manager.forward_to_gpu(
                     prompt=request.prompt,
-                    max_new_tokens=request.max_new_tokens,
+                    max_tokens=request.max_new_tokens,
                     temperature=request.temperature
                 )
                 
                 ctx.inference_completed = True
                 
-                if result.get("response"):
-                    tokens_generated = len(result["response"].split()) * 1.3
+                if result.get("success"):
+                    # Process successful response
+                    response_text = result.get("response", "")
+                    tokens_generated = len(response_text.split()) * 1.3
+                    
                     return {
-                        "response": result.get("response", ""),
-                        "layers_used": {"node": result.get("node_used", "unknown")},
-                        "inference_time": result.get("inference_time", time.time() - start_time),
+                        "response": response_text,
+                        "layers_used": {"node": result.get("node_id", "unknown")},
+                        "inference_time": result.get("latency_ms", 0) / 1000,
                         "tokens_generated": int(tokens_generated),
-                        "actual_cost": 0.001 * tokens_generated
+                        "actual_cost": 0.001 * tokens_generated,
+                        "selection_policy": result.get("selection_policy", "unknown")
                     }
-                
-                # Fallback - try local model as last resort
-                from backend.model.manager import get_model_manager
-                from pathlib import Path
-                
-                model_manager = get_model_manager(Path("./data"))
-                
-                # Generate response - model manager will auto-load if needed
-                try:
-                    answer = model_manager.generate(
-                        prompt=request.prompt,
-                        max_new_tokens=request.max_new_tokens,
-                        temperature=request.temperature
-                    )
-                except Exception as gen_error:
-                    logger.error(f"Failed to generate response: {gen_error}")
-                    # If no GPU nodes and can't generate, return helpful error
+                else:
+                    # GPU forwarding failed but we have nodes
+                    error_msg = result.get('error', 'GPU inference failed')
+                    logger.error(f"GPU forwarding failed: {error_msg}")
                     raise HTTPException(
-                        status_code=503,
-                        detail="No GPU nodes available and unable to generate response locally. Please wait for GPU nodes to come online or ensure blockchain contains model weights."
+                        status_code=502,
+                        detail=f"GPU node error: {error_msg}"
                     )
+            else:
+                # No GPU nodes available in Redis
+                logger.warning("No GPU nodes available in Redis - checking if bridge is syncing")
                 
-                ctx.inference_completed = True
-                
-                # Estimate tokens
-                tokens_generated = len(answer.split()) * 1.3  # Rough estimate
-                
-                return {
-                    "response": answer,
-                    "layers_used": {},  # No distributed layers for local inference
-                    "inference_time": time.time() - start_time,
-                    "tokens_generated": int(tokens_generated),
-                    "actual_cost": 0.001 * tokens_generated
-                }
+                # Redis is the single source of truth
+                # If no nodes are available, the service is unavailable
+                raise HTTPException(
+                    status_code=503,
+                    detail="No GPU nodes available. Please ensure GPU nodes are registered and sending heartbeats to /gpu/register and /gpu/heartbeat endpoints."
+                )
             
         except HTTPException:
             # Re-raise HTTP exceptions with proper error messages
