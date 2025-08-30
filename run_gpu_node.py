@@ -3253,7 +3253,9 @@ class BlyanGPUNode:
                                 "capabilities": {
                                     "layers": available_experts,
                                     "gpu_memory_gb": self.gpu_info.get("memory_gb", 0),
-                                    "supports_bf16": self.gpu_info.get("supports_bf16", True)
+                                    "supports_bf16": self.gpu_info.get("supports_bf16", True),
+                                    "gpu": self.gpu_info.get("name", "Unknown GPU"),
+                                    "model": "Qwen/Qwen3-8B"
                                 }
                             }
                             gpu_resp = await client.post(
@@ -3263,8 +3265,10 @@ class BlyanGPUNode:
                             )
                             if gpu_resp.status_code == 200:
                                 logger.info("✅ Registered with GPU Node Manager")
-                                # Start heartbeat task
-                                asyncio.create_task(self._heartbeat_loop())
+                                # Start heartbeat task (always start to ensure it's running)
+                                if not hasattr(self, '_heartbeat_task') or self._heartbeat_task is None:
+                                    self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                                    logger.info("💓 Heartbeat task started")
                             else:
                                 body = None
                                 try:
@@ -3275,6 +3279,10 @@ class BlyanGPUNode:
                                     f"GPU Node Manager registration status: {gpu_resp.status_code}" +
                                     (f" body: {body}" if body else "")
                                 )
+                                # Start heartbeat anyway for retries
+                                if not hasattr(self, '_heartbeat_task') or self._heartbeat_task is None:
+                                    self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                                    logger.info("💓 Heartbeat task started (will retry registration)")
                         except Exception as gre:
                             logger.debug(f"GPU Node Manager registration skipped/failed: {gre}")
                 elif resp.status_code == 500:
