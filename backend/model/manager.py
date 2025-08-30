@@ -702,7 +702,26 @@ class UnifiedModelManager:
                     if partial_state:
                         incompatible = self.model.load_state_dict(partial_state, strict=False)
                         loaded_tensors += len(partial_state)
-                        if incompatible.missing_keys:
+                        
+                        # Enhanced diagnostic logging
+                        if os.getenv("DIAG_MODEL_LOAD"):
+                            missing_count = len(incompatible.missing_keys)
+                            unexpected_count = len(incompatible.unexpected_keys)
+                            
+                            if missing_count > 0:
+                                logger.info(f"[DIAG] Chunk {start}-{end-1} missing {missing_count} keys")
+                                for key in incompatible.missing_keys[:5]:
+                                    logger.info(f"[DIAG]   Missing: {key}")
+                                if missing_count > 5:
+                                    logger.info(f"[DIAG]   ... and {missing_count - 5} more")
+                            
+                            if unexpected_count > 0:
+                                logger.info(f"[DIAG] Chunk {start}-{end-1} has {unexpected_count} unexpected keys")
+                                for key in incompatible.unexpected_keys[:5]:
+                                    logger.info(f"[DIAG]   Unexpected: {key}")
+                                if unexpected_count > 5:
+                                    logger.info(f"[DIAG]   ... and {unexpected_count - 5} more")
+                        elif incompatible.missing_keys:
                             logger.debug(f"Chunk missing keys: {incompatible.missing_keys[:3]}")
                         
                         # Free temporary storage and defragment
@@ -840,9 +859,33 @@ class UnifiedModelManager:
             
             # Load state dict into model (strict=False for flexibility)
             if state_dict:
-                self.model.load_state_dict(state_dict, strict=False)
+                incompatible = self.model.load_state_dict(state_dict, strict=False)
                 logger.info(f"✅ Loaded {len(state_dict)} tensors from blockchain")
                 self._loaded_from_blockchain = True
+                
+                # Enhanced diagnostic logging for standard loader
+                if os.getenv("DIAG_MODEL_LOAD"):
+                    missing_count = len(incompatible.missing_keys)
+                    unexpected_count = len(incompatible.unexpected_keys)
+                    
+                    logger.info(f"[DIAG] Final load summary:")
+                    logger.info(f"[DIAG]   Loaded tensors: {len(state_dict)}")
+                    logger.info(f"[DIAG]   Missing keys: {missing_count}")
+                    logger.info(f"[DIAG]   Unexpected keys: {unexpected_count}")
+                    
+                    if missing_count > 0:
+                        logger.info(f"[DIAG] Missing model keys:")
+                        for key in incompatible.missing_keys[:5]:
+                            logger.info(f"[DIAG]   - {key}")
+                        if missing_count > 5:
+                            logger.info(f"[DIAG]   ... and {missing_count - 5} more")
+                    
+                    if unexpected_count > 0:
+                        logger.info(f"[DIAG] Unexpected keys in state_dict:")
+                        for key in incompatible.unexpected_keys[:5]:
+                            logger.info(f"[DIAG]   - {key}")
+                        if unexpected_count > 5:
+                            logger.info(f"[DIAG]   ... and {unexpected_count - 5} more")
                 
                 # CRITICAL: Enforce BF16 dtype after loading
                 if next(self.model.parameters()).dtype != torch.bfloat16:
