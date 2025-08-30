@@ -317,7 +317,8 @@ class AtomicChatHandler:
                         "inference_time": result.get("latency_ms", 0) / 1000,
                         "tokens_generated": int(tokens_generated),
                         "actual_cost": 0.001 * tokens_generated,
-                        "selection_policy": result.get("selection_policy", "unknown")
+                        "selection_policy": result.get("selection_policy", "unknown"),
+                        "node_selected": result.get("node_id", "unknown")  # Explicit node ID for debugging
                     }
                 else:
                     # GPU forwarding failed but we have nodes
