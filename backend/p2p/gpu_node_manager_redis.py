@@ -275,12 +275,22 @@ class GPUNodeManagerRedis:
                 if response.status_code != 200:
                     raise ValueError(f"Node health check failed: {response.status_code}")
             
-            # Create node info
+            # Create node info - default to "gpu" type if not specified or if has GPU capabilities
+            actual_node_type = node_type
+            if not actual_node_type and capabilities:
+                # Auto-detect type from capabilities
+                if capabilities.get("gpu_memory_gb", 0) > 0:
+                    actual_node_type = "gpu"
+            
+            # Default to "gpu" if still not set (backwards compatibility)
+            if not actual_node_type:
+                actual_node_type = "gpu"
+            
             node = GPUNodeInfo(
                 node_id=node_id,
                 api_url=api_url.rstrip('/'),
                 api_key=api_key,
-                node_type=node_type,
+                node_type=actual_node_type,
                 capabilities=capabilities or {},
                 status="active",
                 registered_at=time.time(),
@@ -649,9 +659,24 @@ class GPUNodeManagerRedis:
     ) -> Dict[str, Any]:
         """Forward to best GPU node based on selection policy."""
         active_nodes = await self.get_active_nodes()
-        gpu_nodes = [n for n in active_nodes if n.get("node_type") == "gpu"]
+        
+        # Filter for GPU nodes - accept nodes with node_type="gpu" OR no node_type (backwards compat)
+        # Also accept nodes that have GPU capabilities regardless of node_type
+        gpu_nodes = []
+        for node in active_nodes:
+            node_type = node.get("node_type", "")
+            # Accept if: explicitly GPU, no type specified (legacy), or has GPU capabilities
+            if (node_type == "gpu" or 
+                node_type == "" or 
+                node.get("capabilities", {}).get("gpu_memory_gb", 0) > 0 or
+                node.get("layers_assigned", [])):
+                gpu_nodes.append(node)
         
         if not gpu_nodes:
+            # Log more details for debugging
+            logger.error(f"No GPU nodes found. Active nodes: {len(active_nodes)}")
+            for node in active_nodes[:3]:  # Log first 3 for debugging
+                logger.error(f"  Node {node.get('node_id')}: type={node.get('node_type', 'none')}, layers={node.get('layers_assigned', [])}")
             raise RuntimeError("No GPU nodes available for inference")
         
         # Select based on policy
