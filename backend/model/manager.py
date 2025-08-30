@@ -210,6 +210,9 @@ class UnifiedModelManager:
                 base_name = tensor_key.split('.')[0]
                 if base_name in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
                     return f"{prefix}.self_attn.{tensor_key}"
+                elif base_name in ['q_norm', 'k_norm']:
+                    # Self-attention norms also need self_attn prefix
+                    return f"{prefix}.self_attn.{tensor_key}"
                 elif base_name in ['gate_proj', 'up_proj', 'down_proj']:
                     return f"{prefix}.mlp.{tensor_key}"
                 else:
@@ -944,6 +947,7 @@ class UnifiedModelManager:
         max_new_tokens: int = 100,
         temperature: float = 0.7,
         top_p: float = 0.9,
+        top_k: Optional[int] = None,
         stream: bool = False
     ) -> str:
         """
@@ -967,13 +971,35 @@ class UnifiedModelManager:
             raise RuntimeError("Model not loaded")
         
         try:
+            # Apply chat template if available and input is not already templated
+            formatted_prompt = prompt
+            try:
+                if hasattr(self.tokenizer, "apply_chat_template"):
+                    # Detect if prompt already contains chat markers
+                    if isinstance(prompt, str) and ("<|im_start|>" not in prompt and "<|im_end|>" not in prompt):
+                        messages = [{"role": "user", "content": prompt}]
+                        formatted_prompt = self.tokenizer.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=True
+                        )
+            except Exception as e:
+                # Non-fatal: fall back to raw prompt on any template error
+                logger.debug(f"Chat template not applied: {e}")
+
+            # Respect tokenizer/model max length (avoid hardcoding)
+            try:
+                max_len = int(getattr(self.tokenizer, "model_max_length", 32768) or 32768)
+            except Exception:
+                max_len = 32768
+
             # Tokenize input
             inputs = self.tokenizer(
-                prompt,
+                formatted_prompt,
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=32768
+                max_length=max_len
             )
             
             if self.device == "cuda":
@@ -981,15 +1007,21 @@ class UnifiedModelManager:
             
             # Generate
             with torch.no_grad():
-                outputs = self.model.generate(
+                generate_kwargs = {
                     **inputs,
-                    max_new_tokens=max_new_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                    do_sample=temperature > 0,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id
-                )
+                    "max_new_tokens": max_new_tokens,
+                    "temperature": temperature,
+                    "top_p": top_p,
+                    "do_sample": temperature > 0,
+                    "pad_token_id": self.tokenizer.pad_token_id,
+                    "eos_token_id": self.tokenizer.eos_token_id
+                }
+                
+                # Only include top_k if provided
+                if top_k is not None:
+                    generate_kwargs["top_k"] = top_k
+                
+                outputs = self.model.generate(**generate_kwargs)
             
             # Decode
             generated_ids = outputs[0][inputs['input_ids'].shape[-1]:]
@@ -1030,6 +1062,7 @@ class UnifiedModelManager:
         max_new_tokens: int = 100,
         temperature: float = 0.7,
         top_p: float = 0.9,
+        top_k: Optional[int] = None,
         stream: bool = False
     ) -> str:
         """Async wrapper for generation."""
@@ -1042,6 +1075,7 @@ class UnifiedModelManager:
             max_new_tokens,
             temperature,
             top_p,
+            top_k,
             stream
         )
     

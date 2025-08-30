@@ -740,7 +740,8 @@ class GPUNodeManagerRedis:
         prompt: str,
         max_tokens: int = 100,
         temperature: float = 0.7,
-        top_p: float = 0.9
+        top_p: float = 0.9,
+        top_k: Optional[int] = None
     ) -> Dict[str, Any]:
         """Forward to best GPU node based on selection policy."""
         active_nodes = await self.get_active_nodes()
@@ -787,14 +788,21 @@ class GPUNodeManagerRedis:
                 
                 start_time = time.time()
                 
+                # Build JSON payload
+                json_payload = {
+                    "prompt": prompt,
+                    "max_new_tokens": max_tokens,
+                    "temperature": temperature,
+                    "top_p": top_p
+                }
+                
+                # Only include top_k if provided
+                if top_k is not None:
+                    json_payload["top_k"] = top_k
+                
                 response = await client.post(
                     f"{node['api_url']}/chat",
-                    json={
-                        "prompt": prompt,
-                        "max_new_tokens": max_tokens,
-                        "temperature": temperature,
-                        "top_p": top_p
-                    },
+                    json=json_payload,
                     headers=headers
                 )
                 

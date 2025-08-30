@@ -30,6 +30,7 @@ class AtomicChatRequest(BaseModel):
     max_new_tokens: int = 100
     temperature: float = 0.7
     top_p: float = 0.9
+    top_k: Optional[int] = None
     stream: bool = False
     quote_id: Optional[str] = None
     idempotency_key: Optional[str] = None  # For duplicate prevention
@@ -303,7 +304,8 @@ class AtomicChatHandler:
                     prompt=request.prompt,
                     max_tokens=request.max_new_tokens,
                     temperature=request.temperature,
-                    top_p=request.top_p
+                    top_p=request.top_p,
+                    top_k=request.top_k
                 )
                 
                 ctx.inference_completed = True

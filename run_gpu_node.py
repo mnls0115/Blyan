@@ -2161,7 +2161,16 @@ class BlyanGPUNode:
                 top_p = float(data.get("top_p", 0.9))
                 top_p = max(0.0, min(1.0, top_p))  # Clamp to [0.0, 1.0]
                 
-                logger.info(f"   Prompt: '{prompt[:50]}...' (tokens: {max_new_tokens}, temp: {temperature}, top_p: {top_p})")
+                # Parse optional top_k
+                top_k = data.get("top_k")
+                if top_k is not None:
+                    top_k = int(top_k)
+                    top_k = max(1, top_k)  # Must be at least 1
+                
+                log_params = f"tokens: {max_new_tokens}, temp: {temperature}, top_p: {top_p}"
+                if top_k is not None:
+                    log_params += f", top_k: {top_k}"
+                logger.info(f"   Prompt: '{prompt[:50]}...' ({log_params})")
 
                 # Check rate limiting (if implemented)
                 if hasattr(request.app, 'rate_limiter'):
@@ -2197,13 +2206,18 @@ class BlyanGPUNode:
                     return response
 
                 # Generate response using dense model
-                logger.info(f"   Generating response with temperature={temperature}, top_p={top_p}...")
+                gen_log = f"   Generating response with temperature={temperature}, top_p={top_p}"
+                if top_k is not None:
+                    gen_log += f", top_k={top_k}"
+                logger.info(gen_log + "...")
+                
                 try:
                     answer = self.model_manager.generate(
                         prompt,
                         max_new_tokens=max_new_tokens,
                         temperature=temperature,
-                        top_p=top_p
+                        top_p=top_p,
+                        top_k=top_k
                     )
                 except Exception as ge:
                     # Release job slot on error

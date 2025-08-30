@@ -566,6 +566,7 @@ class ChatRequest(BaseModel):
     max_new_tokens: int = 64
     temperature: float = 0.7
     top_p: float = 0.9
+    top_k: Optional[int] = None
     stream: bool = False
     quote_id: Optional[str] = None
 
@@ -1423,6 +1424,7 @@ async def chat(req: ChatRequest, http_request: Request = None):
             max_new_tokens=req.max_new_tokens,
             temperature=req.temperature,
             top_p=req.top_p,
+            top_k=req.top_k,
             stream=req.stream
         )
         
