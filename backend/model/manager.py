@@ -146,6 +146,78 @@ class UnifiedModelManager:
         self.use_blockchain = False
         logger.info("Using local model loading")
     
+    def _translate_layer_prefix(self, layer_name: str) -> str:
+        """Translate param_index layer names to Qwen model prefixes.
+        
+        Maps:
+        - embedding -> model.embed_tokens
+        - layer_N -> model.layers.N
+        - model_norm -> model.norm
+        - lm_head -> lm_head (stays at top level)
+        
+        Args:
+            layer_name: The layer name from param_index
+            
+        Returns:
+            The corresponding model state_dict prefix
+        """
+        # Check if translation is disabled
+        if os.getenv('DISABLE_LAYER_TRANSLATION', 'false').lower() == 'true':
+            return layer_name
+        
+        # Translation mappings
+        if layer_name == 'embedding':
+            return 'model.embed_tokens'
+        elif layer_name.startswith('layer_'):
+            # Extract layer number
+            layer_num = layer_name.split('_')[1]
+            return f'model.layers.{layer_num}'
+        elif layer_name == 'model_norm':
+            return 'model.norm'
+        elif layer_name == 'lm_head':
+            return 'lm_head'
+        else:
+            # Unknown layer, return as-is
+            logger.warning(f"Unknown layer name for translation: {layer_name}")
+            return layer_name
+    
+    def _build_tensor_key(self, layer_name: str, tensor_key: str) -> str:
+        """Build the final tensor key with proper prefix translation.
+        
+        Args:
+            layer_name: The layer name from param_index
+            tensor_key: The tensor key from the block
+            
+        Returns:
+            The properly mapped state_dict key
+        """
+        # If key already starts with model. or lm_head, treat as fully qualified
+        if tensor_key.startswith('model.') or tensor_key.startswith('lm_head'):
+            return tensor_key
+        
+        # Get translated prefix
+        prefix = self._translate_layer_prefix(layer_name)
+        
+        # If tensor_key has dots, it's a nested key
+        if '.' in tensor_key:
+            # For attention/mlp submodules, need special handling
+            if tensor_key.startswith('self_attn.') or tensor_key.startswith('mlp.'):
+                # Already has the submodule prefix
+                return f"{prefix}.{tensor_key}"
+            else:
+                # Might be missing submodule prefix (e.g., q_proj.weight)
+                # Check if it's an attention or mlp weight
+                base_name = tensor_key.split('.')[0]
+                if base_name in ['q_proj', 'k_proj', 'v_proj', 'o_proj']:
+                    return f"{prefix}.self_attn.{tensor_key}"
+                elif base_name in ['gate_proj', 'up_proj', 'down_proj']:
+                    return f"{prefix}.mlp.{tensor_key}"
+                else:
+                    return f"{prefix}.{tensor_key}"
+        else:
+            # Simple key, just append
+            return f"{prefix}.{tensor_key}"
+    
     def _ensure_model_loaded(self) -> None:
         """Ensure model and tokenizer are loaded - FAST PATH."""
         # Fast path
@@ -618,7 +690,13 @@ class UnifiedModelManager:
                             for key, tensor in tensors.items():
                                 # There may be multiple layers mapping to same block (rare); apply to all
                                 for layer_name in block_to_layers.get(bi, []):
-                                    final_key = key if '.' in key else f"{layer_name}.{key}"
+                                    # Use proper translation for Qwen model structure
+                                    final_key = self._build_tensor_key(layer_name, key)
+                                    
+                                    # Diagnostic logging if enabled
+                                    if os.getenv("DIAG_MODEL_LOAD"):
+                                        logger.info(f"[DIAG] Mapping {layer_name}.{key} -> {final_key}")
+                                    
                                     partial_state[final_key] = self._compose_layer_with_deltas(final_key, tensor)
                     
                     if partial_state:
@@ -748,7 +826,14 @@ class UnifiedModelManager:
                         if tensor_dict:
                             # Apply deltas if available
                             for key, tensor in tensor_dict.items():
-                                state_dict[key] = self._compose_layer_with_deltas(key, tensor)
+                                # Use proper translation for Qwen model structure
+                                final_key = self._build_tensor_key(layer_name, key)
+                                
+                                # Diagnostic logging if enabled
+                                if os.getenv("DIAG_MODEL_LOAD"):
+                                    logger.info(f"[DIAG] Mapping {layer_name}.{key} -> {final_key}")
+                                
+                                state_dict[final_key] = self._compose_layer_with_deltas(final_key, tensor)
                             logger.debug(f"Loaded {layer_name} from block")
                     except Exception as e:
                         logger.warning(f"Failed to load {layer_name}: {e}")
