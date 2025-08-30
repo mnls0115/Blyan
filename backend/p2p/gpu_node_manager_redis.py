@@ -448,7 +448,11 @@ class GPUNodeManagerRedis:
             return False
     
     async def update_heartbeat(self, node_id: str) -> bool:
-        """Update heartbeat with set maintenance."""
+        """Update heartbeat with set maintenance.
+
+        Note: Redis 'SADD' returns 1 if added, 0 if already a member. A 0 is still a success.
+        Do NOT use all(result) because a 0 will coerce the whole pipeline to False.
+        """
         try:
             async def update():
                 async with self.redis_client.pipeline() as pipe:
@@ -459,7 +463,7 @@ class GPUNodeManagerRedis:
                     # Ensure in active set
                     pipe.sadd(self.ACTIVE_NODES_SET, node_id.encode())
                     
-                    # Update node status
+                    # Update node status if present
                     node_key = f"{self.NODE_PREFIX}{node_id}"
                     node_data = await self.redis_client.get(node_key)
                     
@@ -470,7 +474,8 @@ class GPUNodeManagerRedis:
                         pipe.setex(node_key, self.NODE_DATA_TTL, json.dumps(node_info).encode())
                     
                     result = await pipe.execute()
-                    return all(result)
+                    # Consider pipeline success if first command (SETEX) succeeded
+                    return bool(result) and bool(result[0])
             
             return await self._with_retry(update)
             
@@ -734,7 +739,8 @@ class GPUNodeManagerRedis:
         self,
         prompt: str,
         max_tokens: int = 100,
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        top_p: float = 0.9
     ) -> Dict[str, Any]:
         """Forward to best GPU node based on selection policy."""
         active_nodes = await self.get_active_nodes()
@@ -786,7 +792,8 @@ class GPUNodeManagerRedis:
                     json={
                         "prompt": prompt,
                         "max_new_tokens": max_tokens,
-                        "temperature": temperature
+                        "temperature": temperature,
+                        "top_p": top_p
                     },
                     headers=headers
                 )

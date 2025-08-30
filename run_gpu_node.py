@@ -187,12 +187,37 @@ class BlyanGPUNode:
     def __init__(self):
         # Generate and validate node ID
         import re
+        import socket
         
-        # Use environment variable or generate from PID
+        # Detect RunPod environment and extract pod ID
+        runpod_pod_id = os.environ.get('RUNPOD_POD_ID')
+        public_host = os.environ.get('PUBLIC_HOST', '')
+        
+        # Try to extract pod ID from PUBLIC_HOST if RUNPOD_POD_ID not set
+        if not runpod_pod_id and 'runpod.net' in public_host:
+            # Extract from format like: txpnn40k57a1ye-8000.proxy.runpod.net
+            try:
+                pod_part = public_host.split('.')[0]  # txpnn40k57a1ye-8000
+                if '-' in pod_part:
+                    runpod_pod_id = pod_part.split('-')[0]  # txpnn40k57a1ye
+                    logger.info(f"Extracted RunPod ID from PUBLIC_HOST: {runpod_pod_id}")
+            except:
+                pass
+        
+        # Generate stable node ID
         if os.environ.get('NODE_ID'):
+            # Explicitly set NODE_ID takes priority
             self.node_id = os.environ.get('NODE_ID')
+            logger.info(f"Using explicit NODE_ID from environment")
+        elif runpod_pod_id:
+            # RunPod environment - use pod ID for stability
+            self.node_id = f"gpu_{runpod_pod_id}"
+            logger.info(f"Using RunPod pod ID for node identification")
         else:
-            self.node_id = f"gpu_node_{os.getpid()}"
+            # Fallback to hostname-based ID for stability across restarts
+            hostname = socket.gethostname().replace('.', '_')
+            self.node_id = f"gpu_{hostname}"
+            logger.info(f"Using hostname-based node ID")
         
         # Validate node ID format
         if not re.match(r'^[a-zA-Z0-9_-]{1,64}$', self.node_id):
@@ -201,6 +226,16 @@ class BlyanGPUNode:
             # Auto-fix by replacing invalid characters
             self.node_id = re.sub(r'[^a-zA-Z0-9_-]', '_', self.node_id)[:64]
             logger.info(f"Auto-corrected node_id to: '{self.node_id}'")
+        
+        # Always log the node ID prominently
+        logger.info("=" * 60)
+        logger.info(f"🔑 NODE ID: {self.node_id}")
+        logger.info("=" * 60)
+        
+        if runpod_pod_id:
+            logger.info(f"📍 RunPod Pod ID detected: {runpod_pod_id}")
+        if public_host:
+            logger.info(f"🌐 Public host: {public_host}")
         
         self.port = PORT
         self.server_started = False  # One-time server-start guard
@@ -2119,7 +2154,14 @@ class BlyanGPUNode:
                 if max_new_tokens > 1024:
                     max_new_tokens = 1024
                 
-                logger.info(f"   Prompt: '{prompt[:50]}...' (tokens: {max_new_tokens})")
+                # Parse sampling parameters with validation
+                temperature = float(data.get("temperature", 0.7))
+                temperature = max(0.0, min(2.0, temperature))  # Clamp to [0.0, 2.0]
+                
+                top_p = float(data.get("top_p", 0.9))
+                top_p = max(0.0, min(1.0, top_p))  # Clamp to [0.0, 1.0]
+                
+                logger.info(f"   Prompt: '{prompt[:50]}...' (tokens: {max_new_tokens}, temp: {temperature}, top_p: {top_p})")
 
                 # Check rate limiting (if implemented)
                 if hasattr(request.app, 'rate_limiter'):
@@ -2155,9 +2197,14 @@ class BlyanGPUNode:
                     return response
 
                 # Generate response using dense model
-                logger.info(f"   Generating response...")
+                logger.info(f"   Generating response with temperature={temperature}, top_p={top_p}...")
                 try:
-                    answer = self.model_manager.generate(prompt, max_new_tokens=max_new_tokens)
+                    answer = self.model_manager.generate(
+                        prompt,
+                        max_new_tokens=max_new_tokens,
+                        temperature=temperature,
+                        top_p=top_p
+                    )
                 except Exception as ge:
                     # Release job slot on error
                     await self.release_job_slot()
@@ -3298,13 +3345,15 @@ class BlyanGPUNode:
                                     "model": "Qwen/Qwen3-8B"
                                 }
                             }
+                            logger.info(f"📝 Registering GPU node with ID: {self.node_id}")
+                            logger.debug(f"Registration payload: {gpu_payload}")
                             gpu_resp = await client.post(
                                 f"{MAIN_NODE_URL}/gpu/register",
                                 json=gpu_payload,
                                 headers=gpu_headers
                             )
                             if gpu_resp.status_code == 200:
-                                logger.info("✅ Registered with GPU Node Manager")
+                                logger.info(f"✅ Registered GPU node '{self.node_id}' with GPU Node Manager")
                                 # Start heartbeat task (always start to ensure it's running)
                                 if not hasattr(self, '_heartbeat_task') or self._heartbeat_task is None:
                                     self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -3411,7 +3460,8 @@ class BlyanGPUNode:
                     if api_key:
                         headers['Authorization'] = f'Bearer {api_key}'
                     
-                    # Send heartbeat
+                    # Send heartbeat with detailed logging
+                    logger.debug(f"Sending heartbeat for node_id: {self.node_id}")
                     resp = await client.post(
                         f"{MAIN_NODE_URL}/gpu/heartbeat",
                         json=self.node_id,  # Raw JSON string body
@@ -3422,7 +3472,7 @@ class BlyanGPUNode:
                         return True
                     elif resp.status_code == 404:
                         # Node not found, need to re-register
-                        logger.warning("Node not found in registry, will re-register")
+                        logger.warning(f"Node '{self.node_id}' not found in registry, will re-register")
                         return False
                     elif resp.status_code == 401:
                         try:

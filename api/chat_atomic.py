@@ -29,6 +29,7 @@ class AtomicChatRequest(BaseModel):
     prompt: str
     max_new_tokens: int = 100
     temperature: float = 0.7
+    top_p: float = 0.9
     stream: bool = False
     quote_id: Optional[str] = None
     idempotency_key: Optional[str] = None  # For duplicate prevention
@@ -301,7 +302,8 @@ class AtomicChatHandler:
                 result = await gpu_node_manager.forward_to_gpu(
                     prompt=request.prompt,
                     max_tokens=request.max_new_tokens,
-                    temperature=request.temperature
+                    temperature=request.temperature,
+                    top_p=request.top_p
                 )
                 
                 ctx.inference_completed = True
