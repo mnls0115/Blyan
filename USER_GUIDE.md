@@ -49,29 +49,52 @@ python run_gpu_node.py
 ### 3. Use the API
 
 #### Get API Access
+
+API keys are required for authenticated access to the main API endpoints. They are NOT needed for running a GPU node.
+
+**Create an API Key:**
 ```bash
-# Register for API key at blyan.com/dashboard
-# Or use free tier (10 requests/min)
+curl -X POST https://api.blyan.com/auth/v2/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-api-key",
+    "key_type": "basic",
+    "metadata": {"purpose": "testing"}
+  }'
+# Response contains your api_key (JWT token) - store it securely!
 ```
+
+**Validate Your Key:**
+```bash
+curl -X GET https://api.blyan.com/auth/v2/validate \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+For detailed API key management instructions, see the [Contribute page](https://blyan.com/contribute#api-key-section).
 
 #### Basic Usage
 ```python
 import requests
 
-# Simple chat
+# Simple chat with API key
+api_key = "YOUR_API_KEY"
 response = requests.post(
-    "https://blyan.com/api/chat",
+    "https://api.blyan.com/chat",
     json={"prompt": "Hello, Blyan!", "max_tokens": 100},
-    headers={"X-API-Key": "your_key_here"}  # Optional for free tier
+    headers={"Authorization": f"Bearer {api_key}"}
 )
 print(response.json()["text"])
 ```
 
 #### JavaScript/Web
 ```javascript
-const response = await fetch('https://blyan.com/api/chat', {
+const apiKey = 'YOUR_API_KEY';
+const response = await fetch('https://api.blyan.com/chat', {
   method: 'POST',
-  headers: {'Content-Type': 'application/json'},
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`
+  },
   body: JSON.stringify({
     prompt: 'Hello, Blyan!',
     max_tokens: 100

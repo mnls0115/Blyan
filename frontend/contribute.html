@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Join the Network - Blyan</title>
+    <title>Run a GPU Node - Blyan</title>
     <link rel="icon" href="/favicon.png" type="image/png">
     <link rel="shortcut icon" href="/favicon.png" type="image/png">
     <link rel="stylesheet" href="components.css">
@@ -66,6 +66,52 @@
             background-color: var(--color-background);
             transition: background-color 0.3s ease, color 0.3s ease;
             margin: 0;
+        }
+
+        /* Tab styles */
+        .tab-buttons {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 32px;
+            border-bottom: 2px solid var(--color-divider);
+        }
+
+        .tab-button {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            color: var(--color-text-secondary);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .tab-button:hover {
+            color: var(--color-primary);
+        }
+
+        .tab-button.active {
+            color: var(--color-primary);
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--color-primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
         }
 
         /* Requirements Grid */
@@ -368,222 +414,469 @@
 <body>
     <div id="header-container"></div>
 
-    <!-- Development Notice -->
-    <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(239, 68, 68, 0.1)); border: 2px solid rgba(245, 158, 11, 0.5); border-radius: 12px; padding: 24px; margin: 40px auto; max-width: 800px; text-align: center;">
-        <h2 style="color: #f59e0b; margin: 0 0 12px 0; display: flex; align-items: center; justify-content: center; gap: 12px;">
-            🚧 Feature Under Development
-        </h2>
-        <p style="color: var(--color-text-primary); font-size: 1.1rem; margin: 0 0 16px 0; font-weight: 500;">
-            The GPU node contribution system is currently being developed and tested.
-        </p>
-        <p style="color: var(--color-text-secondary); margin: 0 0 16px 0;">
-            We're building a decentralized network where GPU owners can contribute computing power for AI inference and earn BLY tokens. 
-            The system is in active development and will be available soon.
-        </p>
-        <div style="background: rgba(59, 130, 246, 0.1); border-radius: 8px; padding: 16px; margin-top: 20px;">
-            <p style="margin: 0 0 8px 0; color: var(--color-text-primary); font-weight: 600;">
-                📅 Expected Timeline: Q4 2025
-            </p>
-            <p style="margin: 0; color: var(--color-text-secondary); font-size: 0.9rem;">
-                Join our community to get notified when node registration opens
-            </p>
-        </div>
-    </div>
-
-    <!-- Requirements Section -->
+    <!-- Main Title Section -->
     <div class="feature-section" style="padding-top: 40px;">
         <div class="section-container">
             <div class="section-header">
-                <h2 class="section-title" data-i18n="systemRequirements">System Requirements (Preview)</h2>
-                <p class="section-subtitle" data-i18n="systemRequirementsDesc">What you'll need to join the network when it launches</p>
+                <h1 class="section-title">Run a GPU Node</h1>
+                <p class="section-subtitle">Join the Blyan network and earn BLY tokens by contributing GPU power</p>
+                <p style="margin-top: 16px; padding: 12px; background: rgba(59, 130, 246, 0.03); border-radius: 8px; border-left: 4px solid #3b82f6;">
+                    💡 <strong>Need API access?</strong> If you want to use the main API endpoints (not required for running a node), 
+                    <a href="#api-key-section" style="color: var(--color-primary); text-decoration: underline;">see how to get an API key below</a>.
+                </p>
             </div>
+
+            <!-- Tab buttons -->
+            <div class="tab-buttons" role="tablist" aria-label="Installation method">
+                <button id="tab-docker" class="tab-button active" role="tab" aria-selected="true" aria-controls="docker-tab" tabindex="0" onclick="selectTab('docker')">
+                    🐳 Docker (Recommended)
+                </button>
+                <button id="tab-source" class="tab-button" role="tab" aria-selected="false" aria-controls="source-tab" tabindex="-1" onclick="selectTab('source')">
+                    📦 Source (Advanced)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Key Section -->
+    <div class="feature-section" id="api-key-section" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.03), rgba(59, 130, 246, 0.03)); padding: 40px 0;">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 class="section-title">🔑 Get an API Key (for API usage)</h2>
+                <p class="section-subtitle">API keys are for calling main API endpoints - NOT required to run a GPU node</p>
+            </div>
+            
+            <div style="display: grid; gap: 24px;">
+                <!-- When You Need an API Key -->
+                <div style="padding: 24px; background: var(--color-elevated); border-radius: 12px; border: 1px solid var(--color-divider);">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary); font-size: 1.2rem;">📋 When You Need an API Key</h3>
+                    <ul style="color: var(--color-text-secondary); margin: 12px 0;">
+                        <li>Calling centralized API endpoints like <code>/chat</code> on the main server</li>
+                        <li>Using the API programmatically from your applications</li>
+                        <li>Accessing protected endpoints that require authentication</li>
+                    </ul>
+                    <p style="margin: 16px 0 0 0; padding: 12px; background: rgba(34, 197, 94, 0.03); border-radius: 6px;">
+                        ✅ <strong>Note:</strong> API keys are NOT needed for node enrollment or running a GPU node. Nodes use JOIN_CODE for initial enrollment.
+                    </p>
+                </div>
+
+                <!-- Create an API Key -->
+                <div style="padding: 24px; background: var(--color-elevated); border-radius: 12px; border: 1px solid var(--color-divider);">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary); font-size: 1.2rem;">🚀 Create an API Key</h3>
+                    <p style="color: var(--color-text-secondary); margin: 12px 0;">Register a new API key with the authentication service:</p>
+                    <div class="code-block">
+curl -X POST https://api.blyan.com/auth/v2/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-api-key",
+    "key_type": "basic",
+    "metadata": {
+      "purpose": "testing"
+    }
+  }'</div>
+                    <p style="color: var(--color-text-secondary); margin: 12px 0;">Response:</p>
+                    <div class="code-block" style="background: rgba(34, 197, 94, 0.03);">{
+  "api_key": "eyJhbGciOiJIUzI1NiIs...",
+  "key_id": "key_abc123",
+  "name": "my-api-key",
+  "created_at": "2024-01-01T00:00:00Z"
+}</div>
+                    <p style="margin: 16px 0 0 0; padding: 12px; background: rgba(245, 158, 11, 0.03); border-radius: 6px;">
+                        ⚠️ <strong>Important:</strong> Store your <code>api_key</code> securely. It's a JWT token that won't be shown again.
+                    </p>
+                </div>
+
+                <!-- Validate Your Key -->
+                <div style="padding: 24px; background: var(--color-elevated); border-radius: 12px; border: 1px solid var(--color-divider);">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary); font-size: 1.2rem;">✔️ Validate Your Key</h3>
+                    <p style="color: var(--color-text-secondary); margin: 12px 0;">Check if your API key is valid:</p>
+                    <div class="code-block">
+curl -X GET https://api.blyan.com/auth/v2/validate \
+  -H "Authorization: Bearer YOUR_API_KEY"</div>
+                    <p style="color: var(--color-text-secondary); margin: 12px 0;">Success response (200 OK):</p>
+                    <div class="code-block" style="background: rgba(34, 197, 94, 0.03);">{
+  "valid": true,
+  "key_id": "key_abc123",
+  "name": "my-api-key",
+  "roles": ["user"],
+  "scopes": ["chat:read", "chat:write"]
+}</div>
+                </div>
+
+                <!-- Refresh Your Key -->
+                <div style="padding: 24px; background: var(--color-elevated); border-radius: 12px; border: 1px solid var(--color-divider);">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary); font-size: 1.2rem;">🔄 Refresh Your Key</h3>
+                    <p style="color: var(--color-text-secondary); margin: 12px 0;">Rotate your API key if it's been compromised or needs renewal:</p>
+                    <div class="code-block">
+curl -X POST https://api.blyan.com/auth/v2/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_key": "YOUR_CURRENT_API_KEY"
+  }'</div>
+                    <p style="color: var(--color-text-secondary); margin: 12px 0;">Response contains a new <code>api_key</code> - update your applications immediately.</p>
+                </div>
+
+                <!-- Use Your API Key -->
+                <div style="padding: 24px; background: var(--color-elevated); border-radius: 12px; border: 1px solid var(--color-divider);">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary); font-size: 1.2rem;">💬 Use Your API Key</h3>
+                    <p style="color: var(--color-text-secondary); margin: 12px 0;">Example: Call the chat endpoint with your API key:</p>
+                    <div class="code-block">
+curl -X POST https://api.blyan.com/chat \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Hello, how are you?",
+    "max_tokens": 50
+  }'</div>
+                    <p style="color: var(--color-text-secondary); margin: 16px 0;">Python example:</p>
+                    <div class="code-block">import requests
+
+api_key = "YOUR_API_KEY"
+headers = {
+    "Authorization": f"Bearer {api_key}",
+    "Content-Type": "application/json"
+}
+
+response = requests.post(
+    "https://api.blyan.com/chat",
+    headers=headers,
+    json={"prompt": "Hello", "max_tokens": 50}
+)
+
+print(response.json())</div>
+                </div>
+
+                <!-- Security Best Practices -->
+                <div style="padding: 24px; background: rgba(220, 38, 38, 0.03); border-radius: 12px; border: 1px solid rgba(220, 38, 38, 0.2);">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary); font-size: 1.2rem;">🔒 Security Best Practices</h3>
+                    <ul style="color: var(--color-text-secondary); margin: 12px 0;">
+                        <li><strong>Never commit API keys</strong> to version control (use .env files)</li>
+                        <li><strong>Never share keys</strong> between applications or users</li>
+                        <li><strong>Rotate immediately</strong> if a key is exposed</li>
+                        <li><strong>Use environment variables</strong> to store keys in production</li>
+                        <li><strong>Monitor usage</strong> through the API metrics endpoints</li>
+                        <li><strong>RBAC enforced</strong> - keys have specific roles and scopes limiting access</li>
+                    </ul>
+                    <div class="code-block" style="margin-top: 16px;">
+# Good: Use environment variables
+export BLYAN_API_KEY="your-api-key-here"
+curl -H "Authorization: Bearer $BLYAN_API_KEY" ...
+
+# Bad: Never hardcode keys
+curl -H "Authorization: Bearer eyJhbGc..." ...</div>
+                </div>
+
+                <!-- Additional Notes -->
+                <div style="padding: 24px; background: rgba(59, 130, 246, 0.03); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary); font-size: 1.2rem;">📝 Additional Notes</h3>
+                    <ul style="color: var(--color-text-secondary); margin: 12px 0;">
+                        <li>API keys use <strong>JWT (JSON Web Tokens)</strong> format</li>
+                        <li>Always use <strong>Bearer authentication</strong> in the Authorization header</li>
+                        <li>Keys may have <strong>expiration times</strong> - check the JWT payload</li>
+                        <li>Different <strong>key types</strong> may have different rate limits and permissions</li>
+                        <li>The <strong>main node</strong> (api.blyan.com) handles all API key operations</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prerequisites Section -->
+    <div class="feature-section" style="padding-top: 20px;">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 class="section-title">Prerequisites</h2>
+                <p class="section-subtitle">What you need to run a node</p>
+            </div>
+            
             <div class="requirements-grid">
                 <div class="requirement-item">
                     <span class="requirement-icon">🖥️</span>
                     <div class="requirement-text">
-                        <div class="requirement-label" data-i18n="gpu">GPU</div>
-                        <div class="requirement-value">NVIDIA RTX 3060 or better</div>
+                        <div class="requirement-label">Hardware</div>
+                        <div class="requirement-value">NVIDIA GPU (BF16 recommended), 12+ GB VRAM recommended. CPU works but slow.</div>
+                    </div>
+                </div>
+                <div class="requirement-item">
+                    <span class="requirement-icon">🐧</span>
+                    <div class="requirement-text">
+                        <div class="requirement-label">Software (Docker)</div>
+                        <div class="requirement-value">Linux/WSL2, NVIDIA Driver ≥525, CUDA 12, Docker + NVIDIA Container Toolkit</div>
                     </div>
                 </div>
                 <div class="requirement-item">
                     <span class="requirement-icon">💾</span>
                     <div class="requirement-text">
-                        <div class="requirement-label" data-i18n="vram">VRAM</div>
-                        <div class="requirement-value">12GB minimum, 24GB+ recommended</div>
+                        <div class="requirement-label">Disk Space</div>
+                        <div class="requirement-value">25-40 GB free in BLYAN_DATA_DIR (defaults to /data in Docker)</div>
                     </div>
                 </div>
                 <div class="requirement-item">
                     <span class="requirement-icon">🌐</span>
                     <div class="requirement-text">
-                        <div class="requirement-label" data-i18n="internet">Internet</div>
-                        <div class="requirement-value">100 Mbps+ stable connection</div>
+                        <div class="requirement-label">Network</div>
+                        <div class="requirement-value">Open inbound TCP 8001, outbound HTTPS. Configure PUBLIC_HOST/PUBLIC_PORT behind NAT/proxy.</div>
                     </div>
                 </div>
                 <div class="requirement-item">
-                    <span class="requirement-icon">🐳</span>
+                    <span class="requirement-icon">🔑</span>
                     <div class="requirement-text">
-                        <div class="requirement-label" data-i18n="software">Software</div>
-                        <div class="requirement-value">Docker & NVIDIA drivers</div>
+                        <div class="requirement-label">Credentials</div>
+                        <div class="requirement-value">JOIN_CODE required only at first run. Credentials saved to /data/credentials.json (0600).</div>
+                    </div>
+                </div>
+                <div class="requirement-item">
+                    <span class="requirement-icon">🐍</span>
+                    <div class="requirement-text">
+                        <div class="requirement-label">Software (Source)</div>
+                        <div class="requirement-value">Python 3.10-3.11, git, make/pip</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Quick Setup Guide Section (Docker) -->
-    <div class="feature-section alt-background" style="opacity: 0.7;">
-        <div class="section-container">
-            <div class="section-header">
-                <h2 class="section-title">🚀 Quick Setup with Docker (Coming Soon)</h2>
-                <p class="section-subtitle">How you'll join the network when it launches</p>
-                <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.5); border-radius: 8px; padding: 12px; margin-top: 16px;">
-                    <p style="margin: 0; color: var(--color-text-primary);">
-                        ⚠️ <strong>Note:</strong> These instructions are for preview only. The JOIN_CODE system is not yet active.
-                    </p>
+    <!-- Docker Tab Content -->
+    <div id="docker-tab" class="tab-content active" role="tabpanel" aria-labelledby="tab-docker">
+        <div class="feature-section alt-background">
+            <div class="section-container">
+                <div class="section-header">
+                    <h2 class="section-title">🚀 Docker Quick Start</h2>
+                    <p class="section-subtitle">The easiest way to run a node</p>
                 </div>
-            </div>
-            
-            <!-- Quick link to Common Concepts -->
-            <div style="text-align: center; margin-bottom: 20px; padding: 12px; background: rgba(59, 130, 246, 0.05); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.2);">
-                <p style="margin: 0; color: var(--color-text-secondary);">
-                    👉 Need more details? See <a href="#common-concepts" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">📚 Common Concepts</a> for API endpoints, security notes, and credential management
-                </p>
-            </div>
-            <div class="setup-steps">
-                <div class="setup-step">
-                    <div class="step-title">Step 1: Get Your JOIN_CODE</div>
-                    <div class="step-description">Request a one-time enrollment code</div>
-                    <div style="padding: 16px; background: rgba(59, 130, 246, 0.03); border-radius: 8px; border-left: 4px solid #3b82f6; margin-top: 12px;">
-                        <button onclick="alert('The JOIN_CODE system will be available when the network launches in Q4 2025.')" style="
-                            background: #9ca3af;
-                            color: var(--color-background);
-                            border: none;
-                            padding: 10px 20px;
-                            border-radius: 6px;
-                            cursor: not-allowed;
-                            font-weight: 600;
-                            margin-bottom: 12px;
-                            opacity: 0.6;
-                        " id="joinCodeBtn" disabled>
-                            Request Join Code (Coming Soon)
-                        </button>
-                        <div id="joinCodeResult" style="display: none; margin-top: 12px; padding: 12px; background: rgba(34, 197, 94, 0.03); border-radius: 6px;">
-                            <strong>Your Join Code:</strong> <code id="joinCodeDisplay" style="font-size: 1.2em; font-weight: bold;"></code><br>
-                            <small style="color: var(--color-text-secondary);">Valid for 30 minutes. Use it in Step 4 below.</small>
+                
+                <div class="setup-steps">
+                    <div class="setup-step">
+                        <div class="step-title">Get JOIN_CODE</div>
+                        <div class="step-description">Request a one-time enrollment code (valid for 30 minutes)</div>
+                        <div style="padding: 16px; background: rgba(59, 130, 246, 0.03); border-radius: 8px; border-left: 4px solid #3b82f6; margin-top: 12px;">
+                            <button onclick="requestJoinCode()" style="
+                                background: var(--color-primary);
+                                color: var(--color-background);
+                                border: none;
+                                padding: 10px 20px;
+                                border-radius: 6px;
+                                cursor: pointer;
+                                font-weight: 600;
+                                margin-bottom: 12px;
+                            " id="joinCodeBtn">
+                                Request Join Code
+                            </button>
+                            <div id="joinCodeResult" style="display: none; margin-top: 12px; padding: 12px; background: rgba(34, 197, 94, 0.03); border-radius: 6px;">
+                                <strong>Your Join Code:</strong> <code id="joinCodeDisplay" style="font-size: 1.2em; font-weight: bold;"></code><br>
+                                <small style="color: var(--color-text-secondary);">Valid for 30 minutes. Use it in Step 3 below.</small>
+                            </div>
+                            <p style="margin-top: 12px; font-size: 0.9rem; color: var(--color-text-secondary);">
+                                <em>Note: Preview only - join code issuance not yet active in production</em>
+                            </p>
                         </div>
-                        <p style="margin-top: 12px; font-size: 0.9rem; color: var(--color-text-secondary);">
-                            <em>See Common Concepts below for details on JOIN_CODE and credentials.</em>
+                    </div>
+
+                    <div class="setup-step">
+                        <div class="step-title">Prepare directories and firewall</div>
+                        <div class="step-description">Set up persistent storage and network security</div>
+                        <div class="code-block">
+                            # Create data directory for credentials and blockchain data<br>
+                            sudo mkdir -p /var/lib/blyan/data<br>
+                            sudo chmod 755 /var/lib/blyan<br>
+                            sudo chown $USER:$USER /var/lib/blyan/data<br><br>
+                            
+                            # Configure firewall (if using UFW)<br>
+                            sudo ufw allow 8001/tcp comment 'Blyan Node'<br>
+                            sudo ufw --force enable
+                        </div>
+                        <p style="margin-top: 12px; padding: 12px; background: rgba(59, 130, 246, 0.03); border-radius: 6px;">
+                            💡 <strong>Security Tip:</strong> Consider using a dedicated user account for running the node. The node runs as non-root inside the container.
+                        </p>
+                    </div>
+
+                    <div class="setup-step">
+                        <div class="step-title">Run the node</div>
+                        <div class="step-description">Start your node with Docker (use your JOIN_CODE from Step 1)</div>
+                        <div class="code-block">
+                            docker run -d --name blyan-node \<br>
+                            &nbsp;&nbsp;--gpus all \<br>
+                            &nbsp;&nbsp;-p 8001:8001 \<br>
+                            &nbsp;&nbsp;-v /var/lib/blyan/data:/data \<br>
+                            &nbsp;&nbsp;-e JOIN_CODE=<span style="color: #ef4444;">YOUR_CODE_HERE</span> \<br>
+                            &nbsp;&nbsp;-e MAIN_NODE_URL=https://api.blyan.com \<br>
+                            &nbsp;&nbsp;-e PUBLIC_HOST=$(curl -s https://checkip.amazonaws.com) \<br>
+                            &nbsp;&nbsp;-e PUBLIC_PORT=8001 \<br>
+                            &nbsp;&nbsp;-e JOB_CAPACITY=1 \<br>
+                            &nbsp;&nbsp;-e NODE_ENV=production \<br>
+                            &nbsp;&nbsp;--restart unless-stopped \<br>
+                            &nbsp;&nbsp;mnls0115/blyan-node:latest
+                        </div>
+                        <p style="margin-top: 12px; padding: 12px; background: rgba(245, 158, 11, 0.03); border-radius: 6px;">
+                            💡 <strong>CPU-only note:</strong> Omit <code>--gpus all</code> if you don't have NVIDIA GPU/drivers.
+                        </p>
+                        <div style="margin-top: 16px; padding: 12px; background: rgba(59, 130, 246, 0.03); border-radius: 8px;">
+                            <strong>Alternative:</strong> Use docker-compose for easier management
+                            <div class="code-block" style="margin-top: 12px;">
+                                # Prepare environment (first run only)<br>
+                                export JOIN_CODE=YOUR_CODE_HERE<br>
+                                export DATA_DIR=/var/lib/blyan/data  # optional override<br><br>
+
+                                # Start services from docker-compose.yml<br>
+                                docker-compose up -d
+                            </div>
+                            <small style="color: var(--color-text-secondary);">Tip: After first enrollment, you can unset JOIN_CODE; credentials are persisted in the data volume.</small>
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <div class="step-title">Verify node status</div>
+                        <div class="step-description">Check enrollment, model loading, and API readiness</div>
+                        <div class="code-block">
+                            # Check logs for enrollment success and model loading<br>
+                            docker logs -f blyan-node<br>
+                            # Look for: "Enrollment successful", "Model manager ready"<br><br>
+                            
+                            # Test health endpoint<br>
+                            curl http://localhost:8001/health<br>
+                            # Expect: {"status":"healthy","model_ready":true}<br><br>
+                            
+                            # Test inference (optional)<br>
+                            curl -X POST http://localhost:8001/chat \<br>
+                            &nbsp;&nbsp;-H 'Content-Type: application/json' \<br>
+                            &nbsp;&nbsp;-d '{"prompt":"Hello","max_new_tokens":16}'<br><br>
+                            
+                            # Verify credentials are secure<br>
+                            docker exec blyan-node ls -l /data/credentials.json<br>
+                            # Should show: -rw------- (600 permissions)
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <div class="step-title">Restarting your node</div>
+                        <div class="step-description">No JOIN_CODE needed after first enrollment!</div>
+                        <div class="code-block">
+                            # Simple restart (uses saved credentials)<br>
+                            docker restart blyan-node<br><br>
+                            
+                            # View logs after restart<br>
+                            docker logs -f blyan-node
+                        </div>
+                        <p style="margin-top: 12px; padding: 12px; background: rgba(34, 197, 94, 0.03); border-radius: 6px;">
+                            ✅ After first enrollment, your node has permanent credentials in <code>/data/credentials.json</code>. These are loaded automatically on every restart.
                         </p>
                     </div>
                 </div>
-                <div class="setup-step">
-                    <div class="step-title">Step 2: Pull the Docker Image</div>
-                    <div class="step-description">Download the official Blyan node image</div>
-                    <div class="code-block">
-                        docker pull mnls0115/blyan-node:latest
-                    </div>
+
+                <!-- Troubleshooting -->
+                <div style="margin-top: 40px; padding: 24px; background: rgba(245, 158, 11, 0.03); border-radius: 12px;">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary);">⚠️ Troubleshooting</h3>
+                    <ul style="color: var(--color-text-secondary);">
+                        <li><strong>Port in use:</strong> Change <code>-p 8001:8001</code> to <code>-p 8002:8001</code> to use port 8002</li>
+                        <li><strong>JOIN_CODE expired:</strong> Request a new code (they expire after 30 minutes)</li>
+                        <li><strong>Behind NAT:</strong> Ensure port forwarding is configured and PUBLIC_HOST is set correctly</li>
+                        <li><strong>VRAM OOM:</strong> Lower JOB_CAPACITY to 0 or remove GPU flag</li>
+                        <li><strong>Redis warnings:</strong> These are OK for nodes - only the main server needs Redis</li>
+                    </ul>
                 </div>
-                <div class="setup-step">
-                    <div class="step-title">Step 3: Prepare Your Environment</div>
-                    <div class="step-description">Set up persistent storage and networking with security hardening</div>
-                    <div class="code-block">
-                        # Create data directory for credentials<br>
-                        sudo mkdir -p /var/lib/blyan/data<br>
-                        sudo chmod 755 /var/lib/blyan<br>
-                        sudo chown $USER:$USER /var/lib/blyan/data<br><br>
-                        
-                        # Configure firewall (UFW)<br>
-                        sudo ufw allow 8001/tcp comment 'Blyan Node'<br>
-                        sudo ufw limit ssh comment 'Rate limit SSH'<br>
-                        sudo ufw --force enable<br><br>
-                        
-                        # Optional: Set up fail2ban for additional protection<br>
-                        sudo apt-get install -y fail2ban
-                    </div>
-                    <p style="margin-top: 12px; padding: 12px; background: rgba(59, 130, 246, 0.03); border-radius: 6px;">
-                        💡 <strong>Security Tip:</strong> Consider using a dedicated user account for running the node instead of root.
-                    </p>
-                </div>
-                <div class="setup-step">
-                    <div class="step-title">Step 4: Run Your Node</div>
-                    <div class="step-description">Start the node with your JOIN_CODE from Step 1</div>
-                    <div class="code-block">
-                        docker run -d --name blyan-node \<br>
-                        &nbsp;&nbsp;--gpus all \<br>
-                        &nbsp;&nbsp;-p 8001:8001 \<br>
-                        &nbsp;&nbsp;-v /var/lib/blyan/data:/data \<br>
-                        &nbsp;&nbsp;-e JOIN_CODE=<span style="color: #ef4444;">YOUR_CODE_HERE</span> \<br>
-                        &nbsp;&nbsp;-e PUBLIC_IP=$(curl -s https://checkip.amazonaws.com) \<br>
-                        &nbsp;&nbsp;--restart unless-stopped \<br>
-                        &nbsp;&nbsp;mnls0115/blyan-node:latest
-                    </div>
-                    <p style="margin-top: 12px; padding: 12px; background: rgba(59, 130, 246, 0.03); border-radius: 6px; color: var(--color-text-secondary);">
-                        💡 <strong>GPU Note:</strong> Omit <code>--gpus all</code> if you don't have NVIDIA GPU/drivers.
-                    </p>
-                </div>
-                <div class="setup-step">
-                    <div class="step-title">Step 5: Verify Enrollment & Security Status</div>
-                    <div class="step-description">Confirm successful network registration and security configuration</div>
-                    <div class="code-block">
-                        # Check enrollment status<br>
-                        docker logs blyan-node | grep -E "enrollment|credentials"<br><br>
-                        
-                        # Verify credential permissions<br>
-                        docker exec blyan-node ls -la /data/credentials.json<br>
-                        # Should show: -rw------- (600)<br><br>
-                        
-                        # Test health endpoint<br>
-                        curl http://localhost:8001/<br><br>
-                        
-                        # Check security headers<br>
-                        curl -I http://localhost:8001/
-                    </div>
-                    <div class="code-block" style="margin-top: 12px; background: rgba(34, 197, 94, 0.03); border-left: 4px solid #22c55e;">
-                        ✓ JOIN_CODE validated successfully<br>
-                        ✓ Node credentials obtained (node_id: gpu-xxxx)<br>
-                        ✓ Credentials saved with correct permissions (600)<br>
-                        ✓ Security headers configured<br>
-                        ✓ Ready for inference requests
-                    </div>
-                    <p style="margin-top: 12px; padding: 12px; background: rgba(245, 158, 11, 0.03); border-radius: 6px;">
-                        ⚠️ <strong>Security Check:</strong> If credentials show wrong permissions, run: <code>docker exec blyan-node chmod 600 /data/credentials.json</code>
-                    </p>
-                </div>
-                <div class="setup-step">
-                    <div class="step-title">Step 6: Restarting Your Node</div>
-                    <div class="step-description">How to stop, start, and restart your node</div>
-                    <div style="padding: 16px; background: rgba(34, 197, 94, 0.03); border-radius: 8px; margin-top: 12px;">
-                        <p style="margin: 0 0 12px 0; color: var(--color-text-primary); font-weight: 600;">
-                            ✨ No JOIN_CODE needed for restarts!
-                        </p>
-                        <p style="margin: 0 0 12px 0; color: var(--color-text-secondary);">
-                            After the first enrollment, your node has permanent credentials stored in <code>/data/credentials.json</code>. 
-                            These are automatically loaded on every restart.
-                        </p>
-                    </div>
-                    <div class="code-block" style="margin-top: 12px;">
-                        # Simple restart<br>
-                        docker restart blyan-node<br><br>
-                        
-                        # Or manual stop/start<br>
-                        docker stop blyan-node<br>
-                        docker start blyan-node<br><br>
-                        
-                        # View logs after restart<br>
-                        docker logs -f blyan-node
-                    </div>
-                    <div style="margin-top: 12px; padding: 12px; background: rgba(245, 158, 11, 0.03); border-radius: 6px;">
-                        <p style="margin: 0 0 8px 0;"><strong>⚠️ When you need a new JOIN_CODE:</strong></p>
-                        <p style="margin: 0 0 4px 0;">• If you delete <code>/var/lib/blyan/data</code> directory</p>
-                        <p style="margin: 0 0 4px 0;">• If you move to a new machine without copying credentials</p>
-                        <p style="margin: 0;">• If credentials expire (after 90 days)</p>
-                    </div>
+
+                <!-- What Happens After Connection -->
+                <div style="margin-top: 40px; padding: 24px; background: rgba(59, 130, 246, 0.03); border-radius: 12px;">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary);">🔄 What Happens After Connection</h3>
+                    <ul style="color: var(--color-text-secondary);">
+                        <li><strong>Enrollment:</strong> Node calls <code>/api/p2p/enroll</code> with JOIN_CODE → receives node_id/node_key</li>
+                        <li><strong>Registration:</strong> Node calls <code>/api/p2p/register</code> with GPU info and capacity</li>
+                        <li><strong>Parameter sync:</strong> Param index rebuild and potential auto-upload (if AUTO_UPLOAD=true)</li>
+                        <li><strong>Model manager:</strong> Loads model from blockchain-first, uses BF16 precision, no local/HF models in production</li>
+                        <li><strong>API ready:</strong> Node serves on :8001 with endpoints: /health, /metrics, /chat</li>
+                    </ul>
                 </div>
             </div>
-            <div style="margin-top: 30px; padding: 20px; background: rgba(34, 197, 94, 0.03); border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.3);">
-                <p style="margin: 0; color: var(--color-text-primary); font-weight: 600;">
-                    ✅ That's it! Your node is now part of the Blyan network.
-                </p>
+        </div>
+    </div>
+
+    <!-- Source Tab Content -->
+    <div id="source-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-source">
+        <div class="feature-section alt-background">
+            <div class="section-container">
+                <div class="section-header">
+                    <h2 class="section-title">📦 Source Installation (Advanced)</h2>
+                    <p class="section-subtitle">Run directly from source code for development</p>
+                </div>
+                
+                <div class="setup-steps">
+                    <div class="setup-step">
+                        <div class="step-title">Clone and install</div>
+                        <div class="step-description">Get the source code and set up dependencies</div>
+                        <div class="code-block">
+                            # Clone repository<br>
+                            git clone https://github.com/mnls0115/Blyan.git<br>
+                            cd Blyan<br><br>
+                            
+                            # Create virtual environment<br>
+                            python3 -m venv .venv<br>
+                            source .venv/bin/activate<br><br>
+                            
+                            # Install dependencies<br>
+                            make install<br>
+                            # Or: pip install -r requirements.txt
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <div class="step-title">Configure environment</div>
+                        <div class="step-description">Set up environment variables for development</div>
+                        <div class="code-block">
+                            # Basic configuration<br>
+                            export NODE_ENV=development<br>
+                            export BLYAN_DATA_DIR=./data<br>
+                            export MAIN_NODE_URL=http://127.0.0.1:8000<br>
+                            export JOB_CAPACITY=1<br><br>
+                            
+                            # Development flags (optional)<br>
+                            export SKIP_POW=true  # Skip proof-of-work in dev<br>
+                            export ENABLE_POL=true  # Enable proof-of-learning<br><br>
+                            
+                            # For first run, you need JOIN_CODE<br>
+                            export JOIN_CODE=YOUR_CODE_HERE
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <div class="step-title">Start services</div>
+                        <div class="step-description">Run the API server and GPU node</div>
+                        <div class="code-block">
+                            # Start API server (optional, for local testing)<br>
+                            python -m api.server<br><br>
+                            
+                            # In another terminal, start the GPU node<br>
+                            python run_gpu_node.py
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <div class="step-title">Verify operation</div>
+                        <div class="step-description">Check that everything is working</div>
+                        <div class="code-block">
+                            # Test health endpoint<br>
+                            curl http://localhost:8001/health<br><br>
+                            
+                            # Test inference<br>
+                            curl -X POST http://localhost:8001/chat \<br>
+                            &nbsp;&nbsp;-H 'Content-Type: application/json' \<br>
+                            &nbsp;&nbsp;-d '{"prompt":"Hello","max_new_tokens":16}'<br><br>
+                            
+                            # Check credentials<br>
+                            ls -la ./data/credentials.json
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 40px; padding: 24px; background: rgba(245, 158, 11, 0.03); border-radius: 12px;">
+                    <h3 style="margin-top: 0; color: var(--color-text-primary);">📝 Development Notes</h3>
+                    <ul style="color: var(--color-text-secondary);">
+                        <li>Use <code>NODE_ENV=development</code> for verbose logging</li>
+                        <li>The API server is optional - nodes can connect to remote main server</li>
+                        <li>Credentials are saved to <code>BLYAN_DATA_DIR/credentials.json</code></li>
+                        <li>Set <code>SKIP_POW=true</code> to bypass proof-of-work in development</li>
+                        <li>Monitor GPU memory with <code>nvidia-smi -l 1</code></li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -600,382 +893,116 @@
                     <span class="collapse-icon" id="common-concepts-content-icon">▼</span>
                 </div>
                 <div class="collapsible-content" id="common-concepts-content" style="display: none;">
-                    <div class="setup-steps">
-                <!-- JOIN_CODE Flow -->
-                <div class="collapsible-section">
-                    <div class="collapsible-header" onclick="toggleSection('joincode-flow')">
-                        <div class="step-title">🔑 JOIN_CODE → Permanent Credentials Flow</div>
-                        <span class="collapse-icon" id="joincode-flow-icon">▼</span>
-                    </div>
-                    <div class="collapsible-content" id="joincode-flow" style="display: none;">
-                        <div class="step-description">How nodes authenticate with the network</div>
-                        <div style="padding: 16px; background: rgba(59, 130, 246, 0.05); border-radius: 8px; margin-top: 12px;">
-                            <p style="margin: 0 0 12px 0;"><strong>1. Request JOIN_CODE:</strong> Get a one-time code from this page (valid for 30 minutes)</p>
-                            <p style="margin: 0 0 12px 0;"><strong>2. First Boot:</strong> Node exchanges JOIN_CODE for permanent credentials</p>
-                            <p style="margin: 0 0 12px 0;"><strong>3. Credentials Stored:</strong> Node saves credentials to <code>/data/credentials.json</code></p>
-                            <p style="margin: 0;"><strong>4. Future Restarts:</strong> Node uses stored credentials automatically (no JOIN_CODE needed)</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Credential Storage -->
-                <div class="collapsible-section" style="margin-top: 20px;">
-                    <div class="collapsible-header" onclick="toggleSection('credential-storage')">
-                        <div class="step-title">📂 Credential Storage & Management</div>
-                        <span class="collapse-icon" id="credential-storage-icon">▼</span>
-                    </div>
-                    <div class="collapsible-content" id="credential-storage" style="display: none;">
-                        <div class="step-description">Where your node keeps its authentication</div>
-                    <div class="code-block">
-                        # Docker: Mounted volume<br>
-                        /var/lib/blyan/data → /data/credentials.json<br><br>
-                        
-                        # Binary/Source: Local directory<br>
-                        ./data/credentials.json<br><br>
-                        
-                        # Contents (auto-generated):<br>
-                        {<br>
-                        &nbsp;&nbsp;"node_id": "gpu-xxxx-yyyy",<br>
-                        &nbsp;&nbsp;"node_key": "secret_key_here",<br>
-                        &nbsp;&nbsp;"expires_at": "2024-04-01T00:00:00Z"<br>
-                        }
-                    </div>
-                    <div style="margin-top: 12px; padding: 12px; background: rgba(220, 38, 38, 0.03); border-radius: 6px; border: 1px solid rgba(220, 38, 38, 0.3);">
-                        <p style="margin: 0 0 8px 0;"><strong>⚠️ Critical Security Requirements:</strong></p>
-                        <p style="margin: 0 0 4px 0; font-size: 0.9rem;">• <strong>File Permissions:</strong> Must be <code>chmod 600</code> (owner read/write only)</p>
-                        <p style="margin: 0 0 4px 0; font-size: 0.9rem;">• <strong>Credential Renewal:</strong> Expires after 90 days - monitor expiry date</p>
-                        <p style="margin: 0 0 4px 0; font-size: 0.9rem;">• <strong>Backup Security:</strong> Encrypt backups and store offline</p>
-                        <p style="margin: 0; font-size: 0.9rem;">• <strong>Never:</strong> Commit to git, share publicly, or transmit unencrypted</p>
-                    </div>
-                        <p style="margin-top: 12px; padding: 12px; background: rgba(245, 158, 11, 0.03); border-radius: 6px;">
-                            💡 <strong>Tip:</strong> Set up monitoring to alert you 7 days before credential expiry.
-                        </p>
-                    </div>
-                </div>
-                
-                <!-- API Endpoints -->
-                <div class="collapsible-section" style="margin-top: 20px;">
-                    <div class="collapsible-header" onclick="toggleSection('api-endpoints')">
-                        <div class="step-title">🌐 API Endpoints & Ports</div>
-                        <span class="collapse-icon" id="api-endpoints-icon">▼</span>
-                    </div>
-                    <div class="collapsible-content" id="api-endpoints" style="display: none;">
-                        <div class="step-description">Network communication details</div>
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
-                        <tr style="border-bottom: 1px solid var(--color-divider);">
-                            <td style="padding: 8px;"><strong>Main Server:</strong></td>
-                            <td style="padding: 8px;"><code>https://blyan.com/api</code></td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--color-divider);">
-                            <td style="padding: 8px;"><strong>Node API Port:</strong></td>
-                            <td style="padding: 8px;"><code>8001</code> (your node's service)</td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--color-divider);">
-                            <td style="padding: 8px;"><strong>Health Check:</strong></td>
-                            <td style="padding: 8px;"><code>GET http://localhost:8001/</code></td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px;"><strong>Enrollment:</strong></td>
-                            <td style="padding: 8px;"><code>POST /p2p/enroll</code> (automatic)</td>
-                        </tr>
+                    
+                    <!-- Environment Variables -->
+                    <div style="margin-bottom: 24px; padding: 20px; background: rgba(59, 130, 246, 0.03); border-radius: 8px;">
+                        <h3 style="margin-top: 0; color: var(--color-text-primary);">🔧 Environment Variables</h3>
+                        <table style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+                            <tr style="border-bottom: 1px solid var(--color-divider);">
+                                <td style="padding: 8px; font-weight: 600;">JOIN_CODE</td>
+                                <td style="padding: 8px;">One-time enrollment code (first run only)</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--color-divider);">
+                                <td style="padding: 8px; font-weight: 600;">BLYAN_DATA_DIR</td>
+                                <td style="padding: 8px;">Data directory for blockchain and credentials</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--color-divider);">
+                                <td style="padding: 8px; font-weight: 600;">MAIN_NODE_URL</td>
+                                <td style="padding: 8px;">Main server URL (default: https://api.blyan.com)</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--color-divider);">
+                                <td style="padding: 8px; font-weight: 600;">PUBLIC_HOST</td>
+                                <td style="padding: 8px;">Your public IP address for P2P connections</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--color-divider);">
+                                <td style="padding: 8px; font-weight: 600;">PUBLIC_PORT</td>
+                                <td style="padding: 8px;">Public port for your node (default: 8001)</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--color-divider);">
+                                <td style="padding: 8px; font-weight: 600;">JOB_CAPACITY</td>
+                                <td style="padding: 8px;">Number of concurrent jobs (0-10, based on VRAM)</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--color-divider);">
+                                <td style="padding: 8px; font-weight: 600;">NODE_ENV</td>
+                                <td style="padding: 8px;">production or development</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--color-divider);">
+                                <td style="padding: 8px; font-weight: 600;">SKIP_POW</td>
+                                <td style="padding: 8px;">(Dev only) Skip proof-of-work validation</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; font-weight: 600;">ENABLE_POL</td>
+                                <td style="padding: 8px;">(Dev only) Enable proof-of-learning</td>
+                            </tr>
                         </table>
                     </div>
-                </div>
-                
-                <!-- Security Notes -->
-                <div class="collapsible-section" style="margin-top: 20px;">
-                    <div class="collapsible-header" onclick="toggleSection('security-practices')">
-                        <div class="step-title">🔒 Security Best Practices</div>
-                        <span class="collapse-icon" id="security-practices-icon">▼</span>
-                    </div>
-                    <div class="collapsible-content" id="security-practices" style="display: none;">
-                        <div class="step-description">Essential security measures for production deployment</div>
-                    
-                    <!-- Authentication Security -->
-                    <div style="padding: 16px; background: rgba(220, 38, 38, 0.03); border-radius: 8px; margin-top: 12px;">
-                        <h4 style="margin: 0 0 12px 0; color: var(--color-text-primary);">🔐 Authentication & Credentials</h4>
-                        <p style="margin: 0 0 8px 0;">• <strong>JOIN_CODE:</strong> Single-use, 30-minute expiry, rate-limited generation</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Node Credentials:</strong> 90-day validity with JWT-based authentication</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>File Permissions:</strong> Always <code>chmod 600 /data/credentials.json</code></p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Key Rotation:</strong> Monitor expiry and renew before expiration</p>
-                        <p style="margin: 0;">• <strong>Secret Management:</strong> Use environment variables, never hardcode</p>
-                    </div>
-                    
-                    <!-- Network Security -->
-                    <div style="padding: 16px; background: rgba(59, 130, 246, 0.03); border-radius: 8px; margin-top: 12px;">
-                        <h4 style="margin: 0 0 12px 0; color: var(--color-text-primary);">🌐 Network & API Security</h4>
-                        <p style="margin: 0 0 8px 0;">• <strong>TLS/SSL:</strong> All API communications use HTTPS encryption</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Firewall Rules:</strong> Only open port 8001 for node service</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>IP Whitelisting:</strong> Consider restricting main server access</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>DDoS Protection:</strong> Implement rate limiting at network level</p>
-                        <p style="margin: 0;">• <strong>VPN Option:</strong> Use VPN for additional network isolation</p>
-                    </div>
-                    
-                    <!-- Container Security -->
-                    <div style="padding: 16px; background: rgba(34, 197, 94, 0.03); border-radius: 8px; margin-top: 12px;">
-                        <h4 style="margin: 0 0 12px 0; color: var(--color-text-primary);">🐳 Container & Runtime Security</h4>
-                        <p style="margin: 0 0 8px 0;">• <strong>Non-Root User:</strong> Container runs as non-privileged user</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Read-Only Filesystem:</strong> Only /data is writable</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Resource Limits:</strong> Set CPU/memory limits to prevent abuse</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Security Scanning:</strong> Regular vulnerability scans on images</p>
-                        <p style="margin: 0;">• <strong>Update Policy:</strong> Pull latest images weekly for patches</p>
-                    </div>
-                    
-                    <!-- Logging & Monitoring -->
-                    <div style="padding: 16px; background: rgba(245, 158, 11, 0.03); border-radius: 8px; margin-top: 12px;">
-                        <h4 style="margin: 0 0 12px 0; color: var(--color-text-primary);">📊 Logging & Monitoring</h4>
-                        <p style="margin: 0 0 8px 0;">• <strong>Log Security:</strong> Logs never contain keys or sensitive data</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Audit Trail:</strong> All enrollment/authentication attempts logged</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Health Monitoring:</strong> Regular health checks on /health endpoint</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Anomaly Detection:</strong> Monitor for unusual request patterns</p>
-                        <p style="margin: 0;">• <strong>Log Retention:</strong> Keep logs for 30 days for security analysis</p>
-                    </div>
-                    
-                    <!-- Incident Response -->
-                    <div style="padding: 16px; background: rgba(220, 38, 38, 0.03); border-radius: 8px; margin-top: 12px; border: 2px solid rgba(220, 38, 38, 0.3);">
-                        <h4 style="margin: 0 0 12px 0; color: #dc2626; display: flex; align-items: center; gap: 8px;">
-                            <span style="background: #dc2626; color: white; border-radius: 12px; padding: 2px 8px; font-size: 0.75rem; font-weight: 600;">CRITICAL</span>
-                            🚨 Incident Response Plan
-                        </h4>
-                        <p style="margin: 0 0 8px 0; font-weight: 600; color: #dc2626;">• <strong>Compromised Key:</strong> Immediately request new JOIN_CODE and re-enroll</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Suspicious Activity:</strong> Contact <a href="mailto:mnls0115@naver.com" style="color: #dc2626; font-weight: 600;">mnls0115@naver.com</a></p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Node Quarantine:</strong> Automatic isolation of suspicious nodes</p>
-                        <p style="margin: 0 0 8px 0;">• <strong>Recovery Process:</strong> Documented steps for credential rotation</p>
-                        <p style="margin: 0;">• <strong>Security Updates:</strong> Subscribe to security announcements</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Restart Behavior -->
-                <div class="collapsible-section" style="margin-top: 20px;">
-                    <div class="collapsible-header" onclick="toggleSection('restart-recovery')">
-                        <div class="step-title">♻️ Restart & Recovery</div>
-                        <span class="collapse-icon" id="restart-recovery-icon">▼</span>
-                    </div>
-                    <div class="collapsible-content" id="restart-recovery" style="display: none;">
-                        <div class="step-description">What happens when you restart</div>
-                    <div style="padding: 16px; background: rgba(34, 197, 94, 0.03); border-radius: 8px; margin-top: 12px;">
-                        <p style="margin: 0 0 12px 0;"><strong>✅ Normal Restart:</strong> Node uses existing credentials from <code>/data/credentials.json</code></p>
-                        <p style="margin: 0 0 12px 0;"><strong>✅ No JOIN_CODE Needed:</strong> After first enrollment, restarts work automatically</p>
-                        <p style="margin: 0 0 12px 0;"><strong>⚠️ New Machine:</strong> Copy credentials or request new JOIN_CODE</p>
-                            <p style="margin: 0;"><strong>❌ Lost Data:</strong> If <code>/data</code> deleted, request new JOIN_CODE</p>
-                        </div>
-                    </div>
-                </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Advanced Installation Section (Collapsible) -->
-    <div class="feature-section" style="padding-top: 40px;">
-        <div class="section-container">
-            <div class="collapsible-section">
-                <div class="collapsible-header" onclick="toggleSection('advanced-install')">
-                    <h2 class="section-title">⚙️ Advanced Installation (Optional)</h2>
-                    <span class="collapse-icon" id="advanced-install-icon">▼</span>
-                </div>
-                <div class="collapsible-content" id="advanced-install" style="display: none;">
-                    <p class="section-subtitle" style="margin-bottom: 15px;">Alternative installation methods for binary and source deployments</p>
-                    
-                    <div style="margin-bottom: 20px; padding: 16px; background: rgba(245, 158, 11, 0.03); border-radius: 8px; border: 2px solid #f59e0b;">
-                        <h4 style="margin-top: 0; color: #f59e0b;">📦 Binary/Source Requirements</h4>
-                        <p style="margin-bottom: 8px; color: var(--color-text-primary);">
-                            <strong>For non-Docker deployments, you need a direct API key:</strong>
-                        </p>
-                        <p style="margin: 0; color: var(--color-text-secondary);">
-                            • Email <a href="mailto:mnls0115@naver.com" style="color: var(--color-primary);">mnls0115@naver.com</a> with your GPU specs<br>
-                            • Receive your API key (valid for 90 days)<br>
-                            • Configure as environment variable: <code>export BLYAN_API_KEY=your_key</code>
-                        </p>
-                        <p style="margin-top: 8px; font-size: 0.9rem; color: var(--color-text-secondary);">
-                            <em>See Common Concepts above for API endpoints and security notes.</em>
+                    <!-- Credential Flow -->
+                    <div style="margin-bottom: 24px; padding: 20px; background: rgba(34, 197, 94, 0.03); border-radius: 8px;">
+                        <h3 style="margin-top: 0; color: var(--color-text-primary);">🔑 Authentication Flow</h3>
+                        <ol style="color: var(--color-text-secondary);">
+                            <li><strong>Request JOIN_CODE:</strong> Get a one-time code (valid 30 minutes)</li>
+                            <li><strong>First boot:</strong> Node exchanges JOIN_CODE for permanent credentials</li>
+                            <li><strong>Credentials stored:</strong> Saved to /data/credentials.json with 0600 permissions</li>
+                            <li><strong>Future restarts:</strong> Node uses stored credentials automatically</li>
+                        </ol>
+                        <p style="margin-top: 16px; padding: 12px; background: rgba(220, 38, 38, 0.03); border-radius: 6px;">
+                            ⚠️ <strong>Security:</strong> Never share or commit credentials.json. It contains your node's private key.
                         </p>
                     </div>
 
-                    <div class="setup-steps" style="margin-top: 20px;">
-                        <div class="setup-step">
-                            <div class="step-title">Option A: Signed Binaries</div>
-                            <div class="step-description">
-                                Pre-compiled binaries with GPG signatures
-                            </div>
-                            <div class="code-block">
-                                # 1. Get your API key (see above)<br>
-                                export BLYAN_API_KEY=your_api_key_here<br>
-                                export MAIN_SERVER_URL=https://blyan.com/api<br><br>
-                                
-                                # 2. Download and verify binary<br>
-                                wget https://releases.blyan.com/latest/blyan-node-linux-amd64<br>
-                                wget https://releases.blyan.com/latest/blyan-node-linux-amd64.sig<br>
-                                gpg --verify blyan-node-linux-amd64.sig blyan-node-linux-amd64<br><br>
-                                
-                                # 3. Run the node<br>
-                                chmod +x blyan-node-linux-amd64<br>
-                                ./blyan-node-linux-amd64
-                            </div>
-                            <p style="margin-top: 12px; padding: 8px; background: rgba(220, 38, 38, 0.03); border-radius: 4px;">
-                                🔒 Always verify GPG signatures before running binaries
-                            </p>
-                        </div>
-                        
-                        <div class="setup-step">
-                            <div class="step-title">Option B: From Source</div>
-                            <div class="step-description">
-                                Clone repository and run with Python
-                            </div>
-                            <div class="code-block">
-                                # 1. Clone the repository<br>
-                                git clone https://github.com/mnls0115/Blyan.git<br>
-                                cd Blyan<br><br>
-                                
-                                # 2. Set up environment<br>
-                                python3 -m venv venv<br>
-                                source venv/bin/activate<br>
-                                pip install -r requirements.txt<br><br>
-                                
-                                # 3. Configure credentials<br>
-                                export BLYAN_API_KEY=your_api_key_here<br>
-                                export MAIN_SERVER_URL=https://blyan.com/api<br>
-                                export PUBLIC_IP=$(curl -s https://checkip.amazonaws.com)<br><br>
-                                
-                                # 4. Run the node<br>
-                                python run_blyan_node.py
-                            </div>
-                        </div>
+                    <!-- API Endpoints -->
+                    <div style="margin-bottom: 24px; padding: 20px; background: rgba(245, 158, 11, 0.03); border-radius: 8px;">
+                        <h3 style="margin-top: 0; color: var(--color-text-primary);">🌐 Key Endpoints</h3>
+                        <ul style="color: var(--color-text-secondary);">
+                            <li><code>GET /health</code> - Node health status</li>
+                            <li><code>GET /metrics</code> - Performance metrics</li>
+                            <li><code>POST /chat</code> - Inference endpoint</li>
+                            <li><code>POST /api/p2p/enroll</code> - Initial enrollment (automatic)</li>
+                            <li><code>POST /api/p2p/register</code> - Register GPU capabilities (automatic)</li>
+                        </ul>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Developer Mode Section (Collapsible) -->
-    <div class="feature-section" style="padding-top: 40px;">
-        <div class="section-container">
-            <div class="collapsible-section">
-                <div class="collapsible-header" onclick="toggleSection('developer-mode')">
-                    <h2 class="section-title">🛠️ Developer Mode (For Contributors)</h2>
-                    <span class="collapse-icon" id="developer-mode-icon">▼</span>
-                </div>
-                <div class="collapsible-content" id="developer-mode" style="display: none;">
-                    <p class="section-subtitle" style="margin-bottom: 15px;">Run from source code for development and testing</p>
-                    
-                    <div style="margin-bottom: 20px; padding: 12px; background: rgba(245, 158, 11, 0.03); border-radius: 8px; border-left: 4px solid #f59e0b;">
-                        <p style="margin: 0; color: var(--color-text-primary);">
-                            ⚠️ <strong>For developers only:</strong> Runs from source code, may be unstable. Not recommended for production use.
+                    <!-- JOIN_CODE Note -->
+                    <div style="padding: 20px; background: rgba(59, 130, 246, 0.05); border-radius: 8px; border: 2px solid rgba(59, 130, 246, 0.3);">
+                        <h3 style="margin-top: 0; color: var(--color-text-primary);">📌 Important Note</h3>
+                        <p style="color: var(--color-text-secondary); margin: 0;">
+                            The JOIN_CODE system is currently in preview mode. Production code generation via <code>/api/p2p/join-code</code> 
+                            will be enabled when the network officially launches. For now, you can test the flow with mock codes.
                         </p>
                     </div>
-
-                    <div class="setup-steps" style="margin-top: 20px;">
-                        <div class="setup-step">
-                            <div class="step-title">Development Setup</div>
-                            <div class="step-description">
-                                Set up a local development environment
-                            </div>
-                            <div class="code-block">
-                                # Clone the repository<br>
-                                git clone https://github.com/mnls0115/Blyan.git<br>
-                                cd Blyan<br><br>
-                                
-                                # Create virtual environment<br>
-                                python3 -m venv venv<br>
-                                source venv/bin/activate<br><br>
-                                
-                                # Install dependencies<br>
-                                pip install -r requirements.txt<br><br>
-                                
-                                # Run in development mode<br>
-                                export NODE_ENV=development<br>
-                                python run_gpu_node.py
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Rewards Section -->
-    <div class="stats-section" style="opacity: 0.7;">
-        <div class="section-container">
-            <div class="section-header">
-                <h2 class="section-title" data-i18n="earningPotential">Planned Earning Potential</h2>
-                <p class="section-subtitle" data-i18n="earningPotentialDesc">Projected rewards when the network launches (subject to change)</p>
-            </div>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-number">~45 BLY</div>
-                    <div class="stat-label">RTX 3060 12GB / day</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-number">~80 BLY</div>
-                    <div class="stat-label">RTX 3080 / day</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-number">~120 BLY</div>
-                    <div class="stat-label">RTX 4070 Ti / day</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-number">~200 BLY</div>
-                    <div class="stat-label">RTX 4090 / day</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Support Section -->
-    <div class="feature-section" style="padding: 40px 0; background: rgba(59, 130, 246, 0.05);">
-        <div class="section-container">
-            <div style="text-align: center; padding: 20px;">
-                <h3 style="margin-bottom: 10px; color: var(--color-text-primary);">Need Help?</h3>
-                <p style="margin: 0; color: var(--color-text-secondary);">
-                    If you have any questions about setting up your node or need technical support, 
-                    feel free to reach out at <a href="mailto:mnls0115@naver.com" style="color: var(--color-primary); text-decoration: none; font-weight: 600;">mnls0115@naver.com</a>
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Join modal -->
+    <!-- Quick Start Modal -->
     <div id="joinModal" class="modal-overlay">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title" data-i18n="joinTheNetwork">Join the Network</h3>
+                <h3 class="modal-title">Quick Start Guide</h3>
                 <button id="joinClose" class="modal-close" aria-label="Close modal">✖</button>
             </div>
             <div id="joinBody" class="modal-body">
-                <p data-i18n="joinModalDesc">Quick reference for Docker setup:</p>
-                
-                <h4 style="margin-top: 20px; color: var(--color-primary);">🚀 Docker Quick Start</h4>
+                <p>Docker quick reference for running a node:</p>
                 
                 <div class="code-block">
-                    # 1. Get JOIN_CODE from this page (Request Join Code button)<br><br>
-                    
-                    # 2. Pull image<br>
-                    docker pull mnls0115/blyan-node:latest<br><br>
-                    
-                    # 3. Create data directory<br>
-                    sudo mkdir -p /var/lib/blyan/data<br><br>
-                    
-                    # 4. Run with JOIN_CODE (first time only)<br>
                     docker run -d --name blyan-node \<br>
                     &nbsp;&nbsp;--gpus all \<br>
                     &nbsp;&nbsp;-p 8001:8001 \<br>
                     &nbsp;&nbsp;-v /var/lib/blyan/data:/data \<br>
                     &nbsp;&nbsp;-e JOIN_CODE=YOUR_CODE_HERE \<br>
+                    &nbsp;&nbsp;-e MAIN_NODE_URL=https://api.blyan.com \<br>
+                    &nbsp;&nbsp;-e PUBLIC_HOST=$(curl -s https://checkip.amazonaws.com) \<br>
+                    &nbsp;&nbsp;-e PUBLIC_PORT=8001 \<br>
+                    &nbsp;&nbsp;-e JOB_CAPACITY=1 \<br>
+                    &nbsp;&nbsp;-e NODE_ENV=production \<br>
                     &nbsp;&nbsp;--restart unless-stopped \<br>
-                    &nbsp;&nbsp;mnls0115/blyan-node:latest<br><br>
-                    
-                    # 5. Verify<br>
-                    docker logs blyan-node
+                    &nbsp;&nbsp;mnls0115/blyan-node:latest
                 </div>
                 
-                <p style="margin-top:20px; padding: 16px; background: rgba(34, 197, 94, 0.03); border-radius: 8px; color: var(--color-text-primary);">
-                    ✅ <strong>Remember:</strong> JOIN_CODE is only needed for first enrollment. Future restarts use stored credentials automatically.
-                </p>
-                
-                <p style="margin-top:16px; text-align: center; color: var(--color-text-secondary);">
-                    See <strong>Common Concepts</strong> and full guide below for details.
+                <p style="margin-top:20px; padding: 16px; background: rgba(34, 197, 94, 0.03); border-radius: 8px;">
+                    ✅ Remember: JOIN_CODE is only needed for first enrollment. Future restarts use stored credentials automatically.
                 </p>
             </div>
         </div>
@@ -1008,7 +1035,7 @@
                 updateThemeIcon(newTheme);
             });
 
-            // Wire Join button
+            // Wire modal close button
             document.getElementById('joinClose').addEventListener('click', () => {
                 document.getElementById('joinModal').style.display = 'none';
             });
@@ -1021,6 +1048,36 @@
 
         function openJoinModal() {
             document.getElementById('joinModal').style.display = 'flex';
+        }
+
+        function selectTab(tab) {
+            // Update buttons
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(btn => {
+                btn.classList.remove('active');
+                btn.setAttribute('aria-selected', 'false');
+                btn.setAttribute('tabindex', '-1');
+            });
+            
+            // Update content
+            const contents = document.querySelectorAll('.tab-content');
+            contents.forEach(content => content.classList.remove('active'));
+            
+            if (tab === 'docker') {
+                const btn = document.getElementById('tab-docker');
+                const panel = document.getElementById('docker-tab');
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+                btn.setAttribute('tabindex', '0');
+                panel.classList.add('active');
+            } else {
+                const btn = document.getElementById('tab-source');
+                const panel = document.getElementById('source-tab');
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+                btn.setAttribute('tabindex', '0');
+                panel.classList.add('active');
+            }
         }
 
         function toggleSection(sectionId) {
@@ -1038,257 +1095,82 @@
             }
         }
         
-        function selectDeploymentMethod(method) {
-            const dockerBtn = document.getElementById('dockerMethodBtn');
-            const binaryBtn = document.getElementById('binaryMethodBtn');
-            const dockerDiv = document.getElementById('dockerMethod');
-            const binaryDiv = document.getElementById('binaryMethod');
-            
-            if (method === 'docker') {
-                // Show Docker method
-                dockerBtn.style.background = 'var(--color-primary)';
-                dockerBtn.style.color = 'var(--color-background)';
-                dockerBtn.style.borderColor = 'var(--color-primary)';
-                
-                binaryBtn.style.background = 'transparent';
-                binaryBtn.style.color = 'var(--color-text-primary)';
-                binaryBtn.style.borderColor = 'var(--color-divider)';
-                
-                dockerDiv.style.display = 'block';
-                binaryDiv.style.display = 'none';
-                
-                // Store preference
-                localStorage.setItem('blyan_deployment_method', 'docker');
-                
-            } else {
-                // Show Binary/Source method
-                binaryBtn.style.background = 'var(--color-primary)';
-                binaryBtn.style.color = 'var(--color-background)';
-                binaryBtn.style.borderColor = 'var(--color-primary)';
-                
-                dockerBtn.style.background = 'transparent';
-                dockerBtn.style.color = 'var(--color-text-primary)';
-                dockerBtn.style.borderColor = 'var(--color-divider)';
-                
-                dockerDiv.style.display = 'none';
-                binaryDiv.style.display = 'block';
-                
-                // Store preference
-                localStorage.setItem('blyan_deployment_method', 'binary');
-            }
-        }
-        
         async function requestJoinCode() {
             const btn = document.getElementById('joinCodeBtn');
             const resultDiv = document.getElementById('joinCodeResult');
             const codeDisplay = document.getElementById('joinCodeDisplay');
+            const note = document.querySelector('#joinCodeBtn')?.parentElement?.querySelector('p em');
             
-            // Disable button and show loading state
             btn.disabled = true;
-            btn.textContent = 'Requesting...';
+            btn.textContent = 'Generating...';
             
+            // Try production API first
             try {
-                // Request join code from server
-                const response = await fetch(`${API_CONFIG?.baseURL || '/api'}/p2p/join-code`, {
+                const apiBase = (window.API_CONFIG && API_CONFIG.baseURL) ? API_CONFIG.baseURL : '/api';
+                const response = await fetch(`${apiBase}/p2p/join-code`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        node_type: 'gpu',
-                        // Add simple client-side rate limiting
-                        timestamp: Date.now()
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ node_type: 'gpu' })
                 });
-                
                 if (response.ok) {
                     const data = await response.json();
-                    
-                    // Display the join code
-                    codeDisplay.textContent = data.join_code || '–';
-                    codeDisplay.classList.remove('is-expired');
+                    codeDisplay.textContent = data.join_code;
                     resultDiv.style.display = 'block';
-                    
-                    // Hide the request button since code is single-use
                     btn.style.display = 'none';
-                    
-                    // Store in session for convenience (not for security)
-                    sessionStorage.setItem('blyan_join_code', data.join_code);
-                    sessionStorage.setItem('blyan_join_code_expires', data.expires_at);
-                    
-                    // Show expiry countdown with new system
-                    const exp = parseExpiry(data.expires_at);
-                    renderCountdown(exp);
-                    
-                } else if (response.status === 429) {
-                    // Rate limited
-                    alert('Too many requests. Please wait a few minutes and try again.');
-                    btn.textContent = 'Request Join Code';
-                    btn.disabled = false;
-                } else {
-                    // Other error
-                    const error = await response.text();
-                    alert(`Failed to get join code: ${error}`);
-                    btn.textContent = 'Request Join Code';
-                    btn.disabled = false;
+                    const expires = Date.parse(data.expires_at);
+                    if (!isNaN(expires)) startExpiryCountdown(expires);
+                    if (note) note.textContent = 'Join code issued by API (production)';
+                    return;
                 }
-            } catch (error) {
-                console.error('Error requesting join code:', error);
-                alert('Network error. Please check your connection and try again.');
-                btn.textContent = 'Request Join Code';
-                btn.disabled = false;
+            } catch (e) {
+                console.warn('Join-code API unavailable, using preview code:', e);
             }
+
+            // Fallback to preview mock code
+            const mockCode = 'PREVIEW-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+            codeDisplay.textContent = mockCode;
+            resultDiv.style.display = 'block';
+            btn.style.display = 'none';
+            startExpiryCountdown(Date.now() + 30 * 60 * 1000);
+            if (note) note.textContent = 'Preview only - join code issuance not yet active in production';
         }
         
-        // Utility function for timestamp parsing
-        function parseExpiry(ts) {
-            if (!ts) return Date.now() + 30 * 60 * 1000;
-            if (typeof ts === 'number') {
-                const result = ts < 1e12 ? ts * 1000 : ts;
-                return result;
-            }
-            
-            // Handle timestamps without timezone (assume local time)
-            if (typeof ts === 'string' && !ts.includes('+') && !ts.includes('Z')) {
-                // If no timezone indicator, treat as local time by appending current offset
-                const localDate = new Date(ts);
-                if (!isNaN(localDate.getTime())) {
-                    return localDate.getTime();
-                }
-            }
-            
-            const t = Date.parse(ts);
-            // If parsing fails, default to 30 minutes from now
-            if (isNaN(t)) {
-                return Date.now() + 30 * 60 * 1000;
-            }
-            return t;
-        }
-        
-        // Global countdown interval to clear previous ones
         let countdownInterval = null;
         
-        function renderCountdown(expMs) {
-            const statusEl = document.getElementById('joinCodeResult');
-            const badgeEl = document.getElementById('joinCodeDisplay');
-            
-            // Clear previous interval
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-            }
-            
-            // Remove existing expiry messages
-            const existingExpiry = statusEl.querySelector('.expiry-message');
-            if (existingExpiry) {
-                existingExpiry.remove();
-            }
+        function startExpiryCountdown(expiresAt) {
+            if (countdownInterval) clearInterval(countdownInterval);
             
             const tick = () => {
                 const now = Date.now();
-                const left = expMs - now;
+                const left = expiresAt - now;
                 
-                // Add 10 second buffer to prevent false expiration due to clock drift
-                if (left <= -10000) {
-                    // Show expired message
-                    const expiryMsg = document.createElement('div');
-                    expiryMsg.className = 'expiry-message';
-                    expiryMsg.style.color = '#ef4444';
-                    expiryMsg.style.marginTop = '12px';
-                    expiryMsg.innerHTML = '⚠️ This code has expired. Please request a new one.';
-                    statusEl.appendChild(expiryMsg);
-                    
-                    if (badgeEl) badgeEl.classList.add('is-expired');
-                    
-                    // Show request button again
-                    const btn = document.getElementById('joinCodeBtn');
-                    if (btn) {
-                        btn.style.display = 'inline-block';
-                        btn.textContent = 'Request New Code';
-                        btn.disabled = false;
-                    }
-                    
+                if (left <= 0) {
+                    document.getElementById('joinCodeDisplay').classList.add('is-expired');
+                    document.getElementById('joinCodeBtn').style.display = 'inline-block';
+                    document.getElementById('joinCodeBtn').textContent = 'Request New Code';
+                    document.getElementById('joinCodeBtn').disabled = false;
                     clearInterval(countdownInterval);
                     return;
                 }
                 
-                // Handle negative time gracefully
-                const timeLeft = Math.max(0, left);
-                const m = Math.floor(timeLeft / 60000);
-                const s = Math.floor((timeLeft % 60000) / 1000);
+                const minutes = Math.floor(left / 60000);
+                const seconds = Math.floor((left % 60000) / 1000);
                 
-                // Update timer in the small element
-                let timerSpan = document.getElementById('joinCodeTimer');
-                if (!timerSpan) {
-                    timerSpan = document.createElement('span');
-                    timerSpan.id = 'joinCodeTimer';
+                const timerText = ` (${minutes}m ${seconds}s remaining)`;
+                const smallEl = document.querySelector('#joinCodeResult small');
+                if (smallEl && !smallEl.querySelector('.timer')) {
+                    const timerSpan = document.createElement('span');
+                    timerSpan.className = 'timer';
                     timerSpan.style.marginLeft = '10px';
-                    timerSpan.style.color = 'var(--color-text-secondary)';
-                    timerSpan.setAttribute('aria-live', 'polite');
-                    const smallElement = statusEl.querySelector('small');
-                    if (smallElement) {
-                        smallElement.appendChild(timerSpan);
-                    }
+                    smallEl.appendChild(timerSpan);
                 }
-                
-                if (timerSpan) {
-                    timerSpan.textContent = ` (${m}m ${s}s remaining)`;
-                }
+                const timerEl = document.querySelector('.timer');
+                if (timerEl) timerEl.textContent = timerText;
             };
             
             countdownInterval = setInterval(tick, 1000);
-            tick(); // Run immediately
+            tick();
         }
-        
-        function startExpiryCountdown(expiresAt) {
-            const exp = parseExpiry(expiresAt);
-            renderCountdown(exp);
-        }
-        
-        // Check if there's an existing join code in session on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedCode = sessionStorage.getItem('blyan_join_code');
-            const savedExpiry = sessionStorage.getItem('blyan_join_code_expires');
-            
-            if (savedCode && savedExpiry) {
-                const expiryTime = parseExpiry(savedExpiry);
-                const now = Date.now();
-                
-                // Add 10 second grace period for page reload
-                if (expiryTime > (now - 10000)) {
-                    // Code is still valid, display it
-                    document.getElementById('joinCodeDisplay').textContent = savedCode;
-                    document.getElementById('joinCodeResult').style.display = 'block';
-                    document.getElementById('joinCodeBtn').style.display = 'none';
-                    
-                    // Only start countdown if there's actually time left
-                    if (expiryTime > now) {
-                        startExpiryCountdown(savedExpiry);
-                    } else {
-                        // Code just expired, show expired message directly
-                        const statusEl = document.getElementById('joinCodeResult');
-                        const expiryMsg = document.createElement('div');
-                        expiryMsg.className = 'expiry-message';
-                        expiryMsg.style.color = '#ef4444';
-                        expiryMsg.style.marginTop = '12px';
-                        expiryMsg.innerHTML = '⚠️ This code has expired. Please request a new one.';
-                        statusEl.appendChild(expiryMsg);
-                        
-                        document.getElementById('joinCodeDisplay').classList.add('is-expired');
-                        
-                        const btn = document.getElementById('joinCodeBtn');
-                        if (btn) {
-                            btn.style.display = 'inline-block';
-                            btn.textContent = 'Request New Code';
-                        }
-                    }
-                } else {
-                    // Code expired, clear session
-                    sessionStorage.removeItem('blyan_join_code');
-                    sessionStorage.removeItem('blyan_join_code_expires');
-                }
-            }
-        });
-        
     </script>
 </body>
 </html>

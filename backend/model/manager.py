@@ -132,6 +132,19 @@ class UnifiedModelManager:
             self.param_index = ParameterIndex(self.root_dir / "param_index.json")
             self.delta_index = DeltaIndex(self.root_dir / "delta_index.json")
             
+            # Set model metadata for validation
+            from config.model_profile import MODEL_ID, LAYERS as MODEL_LAYERS
+            self.param_index.set_metadata(
+                model_id=MODEL_ID,
+                num_hidden_layers=MODEL_LAYERS["num_hidden_layers"],
+                vocab_size=MODEL_LAYERS.get("vocab_size", 0),
+                hidden_size=MODEL_LAYERS.get("hidden_size", 0)
+            )
+            
+            # Attempt rebuild if corrupted
+            if self.param_index.rebuild_if_corrupted(self.param_chain):
+                logger.info("   Rebuilt param_index from blockchain after corruption")
+            
             # Log what we found
             layers = self.param_index.get_all_layers()
             logger.info(f"   Found {len(layers)} layers in param_index")
@@ -487,10 +500,17 @@ class UnifiedModelManager:
             return None
     
     def _try_load_fused_snapshot(self) -> bool:
-        """Try to load from fused snapshot for instant boot."""
+        """Try to load from fused snapshot for instant boot with model validation."""
         if os.getenv("ENABLE_FUSED_SNAPSHOT", "true").lower() != "true":
             return False
         if os.getenv("SNAPSHOT_DISABLE", "false").lower() == "true":
+            return False
+        
+        # First validate param_index against current model
+        from config.model_profile import MODEL_ID, LAYERS
+        if self.param_index.invalidate_if_model_changed(MODEL_ID, LAYERS["num_hidden_layers"]):
+            logger.info("Model configuration changed - snapshots invalidated")
+            self._cleanup_old_snapshots()
             return False
         
         # Compute current snapshot key from param_index
@@ -512,9 +532,12 @@ class UnifiedModelManager:
                     with open(metadata_path, 'r') as f:
                         metadata = json.load(f)
                     
-                    # Verify param_index hash matches
-                    if metadata.get("param_index_hash") != current_key:
-                        logger.warning(f"Snapshot metadata mismatch - regenerating")
+                    # Comprehensive metadata validation
+                    if not self._validate_snapshot_metadata(metadata, current_key):
+                        logger.warning(f"Snapshot metadata validation failed - regenerating")
+                        # Delete invalid snapshot
+                        snapshot_path.unlink()
+                        metadata_path.unlink()
                         return False
                     
                     # 🔒 Security: Verify snapshot checksum
@@ -593,15 +616,24 @@ class UnifiedModelManager:
             with open(snapshot_path, 'rb') as f:
                 file_hash = hashlib.sha256(f.read()).hexdigest()
             
-            # Save metadata with security info
+            # Get comprehensive model metadata
+            from config.model_profile import MODEL_ID, LAYERS
+            param_metadata = self.param_index.get_metadata()
+            
+            # Save metadata with security info and model versioning
             metadata = {
                 "param_index_hash": snapshot_key,
                 "snapshot_checksum": file_hash,  # For integrity verification
                 "timestamp": time.time(),
+                "model_id": MODEL_ID,
                 "model_name": self.model_name,
+                "num_hidden_layers": LAYERS["num_hidden_layers"],
                 "num_layers": len(self.param_index.get_all_layers()),
+                "config_hash": param_metadata.get("config_hash", ""),
+                "dtype": str(self.model.dtype) if self.model else "torch.bfloat16",
+                "vocab_size": LAYERS.get("vocab_size", 0),
                 "created_by": "UnifiedModelManager",
-                "version": "1.0",
+                "version": "2.0",
                 "production_safe": True
             }
             
@@ -610,22 +642,131 @@ class UnifiedModelManager:
             
             logger.info(f"✅ Saved secure snapshot (checksum: {file_hash[:16]}...)")
             
+            # Create meta_v2 block for on-chain provenance
+            try:
+                from backend.core.meta_v2 import create_meta_v2_block
+                from config.model_profile import get_model_config
+                
+                if hasattr(self, 'meta_chain'):
+                    block_hash = create_meta_v2_block(
+                        self.meta_chain,
+                        get_model_config(),
+                        snapshot_key
+                    )
+                    if block_hash:
+                        logger.info(f"   Created meta_v2 block for snapshot: {block_hash[:8]}...")
+            except Exception as e:
+                logger.debug(f"Could not create meta_v2 block: {e}")
+            
         except Exception as e:
             logger.warning(f"Failed to save snapshot: {e}")
             # Avoid repeated attempts in this session
             self._snapshot_disabled_session = True
     
     def _get_snapshot_key(self) -> Optional[str]:
-        """Get snapshot key based on param_index state."""
+        """Get snapshot key based on param_index state and model metadata."""
         try:
-            import hashlib
-            import json
-            
-            # Hash the param_index to get a unique key
-            index_data = json.dumps(self.param_index.all(), sort_keys=True)
-            return hashlib.sha256(index_data.encode()).hexdigest()[:16]
+            # Use the enhanced index hash that includes metadata
+            return self.param_index.get_index_hash()
         except:
             return None
+    
+    def _validate_snapshot_metadata(self, metadata: Dict[str, Any], expected_key: str) -> bool:
+        """Validate snapshot metadata against current model configuration.
+        
+        Args:
+            metadata: Snapshot metadata to validate
+            expected_key: Expected param_index hash
+            
+        Returns:
+            True if valid, False otherwise
+        """
+        from config.model_profile import MODEL_ID, LAYERS
+        
+        # Structured logging for rejection events
+        rejection_event = {
+            "event": "snapshot_rejected",
+            "snapshot_hash": metadata.get("param_index_hash", "unknown")[:8] + "...",
+            "reason": None,
+            "expected": {},
+            "actual": {}
+        }
+        
+        # Check param_index hash
+        if metadata.get("param_index_hash") != expected_key:
+            rejection_event["reason"] = "param_index_hash_mismatch"
+            rejection_event["expected"]["hash"] = expected_key[:8] + "..."
+            rejection_event["actual"]["hash"] = metadata.get("param_index_hash", "")[:8] + "..."
+            logger.warning(f"🚫 SNAPSHOT REJECTED: {json.dumps(rejection_event)}")
+            return False
+        
+        # Check model ID
+        if metadata.get("model_id") != MODEL_ID:
+            rejection_event["reason"] = "model_id_mismatch"
+            rejection_event["expected"]["model_id"] = MODEL_ID
+            rejection_event["actual"]["model_id"] = metadata.get("model_id")
+            logger.warning(f"🚫 SNAPSHOT REJECTED: {json.dumps(rejection_event)}")
+            return False
+        
+        # Check layer count
+        expected_layers = LAYERS["num_hidden_layers"]
+        if metadata.get("num_hidden_layers") != expected_layers:
+            rejection_event["reason"] = "layer_count_mismatch"
+            rejection_event["expected"]["layers"] = expected_layers
+            rejection_event["actual"]["layers"] = metadata.get("num_hidden_layers")
+            logger.warning(f"🚫 SNAPSHOT REJECTED: {json.dumps(rejection_event)}")
+            return False
+        
+        # Check config hash if available
+        param_metadata = self.param_index.get_metadata()
+        if param_metadata.get("config_hash"):
+            if metadata.get("config_hash") != param_metadata["config_hash"]:
+                rejection_event["reason"] = "config_hash_mismatch"
+                rejection_event["expected"]["config_hash"] = param_metadata["config_hash"][:8] + "..."
+                rejection_event["actual"]["config_hash"] = metadata.get("config_hash", "")[:8] + "..."
+                logger.warning(f"🚫 SNAPSHOT REJECTED: {json.dumps(rejection_event)}")
+                return False
+        
+        # Check version compatibility
+        if metadata.get("version", "1.0") < "2.0":
+            rejection_event["reason"] = "version_too_old"
+            rejection_event["expected"]["min_version"] = "2.0"
+            rejection_event["actual"]["version"] = metadata.get("version", "1.0")
+            logger.warning(f"🚫 SNAPSHOT REJECTED: {json.dumps(rejection_event)}")
+            return False
+        
+        # Log successful validation
+        logger.info(f"✅ Snapshot validated: hash={expected_key[:8]}..., model={MODEL_ID}")
+        return True
+    
+    def _cleanup_old_snapshots(self) -> None:
+        """Remove snapshots that don't match current model configuration."""
+        try:
+            from pathlib import Path
+            snapshot_base = os.getenv("SNAPSHOT_DIR")
+            snapshot_dir = Path(snapshot_base) if snapshot_base else (self.root_dir / "models" / "fused")
+            
+            if not snapshot_dir.exists():
+                return
+            
+            # Find all snapshot files
+            for snapshot_path in snapshot_dir.glob("*.safetensors"):
+                metadata_path = snapshot_path.with_suffix('.meta.json')
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                        
+                        # Check if this snapshot is for a different model
+                        from config.model_profile import MODEL_ID
+                        if metadata.get("model_id") != MODEL_ID:
+                            logger.info(f"Removing snapshot for different model: {snapshot_path.name}")
+                            snapshot_path.unlink()
+                            metadata_path.unlink()
+                    except Exception as e:
+                        logger.debug(f"Failed to check snapshot {snapshot_path.name}: {e}")
+        except Exception as e:
+            logger.debug(f"Snapshot cleanup failed: {e}")
     
     def _compose_layer_with_deltas(self, layer_name: str, base_tensor: torch.Tensor) -> torch.Tensor:
         """

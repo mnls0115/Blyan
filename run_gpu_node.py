@@ -274,6 +274,23 @@ class BlyanGPUNode:
         
         # Ensure data directory exists
         DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    def _blockchain_model_readiness(self) -> tuple:
+        """Return (ready, have_count, need_count) for on-chain model components.
+        Ready means param_index contains at least num_hidden_layers + 3 components
+        (embedding, all transformer layers, model_norm, lm_head)."""
+        try:
+            from backend.core.param_index import ParameterIndex
+            try:
+                from config.model_profile import LAYERS as _LAYERS
+                need = int(_LAYERS.get('num_hidden_layers', 36)) + 3
+            except Exception:
+                need = 39  # Conservative default
+            p = ParameterIndex(DATA_DIR / "param_index.json")
+            have = len(p.get_all_layers())
+            return (have >= need, have, need)
+        except Exception:
+            return (False, 0, 39)
         
     def check_gpu(self) -> bool:
         """Check GPU availability and detect all GPUs."""
@@ -1099,6 +1116,12 @@ class BlyanGPUNode:
             import os
             import time as _time
             import torch
+            # Skip if blockchain is not ready for full model load
+            ready, have, need = self._blockchain_model_readiness()
+            if not ready:
+                self._warmup_status = "skipped"
+                logger.warning(f"GPU warmup skipped: blockchain not ready ({have}/{need} components)")
+                return
             if not self.model_manager:
                 # Ensure global manager exists
                 self.model_manager = get_model_manager(DATA_DIR)
@@ -1756,100 +1779,100 @@ class BlyanGPUNode:
             if not pids_to_kill:
                 logger.info(f"✅ Port {port} is free")
                 return True
-            
-            logger.warning(f"⚠️ Port {port} is in use by {len(pids_to_kill)} process(es)")
-            for pid, cmd in pids_to_kill:
-                logger.info(f"   • {cmd} (PID {pid})")
-            
-            # Kill each PID
-            killed_count = 0
-            for pid, command in pids_to_kill:
-                logger.info(f"   → Terminating {command} (PID {pid})...")
-                
-                try:
-                    # Try graceful termination first
-                    logger.info(f"   → Sending SIGTERM to PID {pid}...")
-                    os.kill(pid, signal.SIGTERM)
-                    
-                    # Wait up to 3 seconds for graceful shutdown
-                    for _ in range(30):  # 30 * 100ms = 3 seconds
-                        await asyncio.sleep(0.1)
-                        try:
-                            os.kill(pid, 0)  # Check if still alive
-                        except ProcessLookupError:
-                            logger.info(f"   ✅ PID {pid} terminated gracefully")
-                            break
-                    else:
-                        # Process still running after 3 seconds
-                        logger.warning(f"   → Process still running, sending SIGKILL to PID {pid}...")
-                        os.kill(pid, signal.SIGKILL)
-                        
-                        # Wait briefly for force kill
-                        for _ in range(10):  # 10 * 100ms = 1 second
+            else:
+                logger.warning(f"⚠️ Port {port} is in use by {len(pids_to_kill)} process(es)")
+                for pid, cmd in pids_to_kill:
+                    logger.info(f"   • {cmd} (PID {pid})")
+
+                # Kill each PID
+                killed_count = 0
+                for pid, command in pids_to_kill:
+                    logger.info(f"   → Terminating {command} (PID {pid})...")
+
+                    try:
+                        # Try graceful termination first
+                        logger.info(f"   → Sending SIGTERM to PID {pid}...")
+                        os.kill(pid, signal.SIGTERM)
+
+                        # Wait up to 3 seconds for graceful shutdown
+                        for _ in range(30):  # 30 * 100ms = 3 seconds
                             await asyncio.sleep(0.1)
                             try:
-                                os.kill(pid, 0)
+                                os.kill(pid, 0)  # Check if still alive
                             except ProcessLookupError:
-                                logger.info(f"   ✅ PID {pid} force killed")
+                                logger.info(f"   ✅ PID {pid} terminated gracefully")
                                 break
                         else:
-                            logger.error(f"   ❌ Failed to kill PID {pid} - process may be protected")
-                            return False
-                
-                except PermissionError:
-                    logger.error(f"❌ Permission denied to kill PID {pid}")
-                    logger.error(f"   In container: This shouldn't happen - check container privileges")
-                    logger.error(f"   Manual cleanup: kill -9 {pid}")
-                    return False
-                except ProcessLookupError:
-                    logger.info(f"   Process {pid} already terminated")
-                
-                killed_count += 1
-            
-            # Wait for OS to release the port
-            await asyncio.sleep(0.5)
-            
-            # Double-check port is now free (use fastest available tool)
-            port_free = True
-            if has_ss:
-                # ss is fastest
-                result = subprocess.run(
-                    ['ss', '-tln'],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
-                if result.stdout and f':{port} ' in result.stdout:
-                    port_free = False
-            elif has_lsof:
-                for protocol in ['4', '6']:
+                            # Process still running after 3 seconds
+                            logger.warning(f"   → Process still running, sending SIGKILL to PID {pid}...")
+                            os.kill(pid, signal.SIGKILL)
+
+                            # Wait briefly for force kill
+                            for _ in range(10):  # 10 * 100ms = 1 second
+                                await asyncio.sleep(0.1)
+                                try:
+                                    os.kill(pid, 0)
+                                except ProcessLookupError:
+                                    logger.info(f"   ✅ PID {pid} force killed")
+                                    break
+                            else:
+                                logger.error(f"   ❌ Failed to kill PID {pid} - process may be protected")
+                                return False
+
+                    except PermissionError:
+                        logger.error(f"❌ Permission denied to kill PID {pid}")
+                        logger.error(f"   In container: This shouldn't happen - check container privileges")
+                        logger.error(f"   Manual cleanup: kill -9 {pid}")
+                        return False
+                    except ProcessLookupError:
+                        logger.info(f"   Process {pid} already terminated")
+
+                    killed_count += 1
+
+                # Wait for OS to release the port
+                await asyncio.sleep(0.5)
+
+                # Double-check port is now free (use fastest available tool)
+                port_free = True
+                if has_ss:
+                    # ss is fastest
                     result = subprocess.run(
-                        ['lsof', '-nP', f'-i{protocol}TCP:{port}', '-sTCP:LISTEN'],
+                        ['ss', '-tln'],
                         capture_output=True,
                         text=True,
                         timeout=2
                     )
-                    if result.stdout:
+                    if result.stdout and f':{port} ' in result.stdout:
                         port_free = False
-                        break
-            elif has_fuser:
-                result = subprocess.run(
-                    ['fuser', f'{port}/tcp'],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
-                if result.stdout.strip():
-                    port_free = False
-            
-            if port_free:
-                logger.info(f"✅ Port {port} is now free (cleaned {killed_count}/{len(pids_to_kill)} processes)")
-                return True
-            else:
-                logger.error(f"❌ Port {port} is still in use after cleanup attempt")
-                logger.error(f"   Attempted to kill {killed_count} process(es)")
-                logger.error("   Manual intervention required")
-                return False
+                elif has_lsof:
+                    for protocol in ['4', '6']:
+                        result = subprocess.run(
+                            ['lsof', '-nP', f'-i{protocol}TCP:{port}', '-sTCP:LISTEN'],
+                            capture_output=True,
+                            text=True,
+                            timeout=2
+                        )
+                        if result.stdout:
+                            port_free = False
+                            break
+                elif has_fuser:
+                    result = subprocess.run(
+                        ['fuser', f'{port}/tcp'],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if result.stdout.strip():
+                        port_free = False
+
+                if port_free:
+                    logger.info(f"✅ Port {port} is now free (cleaned {killed_count}/{len(pids_to_kill)} processes)")
+                    return True
+                else:
+                    logger.error(f"❌ Port {port} is still in use after cleanup attempt")
+                    logger.error(f"   Attempted to kill {killed_count} process(es)")
+                    logger.error("   Manual intervention required")
+                    return False
                 
         except Exception as e:
             logger.error(f"⚠️ Port cleanup error: {e}")
@@ -3251,14 +3274,19 @@ class BlyanGPUNode:
 
         # Eager warmup after bind + register (if enabled and not uploading)
         if os.getenv('WARMUP_ON_START', 'true').lower() == 'true':
-            if not getattr(self, '_upload_in_progress', False):
-                if not getattr(self, '_warmup_scheduled', False):
-                    self._warmup_scheduled = True
-                    logger.info("🧊 Scheduling eager warmup after register...")
-                    asyncio.create_task(self._warmup_gpu())
+            # Only warm up if blockchain has full model weights
+            ready, have, need = self._blockchain_model_readiness()
+            if not ready:
+                logger.info(f"🧊 Warmup skipped: blockchain not ready ({have}/{need} components)")
+            elif getattr(self, '_upload_in_progress', False):
+                logger.info("🧊 Warmup deferred: upload in progress")
+            elif not getattr(self, '_warmup_scheduled', False):
+                self._warmup_scheduled = True
+                logger.info("🧊 Scheduling eager warmup after register...")
+                asyncio.create_task(self._warmup_gpu())
             else:
                 logger.info("🧊 Warmup deferred: upload in progress")
-    
+
     async def register_with_main(self):
         """Register this node with the main node."""
         try:
