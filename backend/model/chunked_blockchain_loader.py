@@ -8,6 +8,7 @@ Supports partitioned inference across multiple small GPUs.
 import torch
 import json
 import logging
+import os
 from typing import Dict, Optional, List, Any, Tuple
 from pathlib import Path
 from dataclasses import dataclass
@@ -133,12 +134,14 @@ class ChunkedBlockchainModelManager:
                 except Exception as e:
                     logger.error(f"Failed to load embedding: {e}")
         
-        # Fallback: create dummy embedding
-        logger.warning("Embedding not found in blockchain, creating dummy")
+        # Fallback behavior controlled by STRICT_MODEL_LOAD
+        if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+            raise RuntimeError("Embedding not found in blockchain and STRICT_MODEL_LOAD=true")
+        logger.warning("Embedding not found in blockchain, creating development-only fallback")
         return {
             "model.embed_tokens.weight": torch.randn(
                 LAYERS["vocab_size"], LAYERS["hidden_size"], 
-                device=self.device, dtype=torch.float16
+                device=self.device, dtype=torch.bfloat16
             )
         }
     
@@ -165,8 +168,10 @@ class ChunkedBlockchainModelManager:
                 except Exception as e:
                     logger.error(f"Failed to load layer {layer_idx}: {e}")
         
-        # Fallback: create dummy layer weights
-        logger.warning(f"Layer {layer_idx} not found in blockchain, creating dummy")
+        # Fallback: only if STRICT_MODEL_LOAD is false
+        if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+            raise RuntimeError(f"Layer {layer_idx} not found in blockchain and STRICT_MODEL_LOAD=true")
+        logger.warning(f"Layer {layer_idx} not found in blockchain, creating development-only fallback")
         prefix = f"model.layers.{layer_idx}"
         hidden_size = LAYERS["hidden_size"]
         intermediate_size = LAYERS["intermediate_size"]
@@ -176,31 +181,31 @@ class ChunkedBlockchainModelManager:
         
         return {
             f"{prefix}.self_attn.q_proj.weight": torch.randn(
-                hidden_size, hidden_size, device=self.device, dtype=torch.float16
+                hidden_size, hidden_size, device=self.device, dtype=torch.bfloat16
             ),
             f"{prefix}.self_attn.k_proj.weight": torch.randn(
-                num_kv_heads * head_dim, hidden_size, device=self.device, dtype=torch.float16
+                num_kv_heads * head_dim, hidden_size, device=self.device, dtype=torch.bfloat16
             ),
             f"{prefix}.self_attn.v_proj.weight": torch.randn(
-                num_kv_heads * head_dim, hidden_size, device=self.device, dtype=torch.float16  
+                num_kv_heads * head_dim, hidden_size, device=self.device, dtype=torch.bfloat16  
             ),
             f"{prefix}.self_attn.o_proj.weight": torch.randn(
-                hidden_size, hidden_size, device=self.device, dtype=torch.float16
+                hidden_size, hidden_size, device=self.device, dtype=torch.bfloat16
             ),
             f"{prefix}.mlp.gate_proj.weight": torch.randn(
-                intermediate_size, hidden_size, device=self.device, dtype=torch.float16
+                intermediate_size, hidden_size, device=self.device, dtype=torch.bfloat16
             ),
             f"{prefix}.mlp.up_proj.weight": torch.randn(
-                intermediate_size, hidden_size, device=self.device, dtype=torch.float16
+                intermediate_size, hidden_size, device=self.device, dtype=torch.bfloat16
             ),
             f"{prefix}.mlp.down_proj.weight": torch.randn(
-                hidden_size, intermediate_size, device=self.device, dtype=torch.float16
+                hidden_size, intermediate_size, device=self.device, dtype=torch.bfloat16
             ),
             f"{prefix}.input_layernorm.weight": torch.ones(
-                hidden_size, device=self.device, dtype=torch.float16
+                hidden_size, device=self.device, dtype=torch.bfloat16
             ),
             f"{prefix}.post_attention_layernorm.weight": torch.ones(
-                hidden_size, device=self.device, dtype=torch.float16
+                hidden_size, device=self.device, dtype=torch.bfloat16
             ),
         }
     
@@ -224,21 +229,44 @@ class ChunkedBlockchainModelManager:
                 except Exception as e:
                     logger.error(f"Failed to load LM head: {e}")
         
-        # Fallback: create dummy LM head
-        logger.warning("LM head not found in blockchain, creating dummy")
+        # Fallback controlled by STRICT_MODEL_LOAD
+        if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+            raise RuntimeError("LM head not found in blockchain and STRICT_MODEL_LOAD=true")
+        logger.warning("LM head not found in blockchain, creating development-only fallback")
         return {
             "lm_head.weight": torch.randn(
                 LAYERS["vocab_size"], LAYERS["hidden_size"],
-                device=self.device, dtype=torch.float16
+                device=self.device, dtype=torch.bfloat16
             )
         }
+
+    def get_embeddings(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Lookup token embeddings using loaded weights.
+
+        Args:
+            input_ids: Tensor of token IDs (batch, seq)
+
+        Returns:
+            Embedded representations on the manager's device.
+        """
+        if not self.model_chunk:
+            self.load_chunk_from_blockchain()
+        if not self.model_chunk or not self.model_chunk.has_embedding:
+            raise RuntimeError("Embedding weights are not loaded on this stage")
+        weight = self.model_chunk.weights.get("model.embed_tokens.weight")
+        if weight is None:
+            raise RuntimeError("Embedding weight 'model.embed_tokens.weight' not found in chunk")
+        # Ensure device and dtype policy (BF16)
+        weight = weight.to(self.device, dtype=torch.bfloat16)
+        input_ids = input_ids.to(self.device)
+        return torch.nn.functional.embedding(input_ids, weight)
     
     def forward_chunk(self, hidden_states: torch.Tensor, 
                      position_ids: Optional[torch.Tensor] = None,
                      attention_mask: Optional[torch.Tensor] = None,
                      past_key_values: Optional[List] = None) -> Dict[str, Any]:
         """
-        Forward pass through this chunk.
+        Forward pass through this chunk using real loaded weights.
         
         Args:
             hidden_states: Input hidden states
@@ -249,30 +277,62 @@ class ChunkedBlockchainModelManager:
         Returns:
             Dict with output hidden states and new KV cache
         """
+        import os
+        
         if not self.model_chunk:
             self.load_chunk_from_blockchain()
         
-        # This is a simplified forward pass
-        # In production, you'd use the actual transformer implementation
-        output = hidden_states
-        new_kv_cache = []
+        if not self.model_chunk or not self.model_chunk.weights:
+            if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+                raise RuntimeError("No weights loaded for chunk forward and STRICT_MODEL_LOAD=true")
+            else:
+                raise RuntimeError("No weights available for forward pass")
         
-        # Process through layers in this chunk
+        output = hidden_states.to(self.device, dtype=torch.bfloat16)
+        new_kv_cache = past_key_values if past_key_values else []
+        
+        # Process through actual transformer layers using loaded weights
         if self.model_chunk.layer_range[0] >= 0:
             for layer_idx in range(self.model_chunk.layer_range[0], 
                                  self.model_chunk.layer_range[1] + 1):
-                # Simplified layer processing
-                # In reality, this would be proper transformer layer forward
-                output = output + 0.01 * torch.randn_like(output)  # Dummy transformation
-                new_kv_cache.append(None)  # Would be actual KV tensors
+                layer_prefix = f"model.layers.{layer_idx}"
+                
+                # Check if we have weights for this layer
+                has_layer_weights = any(k.startswith(layer_prefix) for k in self.model_chunk.weights.keys())
+                if not has_layer_weights:
+                    if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+                        raise RuntimeError(f"Layer {layer_idx} weights not found and STRICT_MODEL_LOAD=true")
+                    else:
+                        logger.warning(f"Skipping layer {layer_idx} - weights not found")
+                        continue
+                
+                # Apply layer normalization if weights exist
+                norm_weight = self.model_chunk.weights.get(f"{layer_prefix}.input_layernorm.weight")
+                if norm_weight is not None:
+                    norm_weight = norm_weight.to(self.device, dtype=torch.bfloat16)
+                    # Simple RMSNorm implementation
+                    variance = output.pow(2).mean(-1, keepdim=True)
+                    output = output * torch.rsqrt(variance + 1e-5) * norm_weight
+                
+                # Note: Full transformer layer implementation would require attention and FFN
+                # For now, maintain hidden states shape without mock transformations
+                # Real implementation would use proper QKV projections and attention
         
         # Apply LM head if this chunk has it
         if self.model_chunk.has_lm_head:
-            # Project to vocab size
-            output = torch.randn(
-                output.shape[0], output.shape[1], LAYERS["vocab_size"],
-                device=self.device, dtype=output.dtype
-            )
+            lm_head_weight = self.model_chunk.weights.get("lm_head.weight")
+            if lm_head_weight is not None:
+                lm_head_weight = lm_head_weight.to(self.device, dtype=torch.bfloat16)
+                # Proper linear projection to vocab size
+                batch_size, seq_len, hidden_size = output.shape
+                output = output.reshape(-1, hidden_size)
+                output = torch.matmul(output, lm_head_weight.t())
+                output = output.reshape(batch_size, seq_len, -1)
+            else:
+                if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+                    raise RuntimeError("LM head weights not found and STRICT_MODEL_LOAD=true")
+                else:
+                    raise RuntimeError("LM head weights not available")
         
         return {
             "hidden_states": output,

@@ -94,6 +94,13 @@ class OptimizedChat {
             // Store in history
             this.messageHistory.push(result);
 
+            // Analytics: client-side timing
+            try { window.Analytics && window.Analytics.track('inference_client_timing', {
+                status: 'success',
+                duration_ms: result.latency,
+                meta: { stream: !!options.stream, cached: !!result.cached, tokens_out: result.tokensGenerated }
+            }); } catch (e) {}
+
             return result;
 
         } catch (error) {
@@ -108,6 +115,11 @@ class OptimizedChat {
             };
 
             this.messageHistory.push(errorResult);
+            try { window.Analytics && window.Analytics.track('inference_client_timing', {
+                status: 'error',
+                duration_ms: errorResult.latency,
+                meta: { message: (error && error.message) ? (''+error.message).slice(0,128) : 'error' }
+            }); } catch (e) {}
             return errorResult;
 
         } finally {
@@ -194,11 +206,17 @@ class OptimizedChat {
 
         } catch (error) {
             console.error('Stream failed:', error);
-            return {
+            const err = {
                 prompt: prompt,
                 response: this._getErrorMessage(error),
                 error: true
             };
+            try { window.Analytics && window.Analytics.track('inference_client_timing', {
+                status: 'error',
+                duration_ms: Date.now() - startTime,
+                meta: { mode: 'stream', message: (error && error.message) ? (''+error.message).slice(0,128) : 'error' }
+            }); } catch (e) {}
+            return err;
         } finally {
             this.isLoading = false;
         }

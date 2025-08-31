@@ -681,6 +681,28 @@
             transform: scale(1.05);
             background: var(--color-primary-light);
         }
+
+        /* GPU inference status (signal bars) */
+        .gpu-status {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .gpu-status .bars i {
+            display: inline-block;
+            width: 4px;
+            margin-right: 2px;
+            background: rgba(125,125,125,0.5);
+            border-radius: 2px;
+        }
+        .gpu-status .bars i:nth-child(1) { height: 6px; }
+        .gpu-status .bars i:nth-child(2) { height: 10px; }
+        .gpu-status .bars i:nth-child(3) { height: 14px; }
+        .gpu-status.ok .bars i { background: #10b981; }       /* green */
+        .gpu-status.degraded .bars i:nth-child(-n+2) { background: #f59e0b; } /* amber */
+        .gpu-status.down .bars i:nth-child(1) { background: #ef4444; }  /* red */
+        .visually-hidden { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
         
         /* Desktop: ensure FAB doesn't overlap input at any width */
         @media (min-width: 769px) {
@@ -901,6 +923,10 @@
             <div class="chat-header">
                 <div class="chat-title" data-i18n="aiAssistant">Blyan AI Assistant</div>
                 <div class="chat-subtitle" data-i18n="chatWithDistributed">Powered by decentralized intelligence</div>
+                <div class="gpu-status down" id="gpuStatus" title="GPU inference status">
+                    <span class="bars"><i></i><i></i><i></i></span>
+                    <span id="gpuStatusText" class="visually-hidden">Checking…</span>
+                </div>
                 <div class="chat-usage-indicator" id="chatUsageIndicator">
                     <span id="chatUsageText" data-i18n="freeChatsRemaining">5 free chats remaining</span>
                     <span id="blyBalanceText" style="display: none;">0 BLY</span>
@@ -969,6 +995,7 @@
     </button>
 
     <script src="config.js?v=7"></script>
+    <script src="analytics.js?v=1"></script>
     <script src="chat-optimized.js"></script>
     <script src="rate_limit_handler.js?v=2"></script>
     <script src="api-auth.js?v=4"></script>
@@ -1368,6 +1395,61 @@
                 console.error('Failed to fetch queue metrics:', error);
             }
         }
+
+        // GPU inference status indicator
+        async function fetchJSON(url, timeoutMs = 4000) {
+            const ctrl = new AbortController();
+            const to = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                const r = await fetch(url, { signal: ctrl.signal });
+                clearTimeout(to);
+                if (!r.ok) return null;
+                return await r.json();
+            } catch (_) { clearTimeout(to); return null; }
+        }
+
+        async function refreshGpuStatus() {
+            const base = window.API_CONFIG?.baseURL || '';
+            const el = document.getElementById('gpuStatus');
+            const txt = document.getElementById('gpuStatusText');
+            if (!el || !txt) return;
+
+            // Default state
+            let state = 'down';
+            let label = 'Offline';
+
+            const pipeline = await fetchJSON(`${base}/health/pipeline`);
+            if (pipeline) {
+                if (pipeline.ready === true || pipeline.status === 'ready') {
+                    state = 'ok';
+                    label = 'GPU inference ready';
+                } else if (pipeline.status === 'not_configured') {
+                    // Single-node mode: treat ready if model is available
+                    state = pipeline.ready ? 'ok' : 'degraded';
+                    label = pipeline.ready ? 'GPU inference (single-node) ready' : 'Configuring…';
+                } else {
+                    state = 'degraded';
+                    label = 'Warming up…';
+                }
+            } else {
+                const health = await fetchJSON(`${base}/health`);
+                if (health) {
+                    if (health.status === 'healthy') { state = 'ok'; label = 'Healthy'; }
+                    else if (health.status === 'ok' || health.mode === 'degraded') { state = 'degraded'; label = 'Degraded'; }
+                    else { state = 'down'; label = 'Offline'; }
+                }
+            }
+
+            el.classList.remove('ok','degraded','down');
+            el.classList.add(state);
+            el.title = `GPU inference: ${label}`;
+            txt.textContent = `GPU inference: ${label}`;
+        }
+
+        window.addEventListener('load', () => {
+            refreshGpuStatus();
+            setInterval(refreshGpuStatus, 15000);
+        });
 
         function addMessage(content, sender) {
             const chatMessages = document.getElementById('chatMessages');

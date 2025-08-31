@@ -16,7 +16,7 @@ import time
 import numpy as np
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,16 @@ class UnifiedModelManager:
         self._initialized = False
         self.gpu_loader = None
         self._loaded_from_blockchain = False
-        self._min_blockchain_layers = int(os.getenv("MIN_BLOCKCHAIN_LAYERS", "38"))
+        # Dynamic minimum blockchain components - set after config load
+        self._min_blockchain_components = None
         # Concurrency guard for one-time model loading
         self._load_lock = threading.RLock()
         self._load_cv = threading.Condition(self._load_lock)
         self._load_in_progress = False
+        
+        # Model adapter for architecture-specific handling
+        self.adapter = None
+        self.model_config = None
         # Best-effort GPU info for chunk sizing (avoid AttributeError)
         try:
             if device == "cuda" and torch.cuda.is_available():
@@ -220,6 +225,47 @@ class UnifiedModelManager:
         else:
             # Simple key, just append
             return f"{prefix}.{tensor_key}"
+
+    def _translate_key(self, layer_name: str, tensor_key: str) -> str:
+        """Translate blockchain (layer_name, tensor_key) to a model state_dict key using the adapter.
+
+        Falls back to the legacy _build_tensor_key if the adapter is unavailable or throws.
+        """
+        try:
+            if self.adapter is not None and self.model_config is not None:
+                return self.adapter.translate_key(layer_name, tensor_key, self.model_config)
+        except Exception as e:
+            logger.debug(f"Adapter translate_key failed ({e}); falling back to default mapping")
+        return self._build_tensor_key(layer_name, tensor_key)
+    
+    def _validate_critical_components(self, incompatible) -> None:
+        """Validate that critical model components are loaded."""
+        missing_keys = incompatible.missing_keys
+        
+        # Check for critical missing components
+        critical_missing = []
+        if any('model.embed_tokens.weight' in k for k in missing_keys):
+            critical_missing.append('model.embed_tokens.weight')
+        if any('lm_head.weight' in k for k in missing_keys):
+            critical_missing.append('lm_head.weight')
+        if any('model.norm.weight' in k for k in missing_keys):
+            critical_missing.append('model.norm.weight')
+        
+        if critical_missing:
+            logger.error(f"CRITICAL: Missing essential model weights: {critical_missing}")
+            logger.error("Model will produce garbage output without these components!")
+            raise RuntimeError(f"Missing critical model components: {critical_missing}. "
+                             f"Cannot serve model without embedding, lm_head, and model_norm weights.")
+        
+        # Check layer count if we have model_config
+        if hasattr(self, 'model_config'):
+            expected_layers = self.model_config.num_hidden_layers
+            # Count loaded layers from param_index
+            if hasattr(self, 'param_index'):
+                layer_count = sum(1 for l in self.param_index.get_all_layers() if l.startswith('layer_'))
+                if layer_count != expected_layers:
+                    logger.error(f"Layer count mismatch: loaded {layer_count} but model expects {expected_layers}")
+                    raise RuntimeError(f"Layer count mismatch: {layer_count} != {expected_layers}")
     
     def _ensure_model_loaded(self) -> None:
         """Ensure model and tokenizer are loaded - FAST PATH."""
@@ -335,7 +381,21 @@ class UnifiedModelManager:
                 return False
             self.param_index = ParameterIndex(index_path)
             layers = self.param_index.get_all_layers()
-            return len(layers) >= self._min_blockchain_layers
+            
+            # Dynamically determine minimum components if not set
+            if self._min_blockchain_components is None:
+                try:
+                    # Use model config to calculate required components
+                    from config.model_profile import LAYERS
+                    # Need all transformer layers + embedding + lm_head + norm
+                    self._min_blockchain_components = LAYERS["num_hidden_layers"] + 3
+                    logger.info(f"Set minimum blockchain components to {self._min_blockchain_components} based on model config")
+                except Exception as e:
+                    logger.warning(f"Could not determine model components dynamically: {e}")
+                    # Conservative default for 8B model (36 layers + 3 components)
+                    self._min_blockchain_components = 39
+            
+            return len(layers) >= self._min_blockchain_components
         except Exception:
             return False
 
@@ -358,6 +418,12 @@ class UnifiedModelManager:
             logger.info("Loading cached tokenizer")
             self.tokenizer = AutoTokenizer.from_pretrained(str(cache_path))
         else:
+            # Respect offline mode strictly (no network access when offline)
+            if os.environ.get("TRANSFORMERS_OFFLINE", "0").lower() in ("1", "true"):
+                raise RuntimeError(
+                    "Tokenizer cache missing and TRANSFORMERS_OFFLINE=1. "
+                    "Pre-cache the tokenizer under data/tokenizer_cache or temporarily unset offline mode."
+                )
             logger.info(f"Downloading tokenizer for {self.model_name}")
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             # Cache it
@@ -369,28 +435,38 @@ class UnifiedModelManager:
     
     def _create_empty_model_structure(self) -> torch.nn.Module:
         """Create model structure without loading weights from HF - ENFORCES BF16."""
-        # For Qwen3-8B architecture
-        from transformers import AutoConfig
-        from transformers.models.qwen2 import Qwen2ForCausalLM
+        # Import adapter system
+        from backend.model.adapters import get_adapter
         
         # Load config from cache or minimal download
-        config = AutoConfig.from_pretrained(self.model_name)
+        # Set TRANSFORMERS_OFFLINE=1 to prevent weight downloads
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        config = AutoConfig.from_pretrained(self.model_name, trust_remote_code=True)
         
-        # CRITICAL: Force BF16 dtype in config
-        config.torch_dtype = torch.bfloat16
+        # Get appropriate adapter for this model
+        self.adapter = get_adapter(config, auto_detect=True)
+        logger.info(f"Using adapter: {self.adapter.__class__.__name__} for {self.model_name}")
         
-        # Create empty model with config (no weight download)
-        with torch.device("meta"):
-            model = Qwen2ForCausalLM(config)
+        # Validate config with adapter
+        if not self.adapter.validate_config(config):
+            logger.warning(f"Config validation failed for {self.adapter.__class__.__name__}, using default adapter")
+            from backend.model.adapters import get_adapter
+            self.adapter = get_adapter("default")
         
-        # Move to target device (to_empty doesn't support dtype in all versions)
-        model = model.to_empty(device=self.device)
+        # Store config for validation
+        self.model_config = config
         
-        # CRITICAL: Ensure BF16 dtype after moving to device
-        model = model.to(dtype=torch.bfloat16)
+        # Build empty model using adapter
+        model = self.adapter.build_empty_model(
+            config=config,
+            device=self.device,
+            dtype=torch.bfloat16
+        )
         
-        # Verify dtype is correct
-        logger.info(f"Created empty model structure with dtype: {torch.bfloat16}")
+        logger.info(f"Created model structure: {model.__class__.__name__}")
+        logger.info(f"Architecture: {getattr(config, 'architectures', ['Unknown'])[0]}")
+        logger.info(f"Number of layers: {config.num_hidden_layers}")
+        logger.info(f"Model family detected: {self.adapter.__class__.__name__.replace('Adapter', '')}")
         
         return model
     
@@ -693,8 +769,8 @@ class UnifiedModelManager:
                             for key, tensor in tensors.items():
                                 # There may be multiple layers mapping to same block (rare); apply to all
                                 for layer_name in block_to_layers.get(bi, []):
-                                    # Use proper translation for Qwen model structure
-                                    final_key = self._build_tensor_key(layer_name, key)
+                                    # Adapter-aware translation to state_dict key
+                                    final_key = self._translate_key(layer_name, key)
                                     
                                     # Diagnostic logging if enabled
                                     if os.getenv("DIAG_MODEL_LOAD"):
@@ -706,26 +782,26 @@ class UnifiedModelManager:
                         incompatible = self.model.load_state_dict(partial_state, strict=False)
                         loaded_tensors += len(partial_state)
                         
-                        # Enhanced diagnostic logging
-                        if os.getenv("DIAG_MODEL_LOAD"):
-                            missing_count = len(incompatible.missing_keys)
-                            unexpected_count = len(incompatible.unexpected_keys)
-                            
-                            if missing_count > 0:
-                                logger.info(f"[DIAG] Chunk {start}-{end-1} missing {missing_count} keys")
-                                for key in incompatible.missing_keys[:5]:
-                                    logger.info(f"[DIAG]   Missing: {key}")
-                                if missing_count > 5:
-                                    logger.info(f"[DIAG]   ... and {missing_count - 5} more")
-                            
-                            if unexpected_count > 0:
-                                logger.info(f"[DIAG] Chunk {start}-{end-1} has {unexpected_count} unexpected keys")
-                                for key in incompatible.unexpected_keys[:5]:
-                                    logger.info(f"[DIAG]   Unexpected: {key}")
-                                if unexpected_count > 5:
-                                    logger.info(f"[DIAG]   ... and {unexpected_count - 5} more")
-                        elif incompatible.missing_keys:
-                            logger.debug(f"Chunk missing keys: {incompatible.missing_keys[:3]}")
+                        # Reduced diagnostic logging for chunks (summarize at end)
+                        if os.getenv("DIAG_MODEL_LOAD") and os.getenv("DIAG_VERBOSE_CHUNKS"):
+                            # Adapter-aware filtering to highlight only critical issues
+                            try:
+                                if self.adapter is not None and self.model_config is not None:
+                                    crit_missing, _ = self.adapter.filter_missing_keys(list(incompatible.missing_keys), self.model_config)
+                                    prob_unexp, _ = self.adapter.filter_unexpected_keys(list(incompatible.unexpected_keys), self.model_config)
+                                else:
+                                    crit_missing = list(incompatible.missing_keys)
+                                    prob_unexp = list(incompatible.unexpected_keys)
+                            except Exception:
+                                crit_missing = list(incompatible.missing_keys)
+                                prob_unexp = list(incompatible.unexpected_keys)
+
+                            if crit_missing or prob_unexp:
+                                logger.debug(
+                                    f"[DIAG] Chunk {start}-{end-1}: {len(crit_missing)} critical missing, {len(prob_unexp)} problematic unexpected"
+                                )
+                        elif incompatible.missing_keys and os.getenv("DIAG_VERBOSE_CHUNKS"):
+                            logger.debug(f"Chunk missing keys: {len(incompatible.missing_keys)} keys")
                         
                         # Free temporary storage and defragment
                         del partial_state
@@ -848,8 +924,8 @@ class UnifiedModelManager:
                         if tensor_dict:
                             # Apply deltas if available
                             for key, tensor in tensor_dict.items():
-                                # Use proper translation for Qwen model structure
-                                final_key = self._build_tensor_key(layer_name, key)
+                                # Adapter-aware translation to state_dict key
+                                final_key = self._translate_key(layer_name, key)
                                 
                                 # Diagnostic logging if enabled
                                 if os.getenv("DIAG_MODEL_LOAD"):
@@ -866,29 +942,44 @@ class UnifiedModelManager:
                 logger.info(f"✅ Loaded {len(state_dict)} tensors from blockchain")
                 self._loaded_from_blockchain = True
                 
-                # Enhanced diagnostic logging for standard loader
+                # Enhanced diagnostic logging for standard loader (adapter-aware)
                 if os.getenv("DIAG_MODEL_LOAD"):
-                    missing_count = len(incompatible.missing_keys)
-                    unexpected_count = len(incompatible.unexpected_keys)
-                    
+                    missing_keys = list(incompatible.missing_keys)
+                    unexpected_keys = list(incompatible.unexpected_keys)
+
+                    try:
+                        if self.adapter is not None and self.model_config is not None:
+                            critical_missing, ignorable_missing = self.adapter.filter_missing_keys(missing_keys, self.model_config)
+                            problematic_unexpected, acceptable_unexpected = self.adapter.filter_unexpected_keys(unexpected_keys, self.model_config)
+                        else:
+                            critical_missing, ignorable_missing = missing_keys, []
+                            problematic_unexpected, acceptable_unexpected = unexpected_keys, []
+                    except Exception:
+                        critical_missing, ignorable_missing = missing_keys, []
+                        problematic_unexpected, acceptable_unexpected = unexpected_keys, []
+
                     logger.info(f"[DIAG] Final load summary:")
                     logger.info(f"[DIAG]   Loaded tensors: {len(state_dict)}")
-                    logger.info(f"[DIAG]   Missing keys: {missing_count}")
-                    logger.info(f"[DIAG]   Unexpected keys: {unexpected_count}")
-                    
-                    if missing_count > 0:
-                        logger.info(f"[DIAG] Missing model keys:")
-                        for key in incompatible.missing_keys[:5]:
+                    logger.info(f"[DIAG]   Critical missing: {len(critical_missing)} (ignored: {len(ignorable_missing)})")
+                    logger.info(f"[DIAG]   Problematic unexpected: {len(problematic_unexpected)} (acceptable: {len(acceptable_unexpected)})")
+
+                    if critical_missing:
+                        logger.info(f"[DIAG] Critical missing keys:")
+                        for key in critical_missing[:5]:
                             logger.info(f"[DIAG]   - {key}")
-                        if missing_count > 5:
-                            logger.info(f"[DIAG]   ... and {missing_count - 5} more")
-                    
-                    if unexpected_count > 0:
-                        logger.info(f"[DIAG] Unexpected keys in state_dict:")
-                        for key in incompatible.unexpected_keys[:5]:
+                        if len(critical_missing) > 5:
+                            logger.info(f"[DIAG]   ... and {len(critical_missing) - 5} more")
+
+                    if problematic_unexpected:
+                        logger.info(f"[DIAG] Problematic unexpected keys:")
+                        for key in problematic_unexpected[:5]:
                             logger.info(f"[DIAG]   - {key}")
-                        if unexpected_count > 5:
-                            logger.info(f"[DIAG]   ... and {unexpected_count - 5} more")
+                        if len(problematic_unexpected) > 5:
+                            logger.info(f"[DIAG]   ... and {len(problematic_unexpected) - 5} more")
+                
+                # STRICT VALIDATION if enabled
+                if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+                    self._validate_critical_components(incompatible)
                 
                 # CRITICAL: Enforce BF16 dtype after loading
                 if next(self.model.parameters()).dtype != torch.bfloat16:
@@ -906,14 +997,31 @@ class UnifiedModelManager:
             # Check if we have minimum required layers
             available_layers = self.param_index.get_all_layers() if hasattr(self, 'param_index') else []
             loaded_count = len(available_layers)
-            # Required components (other_weights is optional - only if model has extra tensors)
-            expected_layers = ["embedding"] + [f"layer_{i}" for i in range(36)] + ["lm_head", "model_norm"]
+            # Get actual layer count from model config
+            num_layers = getattr(self.model_config, 'num_hidden_layers', 32) if hasattr(self, 'model_config') else 32
+            expected_layers = ["embedding"] + [f"layer_{i}" for i in range(num_layers)] + ["lm_head", "model_norm"]
             # Include other_weights in check only if it exists
             if "other_weights" in available_layers:
                 expected_layers.append("other_weights")
             missing_layers = set(expected_layers) - set(available_layers)
             
-            if loaded_count < 3:  # Need at least embedding, one layer, and lm_head
+            # Critical components that MUST be present
+            critical_missing = []
+            if "embedding" not in available_layers:
+                critical_missing.append("embedding")
+            if "lm_head" not in available_layers:
+                critical_missing.append("lm_head")
+            if "model_norm" not in available_layers:
+                critical_missing.append("model_norm")
+            
+            # Count actual layers present
+            layer_count = sum(1 for l in available_layers if l.startswith("layer_"))
+            
+            if critical_missing and os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+                logger.error(f"CRITICAL: Missing essential model components: {critical_missing}")
+                logger.error(f"Cannot proceed without: embedding, lm_head, and model_norm")
+                raise RuntimeError(f"Missing critical model components: {critical_missing}")
+            elif loaded_count < 3:  # Need at least embedding, one layer, and lm_head
                 logger.error(f"Insufficient layers loaded from blockchain: {loaded_count}/{len(expected_layers)}")
                 logger.error(f"Missing layers: {missing_layers}")
                 
@@ -922,8 +1030,10 @@ class UnifiedModelManager:
                 self._load_from_local()
             else:
                 logger.info(f"✅ Successfully loaded {loaded_count}/{len(expected_layers)} layers from blockchain")
+                logger.info(f"   - Model layers: {layer_count}/{num_layers}")
+                logger.info(f"   - Critical components: {'✓' if not critical_missing else '✗ Missing: ' + str(critical_missing)}")
                 if missing_layers:
-                    logger.warning(f"Missing layers (using random weights): {missing_layers}")
+                    logger.warning(f"Missing layers (blockchain incomplete): {missing_layers}")
                     
         except Exception as e:
             logger.error(f"CRITICAL: Failed to load from blockchain: {e}")
@@ -948,6 +1058,8 @@ class UnifiedModelManager:
         temperature: float = 0.7,
         top_p: float = 0.9,
         top_k: Optional[int] = None,
+        repetition_penalty: float = 1.0,
+        no_repeat_ngram_size: int = 0,
         stream: bool = False
     ) -> str:
         """
@@ -1020,6 +1132,12 @@ class UnifiedModelManager:
                 # Only include top_k if provided
                 if top_k is not None:
                     generate_kwargs["top_k"] = top_k
+                
+                # Add repetition penalty controls
+                if repetition_penalty != 1.0:
+                    generate_kwargs["repetition_penalty"] = repetition_penalty
+                if no_repeat_ngram_size > 0:
+                    generate_kwargs["no_repeat_ngram_size"] = no_repeat_ngram_size
                 
                 outputs = self.model.generate(**generate_kwargs)
             

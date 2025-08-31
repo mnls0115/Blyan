@@ -976,6 +976,25 @@ class BlyanGPUNode:
             except Exception as e:
                 logger.warning(f"    Could not check compatibility: {e}")
             
+            # Validate critical components if STRICT_MODEL_LOAD is enabled
+            if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+                logger.info("  3.5/5: Validating critical model components...")
+                critical_components = ["embedding", "lm_head", "model_norm"]
+                missing_critical = []
+                
+                for component in critical_components:
+                    if component not in param_index.get_all_layers():
+                        missing_critical.append(component)
+                
+                if missing_critical:
+                    logger.error(f"    ✗ CRITICAL: Missing essential components: {missing_critical}")
+                    logger.error(f"    Cannot serve model without: embedding, lm_head, and model_norm")
+                    logger.error(f"    Please ensure these components are uploaded to blockchain")
+                    if os.getenv("STRICT_MODEL_LOAD", "false").lower() == "true":
+                        return False  # Refuse to start
+                else:
+                    logger.info(f"    ✓ All critical components present in param_index")
+            
             # Initialize unified model manager
             logger.info("  4/5: Creating unified model manager...")
             
@@ -2167,9 +2186,20 @@ class BlyanGPUNode:
                     top_k = int(top_k)
                     top_k = max(1, top_k)  # Must be at least 1
                 
+                # Parse repetition control parameters
+                repetition_penalty = float(data.get("repetition_penalty", 1.0))
+                repetition_penalty = max(0.1, min(2.0, repetition_penalty))  # Clamp to reasonable range
+                
+                no_repeat_ngram_size = int(data.get("no_repeat_ngram_size", 0))
+                no_repeat_ngram_size = max(0, min(10, no_repeat_ngram_size))  # Clamp to [0, 10]
+                
                 log_params = f"tokens: {max_new_tokens}, temp: {temperature}, top_p: {top_p}"
                 if top_k is not None:
                     log_params += f", top_k: {top_k}"
+                if repetition_penalty != 1.0:
+                    log_params += f", rep_penalty: {repetition_penalty}"
+                if no_repeat_ngram_size > 0:
+                    log_params += f", no_repeat_ngram: {no_repeat_ngram_size}"
                 logger.info(f"   Prompt: '{prompt[:50]}...' ({log_params})")
 
                 # Check rate limiting (if implemented)
@@ -2209,6 +2239,10 @@ class BlyanGPUNode:
                 gen_log = f"   Generating response with temperature={temperature}, top_p={top_p}"
                 if top_k is not None:
                     gen_log += f", top_k={top_k}"
+                if repetition_penalty != 1.0:
+                    gen_log += f", repetition_penalty={repetition_penalty}"
+                if no_repeat_ngram_size > 0:
+                    gen_log += f", no_repeat_ngram_size={no_repeat_ngram_size}"
                 logger.info(gen_log + "...")
                 
                 try:
@@ -2217,7 +2251,9 @@ class BlyanGPUNode:
                         max_new_tokens=max_new_tokens,
                         temperature=temperature,
                         top_p=top_p,
-                        top_k=top_k
+                        top_k=top_k,
+                        repetition_penalty=repetition_penalty,
+                        no_repeat_ngram_size=no_repeat_ngram_size
                     )
                 except Exception as ge:
                     # Release job slot on error

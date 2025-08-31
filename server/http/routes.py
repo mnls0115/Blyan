@@ -98,27 +98,10 @@ def setup_streaming_routes(app: FastAPI, streaming_handler=None):
                                 yield f"event: error\n"
                                 yield f"data: {json.dumps(event)}\n\n"
                     else:
-                        # Fallback mock streaming
-                        tokens = ["Hello", " ", "world", "!", " ", "This", " ", "is", " ", "streaming", "."]
-                        for i, token in enumerate(tokens):
-                            # Check cancellation
-                            async with stream_locks[stream_id]:
-                                if stream_registry[stream_id]["cancelled"]:
-                                    yield f"event: cancelled\n"
-                                    yield f"data: {{\"stream_id\": \"{stream_id}\"}}\n\n"
-                                    break
-                            
-                            stream_registry[stream_id]["tokens_generated"] += 1
-                            
-                            yield f"event: token\n"
-                            yield f"data: {{\"token\": \"{token}\", \"index\": {i}, \"stream_id\": \"{stream_id}\"}}\n\n"
-                            
-                            await asyncio.sleep(0.1)  # Simulate generation delay
-                        
-                        # Send completion
-                        if not stream_registry[stream_id]["cancelled"]:
-                            yield f"event: complete\n"
-                            yield f"data: {{\"stream_id\": \"{stream_id}\", \"tokens_generated\": {len(tokens)}}}\n\n"
+                        # No streaming handler available
+                        yield f"event: error\n"
+                        yield f"data: {{\"error\": \"No streaming handler configured\", \"stream_id\": \"{stream_id}\"}}\n\n"
+                        return
                     
                 except Exception as e:
                     logger.error(f"Stream {stream_id} error: {e}")
@@ -160,11 +143,8 @@ def setup_streaming_routes(app: FastAPI, streaming_handler=None):
                         use_moe=request.use_moe
                     )
                 else:
-                    # Mock response
-                    result = {
-                        "text": "Hello world! This is a non-streaming response.",
-                        "tokens_generated": 8
-                    }
+                    # No handler available - always fail in production
+                    raise HTTPException(status_code=503, detail="No streaming handler configured")
                 
                 stream_registry[stream_id]["status"] = "completed"
                 stream_registry[stream_id]["tokens_generated"] = result.get("tokens_generated", 0)

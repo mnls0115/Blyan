@@ -25,13 +25,13 @@ class NodeBootstrap:
     
     def __init__(self):
         """Initialize bootstrap configuration"""
-        # Paths
-        self.data_dir = Path(os.getenv("DATA_DIR", "/data"))
+        # Paths - use BLYAN_DATA_DIR for consistency
+        self.data_dir = Path(os.getenv("BLYAN_DATA_DIR", "/data"))
         self.credentials_file = self.data_dir / "credentials.json"
         self.config_file = self.data_dir / "node_config.json"
         
-        # Server configuration
-        self.main_server = os.getenv("MAIN_SERVER_URL", "https://blyan.com/api")
+        # Server configuration - use MAIN_NODE_URL
+        self.main_server = os.getenv("MAIN_NODE_URL", "https://blyan.com/api")
         self.join_code = os.getenv("JOIN_CODE", "").strip()
         
         # Node metadata
@@ -258,7 +258,7 @@ class NodeBootstrap:
         """
         logger.info("=== Node Bootstrap Starting ===")
         logger.info(f"Data directory: {self.data_dir}")
-        logger.info(f"Main server: {self.main_server}")
+        logger.info(f"Main node URL: {self.main_server}")
         
         # Check for existing credentials
         if self.has_credentials():
@@ -313,8 +313,9 @@ def main():
     credentials = bootstrap.bootstrap()
     
     # Export credentials as environment variables for the main process
-    os.environ["NODE_ID"] = credentials["node_id"]
-    os.environ["NODE_KEY"] = credentials["node_key"]
+    # Use BLYAN_ prefix for consistency
+    os.environ["BLYAN_NODE_ID"] = credentials["node_id"]
+    os.environ["BLYAN_NODE_KEY"] = credentials["node_key"]
     
     logger.info(f"Node {credentials['node_id']} ready to start")
     

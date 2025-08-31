@@ -15,17 +15,20 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}=== Blyan Node Starting ===${NC}"
 echo "Node startup time: $(date)"
 
-# Set defaults
-export DATA_DIR="${DATA_DIR:-/data}"
-export MAIN_SERVER_URL="${MAIN_SERVER_URL:-https://blyan.com/api}"
+# Set defaults with standardized names
+export BLYAN_DATA_DIR="${BLYAN_DATA_DIR:-/data}"
+export MAIN_NODE_URL="${MAIN_NODE_URL:-https://blyan.com/api}"
 export NODE_PORT="${NODE_PORT:-8001}"
+export PUBLIC_HOST="${PUBLIC_HOST:-0.0.0.0}"
+export PUBLIC_PORT="${PUBLIC_PORT:-8001}"
+export JOB_CAPACITY="${JOB_CAPACITY:-1}"
 # Blockchain is always enabled for GPU nodes
 
 # Create data directory if it doesn't exist
-mkdir -p "$DATA_DIR"
+mkdir -p "$BLYAN_DATA_DIR"
 
 # Check if we have existing credentials
-CREDENTIALS_FILE="$DATA_DIR/credentials.json"
+CREDENTIALS_FILE="$BLYAN_DATA_DIR/credentials.json"
 
 if [ -f "$CREDENTIALS_FILE" ]; then
     echo -e "${GREEN}✓ Found existing credentials${NC}"
@@ -35,6 +38,7 @@ if [ -f "$CREDENTIALS_FILE" ]; then
     export NODE_KEY=$(python3 -c "import json; print(json.load(open('$CREDENTIALS_FILE'))['node_key'])")
     
     echo "Node ID: $NODE_ID"
+    # No JOIN_CODE required when credentials exist
     
 elif [ -n "$JOIN_CODE" ]; then
     echo -e "${YELLOW}No credentials found, enrolling with JOIN_CODE...${NC}"
@@ -49,8 +53,12 @@ elif [ -n "$JOIN_CODE" ]; then
         export NODE_ID=$(python3 -c "import json; print(json.load(open('$CREDENTIALS_FILE'))['node_id'])")
         export NODE_KEY=$(python3 -c "import json; print(json.load(open('$CREDENTIALS_FILE'))['node_key'])")
         
+        # Ensure credentials file has secure permissions
+        chmod 0600 "$CREDENTIALS_FILE"
+        
         # Clear JOIN_CODE for security
         unset JOIN_CODE
+        echo -e "${GREEN}✓ JOIN_CODE cleared for security${NC}"
     else
         echo -e "${RED}✗ Enrollment failed${NC}"
         echo "Please check your JOIN_CODE and try again"
@@ -59,7 +67,11 @@ elif [ -n "$JOIN_CODE" ]; then
     
 else
     echo -e "${RED}================================================${NC}"
-    echo -e "${RED}ERROR: No credentials and no JOIN_CODE provided${NC}"
+    echo -e "${RED}ERROR: No credentials found and no JOIN_CODE provided${NC}"
+    echo ""
+    echo "This node requires either:"
+    echo "  1. Pre-existing credentials at $BLYAN_DATA_DIR/credentials.json"
+    echo "  2. A JOIN_CODE environment variable for enrollment"
     echo ""
     echo "To enroll this node:"
     echo "1. Go to https://blyan.com/contribute"
@@ -68,8 +80,9 @@ else
     echo ""
     echo "   docker run -e JOIN_CODE=YOUR_CODE_HERE \\"
     echo "     -v /var/lib/blyan/data:/data \\"
-    echo "     blyan/node:latest"
+    echo "     blyan/node:gpu"
     echo ""
+    echo "The JOIN_CODE will be used once for enrollment and then cleared."
     echo -e "${RED}================================================${NC}"
     exit 1
 fi
@@ -85,28 +98,27 @@ else
     echo "For GPU support, ensure NVIDIA drivers and Docker GPU runtime are installed"
 fi
 
-# Start the main node process
+# Log configuration before starting
 echo -e "${GREEN}Starting Blyan node service...${NC}"
-echo "Main server: $MAIN_SERVER_URL"
-echo "Node port: $NODE_PORT"
-echo "Blockchain mode: Always enabled"
+echo "Configuration:"
+echo "  Main node URL: $MAIN_NODE_URL"
+echo "  Public host: $PUBLIC_HOST"
+echo "  Public port: $PUBLIC_PORT"
+echo "  Node port: $NODE_PORT"
+echo "  Job capacity: $JOB_CAPACITY"
+echo "  Data directory: $BLYAN_DATA_DIR"
+echo "  Blockchain mode: Always enabled"
 
 # Export credentials for the node process
 export BLYAN_NODE_ID="$NODE_ID"
 export BLYAN_NODE_KEY="$NODE_KEY"
 
-# Check which main script to run
+# Prefer run_gpu_node.py as main entrypoint
 if [ -f "/app/run_gpu_node.py" ]; then
-    # GPU node script (primary)
+    echo -e "${GREEN}Executing main GPU node process...${NC}"
     exec python3 /app/run_gpu_node.py
-elif [ -f "/app/run_blyan_node.py" ]; then
-    # Production node script
-    exec python3 /app/run_blyan_node.py
-elif [ -f "/app/backend/p2p/node_runner.py" ]; then
-    # P2P node runner
-    exec python3 /app/backend/p2p/node_runner.py
 else
-    # Fallback to API server
-    echo -e "${YELLOW}Running in API server mode${NC}"
-    exec python3 /app/api/server.py
+    echo -e "${RED}ERROR: /app/run_gpu_node.py not found${NC}"
+    echo "Container build may be incomplete"
+    exit 1
 fi

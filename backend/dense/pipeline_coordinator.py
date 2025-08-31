@@ -207,8 +207,7 @@ class DistributedPipelineCoordinator:
             Generated tokens
         """
         # Tokenize prompt
-        from transformers import AutoTokenizer
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        tokenizer = await self._load_or_cache_tokenizer()
         
         # Apply chat template if using thinking mode
         if request.thinking:
@@ -275,8 +274,9 @@ class DistributedPipelineCoordinator:
                 break
             
             # Update hidden states for next iteration
-            # (In real implementation, would append to input and get new embeddings)
-            hidden_states = hidden_states  # Simplified
+            # Append new token to input and update embeddings
+            input_ids = torch.cat([input_ids, torch.tensor([[next_token_id]])], dim=1)
+            hidden_states = await self._run_embedding(input_ids[:, -1:])
     
     async def _run_embedding(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Run embedding layer."""
@@ -286,11 +286,15 @@ class DistributedPipelineCoordinator:
             raise RuntimeError("No node available for embedding")
         
         if node.is_local and node.chunk_manager:
-            # Local execution
-            # Simplified - in reality would use actual embedding
-            batch_size, seq_len = input_ids.shape
-            hidden_size = LAYERS["hidden_size"]
-            return torch.randn(batch_size, seq_len, hidden_size)
+            # Local execution using actual blockchain weights
+            try:
+                embeddings = node.chunk_manager.get_embeddings(input_ids)
+                if embeddings is None:
+                    raise RuntimeError("Failed to load embeddings from blockchain")
+                return embeddings
+            except Exception as e:
+                logger.error(f"Embedding execution failed: {e}")
+                raise RuntimeError(f"Cannot proceed without blockchain embeddings: {e}")
         else:
             # Remote execution
             return await self._remote_embedding(node, input_ids)
@@ -328,20 +332,172 @@ class DistributedPipelineCoordinator:
         if not node:
             raise RuntimeError(f"Node {node_id} not found")
         
-        # For simplicity, just return modified hidden states
-        # In reality, would execute all layers on that node
-        return hidden_states + 0.01 * torch.randn_like(hidden_states)
+        # Execute all stages on the specified node
+        if node.is_local and node.chunk_manager:
+            # Chain execution through all stages locally
+            # This requires the node to reload chunks for each stage
+            current_hidden = hidden_states
+            
+            for stage in self.partition_plan.stages:
+                # Temporarily reconfigure chunk manager for this stage
+                original_stage = node.chunk_manager.stage_id
+                try:
+                    # Update stage configuration
+                    node.chunk_manager.stage_id = stage.stage_id
+                    node.chunk_manager.partition_plan = self.partition_plan
+                    
+                    # Reload chunk for this stage
+                    node.chunk_manager.model_chunk = None
+                    node.chunk_manager.load_chunk_from_blockchain()
+                    
+                    # Execute this stage
+                    result = node.chunk_manager.forward_chunk(
+                        current_hidden,
+                        past_key_values=state.past_key_values
+                    )
+                    
+                    current_hidden = result["hidden_states"]
+                    if "past_key_values" in result:
+                        state.past_key_values = result["past_key_values"]
+                        
+                    logger.debug(f"Executed stage {stage.stage_id} locally on node {node.node_id}")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to execute stage {stage.stage_id} locally: {e}")
+                    # Restore original stage
+                    node.chunk_manager.stage_id = original_stage
+                    raise RuntimeError(f"Local stage execution failed: {e}")
+            
+            # Restore original stage configuration
+            node.chunk_manager.stage_id = original_stage
+            node.chunk_manager.model_chunk = None
+            node.chunk_manager.load_chunk_from_blockchain()
+            
+            return current_hidden
+        else:
+            # Remote execution of all stages
+            return await self._remote_forward_all(node, hidden_states, state)
     
     async def _remote_embedding(
         self,
         node: GPUNode,
         input_ids: torch.Tensor
     ) -> torch.Tensor:
-        """Execute embedding on remote node."""
-        # Simplified - would use actual RPC
-        batch_size, seq_len = input_ids.shape
-        hidden_size = LAYERS["hidden_size"]
-        return torch.randn(batch_size, seq_len, hidden_size)
+        """Execute embedding on remote node via /inference/stage."""
+        import aiohttp
+        import base64
+        import pickle
+        
+        url = f"http://{node.host}:{node.port}/inference/stage"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Send token IDs as integers for embedding
+                stage_info = {
+                    "layer_range": [0, 0],  # No transformer layers, just embedding
+                    "has_embedding": True,
+                    "has_lm_head": False
+                }
+                
+                # Send input_ids as list of integers (not tensor)
+                payload = {
+                    "stage": stage_info,
+                    "hidden_states": input_ids.cpu().numpy().tolist(),
+                    "serialization": "json"  # Send as JSON for token IDs
+                }
+                
+                async with session.post(url, json=payload, timeout=30) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise RuntimeError(f"Remote embedding failed: {error_text}")
+                    
+                    result = await response.json()
+                    
+                    # Handle binary response
+                    if result.get("serialization") == "binary":
+                        hidden_bytes = base64.b64decode(result["hidden_states"])
+                        hidden_states = pickle.loads(hidden_bytes)
+                    else:
+                        # JSON response
+                        hidden_states = torch.tensor(result["hidden_states"])
+                    
+                    return hidden_states
+        except Exception as e:
+            logger.error(f"Remote embedding request failed: {e}")
+            raise RuntimeError(f"Cannot execute remote embedding: {e}")
+    
+    async def _remote_forward_all(
+        self,
+        node: GPUNode,
+        hidden_states: torch.Tensor,
+        state: PipelineState
+    ) -> torch.Tensor:
+        """Execute all stages on a remote node by chaining /inference/stage calls."""
+        import aiohttp
+        import pickle
+        import base64
+        import io
+        
+        url = f"http://{node.host}:{node.port}/inference/stage"
+        current_hidden = hidden_states
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Execute each stage sequentially on the target node
+                for stage in self.partition_plan.stages:
+                    layer_indices = stage.get_layer_indices()
+                    
+                    # Build stage info for this stage
+                    stage_info = {
+                        "layer_range": [min(layer_indices), max(layer_indices) + 1] if layer_indices else [0, 0],
+                        "has_embedding": any(c.component_type == "embedding" for c in stage.components),
+                        "has_lm_head": any(c.component_type == "lm_head" for c in stage.components)
+                    }
+                    
+                    # Serialize current hidden states
+                    buffer = io.BytesIO()
+                    torch.save({"tensor": current_hidden.cpu()}, buffer)
+                    hidden_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                    
+                    payload = {
+                        "stage": stage_info,
+                        "hidden_states": hidden_b64,
+                        "serialization": "binary"
+                    }
+                    
+                    # Add KV cache if available
+                    if state.past_key_values:
+                        kv_buffer = io.BytesIO()
+                        torch.save({"kv": state.past_key_values}, kv_buffer)
+                        payload["past_key_values"] = base64.b64encode(kv_buffer.getvalue()).decode('utf-8')
+                    
+                    # Execute this stage
+                    async with session.post(url, json=payload, timeout=30) as response:
+                        if response.status != 200:
+                            error_text = await response.text()
+                            raise RuntimeError(f"Stage {stage.stage_id} execution failed: {error_text}")
+                        
+                        result = await response.json()
+                        
+                        # Decode response
+                        if result.get("serialization") == "binary":
+                            hidden_bytes = base64.b64decode(result["hidden_states"])
+                            current_hidden = pickle.loads(hidden_bytes)
+                        else:
+                            current_hidden = torch.tensor(result["hidden_states"])
+                        
+                        # Update KV cache if returned
+                        if "past_key_values" in result:
+                            kv_bytes = base64.b64decode(result["past_key_values"])
+                            state.past_key_values = pickle.loads(kv_bytes)
+                    
+                    logger.debug(f"Executed stage {stage.stage_id} on node {node.node_id}")
+                
+                return current_hidden
+                
+        except Exception as e:
+            logger.error(f"Remote forward_all (chained stages) failed: {e}")
+            raise RuntimeError(f"Cannot execute all stages on remote node: {e}")
     
     async def _remote_forward(
         self,
@@ -349,14 +505,73 @@ class DistributedPipelineCoordinator:
         hidden_states: torch.Tensor,
         state: PipelineState
     ) -> torch.Tensor:
-        """Execute forward pass on remote node."""
-        # Simplified - would use actual RPC
+        """Execute forward pass on remote node via /inference/stage."""
+        import aiohttp
+        import pickle
+        import base64
+        import io
+        
         # Track inter-node traffic
         if self.thinking_handler:
             bytes_sent = hidden_states.numel() * hidden_states.element_size()
             self.thinking_handler.update_inter_node_traffic(bytes_sent)
         
-        return hidden_states + 0.01 * torch.randn_like(hidden_states)
+        url = f"http://{node.host}:{node.port}/inference/stage"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Get stage info from partition plan
+                stage = self.partition_plan.stages[node.stage_id]
+                layer_indices = stage.get_layer_indices()
+                
+                # Build stage info matching run_gpu_node.py format
+                stage_info = {
+                    "layer_range": [min(layer_indices), max(layer_indices) + 1] if layer_indices else [0, 0],
+                    "has_embedding": any(c.component_type == "embedding" for c in stage.components),
+                    "has_lm_head": any(c.component_type == "lm_head" for c in stage.components)
+                }
+                
+                # Serialize tensor to binary format
+                buffer = io.BytesIO()
+                torch.save({"tensor": hidden_states.cpu()}, buffer)
+                hidden_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                
+                payload = {
+                    "stage": stage_info,
+                    "hidden_states": hidden_b64,
+                    "serialization": "binary"  # Binary for tensor data
+                }
+                
+                # Add KV cache if available
+                if state.past_key_values:
+                    kv_buffer = io.BytesIO()
+                    torch.save({"kv": state.past_key_values}, kv_buffer)
+                    payload["past_key_values"] = base64.b64encode(kv_buffer.getvalue()).decode('utf-8')
+                
+                async with session.post(url, json=payload, timeout=30) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise RuntimeError(f"Remote stage forward failed: {error_text}")
+                    
+                    result = await response.json()
+                    
+                    # Decode binary response
+                    if result.get("serialization") == "binary":
+                        hidden_bytes = base64.b64decode(result["hidden_states"])
+                        hidden_states = pickle.loads(hidden_bytes)
+                    else:
+                        # Fallback to JSON if server returns that
+                        hidden_states = torch.tensor(result["hidden_states"])
+                    
+                    # Update KV cache if returned
+                    if "past_key_values" in result:
+                        kv_bytes = base64.b64decode(result["past_key_values"])
+                        state.past_key_values = pickle.loads(kv_bytes)
+                    
+                    return hidden_states
+        except Exception as e:
+            logger.error(f"Remote stage forward request failed: {e}")
+            raise RuntimeError(f"Cannot execute remote forward pass: {e}")
     
     def _sample_token(
         self,
@@ -365,12 +580,61 @@ class DistributedPipelineCoordinator:
         top_p: float = 0.9,
         top_k: int = 50
     ) -> int:
-        """Sample next token from logits."""
-        # Simplified sampling
-        # In reality, would use proper sampling with temperature, top-p, top-k
-        vocab_size = LAYERS["vocab_size"]
-        probs = torch.randn(vocab_size).softmax(dim=-1)
-        return torch.multinomial(probs, 1).item()
+        """Sample next token from logits using nucleus sampling."""
+        # Apply temperature
+        if temperature > 0:
+            logits = logits / temperature
+        else:
+            # Greedy decoding
+            return torch.argmax(logits, dim=-1).item()
+        
+        # Get probabilities
+        probs = torch.softmax(logits, dim=-1)
+        
+        # Apply top-k filtering
+        if top_k > 0:
+            top_k = min(top_k, probs.size(-1))
+            topk_probs, topk_indices = torch.topk(probs, top_k)
+            probs = torch.zeros_like(probs).scatter(-1, topk_indices, topk_probs)
+        
+        # Apply nucleus (top-p) filtering
+        if top_p < 1.0:
+            sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+            cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+            
+            # Find cutoff index
+            cutoff_idx = torch.searchsorted(cumulative_probs, top_p, right=True)
+            cutoff_idx = min(cutoff_idx, probs.size(-1) - 1)
+            
+            # Zero out probabilities below cutoff
+            indices_to_keep = sorted_indices[:cutoff_idx + 1]
+            probs = torch.zeros_like(probs).scatter(-1, indices_to_keep, 
+                                                    probs.gather(-1, indices_to_keep))
+        
+        # Renormalize and sample
+        probs = probs / probs.sum()
+        next_token = torch.multinomial(probs, num_samples=1)
+        
+        return next_token.item()
+
+    async def _load_or_cache_tokenizer(self):
+        """Load tokenizer from cache or download once, respecting offline mode."""
+        from transformers import AutoTokenizer
+        cache_dir = self.root_dir / "tokenizer_cache"
+        cache_path = cache_dir / MODEL_ID.replace("/", "_")
+        if cache_path.exists():
+            return AutoTokenizer.from_pretrained(str(cache_path))
+        # If offline, fail fast
+        import os
+        if os.environ.get("TRANSFORMERS_OFFLINE", "0").lower() in ("1", "true"):
+            raise RuntimeError(
+                "Tokenizer cache missing and TRANSFORMERS_OFFLINE=1. "
+                "Pre-cache the tokenizer under data/tokenizer_cache or temporarily unset offline mode."
+            )
+        tok = AutoTokenizer.from_pretrained(MODEL_ID)
+        cache_path.mkdir(parents=True, exist_ok=True)
+        tok.save_pretrained(str(cache_path))
+        return tok
     
     def get_pipeline_status(self) -> Dict[str, Any]:
         """Get current pipeline status."""
@@ -413,8 +677,20 @@ class DistributedPipelineCoordinator:
                     memory = node.chunk_manager.get_memory_usage()
                     node.is_healthy = memory["allocated_gb"] < node.chunk_manager.partition_plan.target_vram_gb
             else:
-                # Check remote node health (simplified)
-                node.is_healthy = (time.time() - node.last_heartbeat) < 30
+                # Check remote node health via heartbeat
+                try:
+                    import aiohttp
+                    import asyncio
+                    async with aiohttp.ClientSession() as session:
+                        url = f"http://{node.host}:{node.port}/health"
+                        async with session.get(url, timeout=5) as response:
+                            if response.status == 200:
+                                node.last_heartbeat = time.time()
+                                node.is_healthy = True
+                            else:
+                                node.is_healthy = False
+                except:
+                    node.is_healthy = (time.time() - node.last_heartbeat) < 30
         
         return self.get_pipeline_status()
 

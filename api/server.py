@@ -240,8 +240,6 @@ app = FastAPI(
 )
 
 # Add CORS middleware for streaming and frontend access
-from fastapi.middleware.cors import CORSMiddleware
-import os
 
 # Default to specific domains for production security
 default_origins = "https://blyan.com,https://www.blyan.com,https://blyan.net,https://www.blyan.net,http://localhost:*,http://127.0.0.1:*"
@@ -419,6 +417,14 @@ try:
     print("✅ Prometheus metrics exporter mounted at /metrics")
 except ImportError as e:
     print(f"⚠️  Metrics exporter not available: {e}")
+
+# Mount analytics endpoints
+try:
+    from api.analytics import router as analytics_router
+    app.include_router(analytics_router)
+    print("✅ Analytics endpoints mounted at /analytics")
+except Exception as e:
+    print(f"⚠️  Analytics endpoints not available: {e}")
 
 # Add API Key V2 authentication system
 try:
@@ -1315,7 +1321,23 @@ async def chat_production(req: ChatRequest, http_request: Request = None):
     # Generate response using dense model
     answer = blockchain_model_manager.generate(req.prompt, max_new_tokens=req.max_new_tokens)
     inference_time = time.time() - start_time
-    
+
+    # Record backend analytics
+    try:
+        from backend.analytics.store import get_store
+        from config.model_profile import MODEL_NAME
+        get_store().record_event(
+            event_type="inference_processed",
+            client_id=None,
+            route="/chat/production",
+            model=MODEL_NAME,
+            status="success",
+            duration_ms=inference_time * 1000.0,
+            meta={"stream": bool(req.stream), "max_new_tokens": int(req.max_new_tokens)},
+        )
+    except Exception:
+        pass
+
     return ChatResponse(
         response=answer,
         inference_time=inference_time
@@ -1440,6 +1462,22 @@ async def chat(req: ChatRequest, http_request: Request = None):
         
         collector = get_metrics_collector()
         collector.record(metrics)
+
+        # Record backend analytics
+        try:
+            from backend.analytics.store import get_store
+            from config.model_profile import MODEL_NAME
+            get_store().record_event(
+                event_type="inference_processed",
+                client_id=None,
+                route="/chat",
+                model=MODEL_NAME,
+                status="success",
+                duration_ms=metrics.latency_ms,
+                meta={"stream": bool(req.stream), "max_new_tokens": int(req.max_new_tokens)},
+            )
+        except Exception:
+            pass
         
         return ChatResponse(
             response=atomic_response.response,
@@ -1451,6 +1489,18 @@ async def chat(req: ChatRequest, http_request: Request = None):
         metrics.success = False
         metrics.finalize()
         get_metrics_collector().record(metrics)
+        try:
+            from backend.analytics.store import get_store
+            from config.model_profile import MODEL_NAME
+            get_store().record_event(
+                event_type="inference_processed",
+                route="/chat",
+                model=MODEL_NAME,
+                status="error",
+                duration_ms=metrics.latency_ms,
+            )
+        except Exception:
+            pass
         raise
     except Exception as exc:
         # Wrap other exceptions
@@ -1458,6 +1508,19 @@ async def chat(req: ChatRequest, http_request: Request = None):
         metrics.error = str(exc)
         metrics.finalize()
         get_metrics_collector().record(metrics)
+        try:
+            from backend.analytics.store import get_store
+            from config.model_profile import MODEL_NAME
+            get_store().record_event(
+                event_type="inference_processed",
+                route="/chat",
+                model=MODEL_NAME,
+                status="error",
+                duration_ms=metrics.latency_ms,
+                meta={"error": str(exc)[:256]},
+            )
+        except Exception:
+            pass
         
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -3101,17 +3164,11 @@ async def validate_expert_update(req: ExpertValidationRequest):
         if not can_submit:
             raise HTTPException(status_code=403, detail=f"Node quarantined: {reason}")
         
-        # Get old weights (simplified - in production would get from blockchain)
-        old_weights = {"dummy": torch.randn(10, 5)}
-        new_weights = {"dummy": torch.randn(10, 5)}
-        
-        # Comprehensive validation
-        is_valid, action, snapshot_hash = security_coordinator.validate_expert_update(
-            expert_name=req.expert_name,
-            old_weights=old_weights,
-            new_weights=new_weights,
-            training_data_sample=req.training_data_sample,
-            test_responses=req.test_responses
+        # TODO: Get actual weights from blockchain
+        # This endpoint is not functional until blockchain weight retrieval is implemented
+        raise HTTPException(
+            status_code=501, 
+            detail="Expert validation endpoint not implemented - requires blockchain weight retrieval"
         )
         
         # If validation failed, report security incident
