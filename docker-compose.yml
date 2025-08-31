@@ -1,44 +1,37 @@
 version: '3.8'
 
 services:
-  blyan-gpu-node:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.gpu
+  blyan-node:
+    # Use pre-built image or build from source
     image: mnls0115/blyan-node:latest
+    # Uncomment to build from source instead:
+    # build:
+    #   context: .
+    #   dockerfile: docker/Dockerfile.gpu
     container_name: blyan-node
     restart: unless-stopped
     ports:
       - "8001:8001"
     volumes:
-      - blyan-data:/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # For container monitoring
+      - /var/lib/blyan/data:/data
     environment:
-      # Required: Get your JOIN_CODE from https://blyan.com/contribute
+      # Required for first run only (get from https://blyan.com/contribute)
       - JOIN_CODE=${JOIN_CODE}
       
-      # Auto-detect public IP
-      - PUBLIC_IP=${PUBLIC_IP:-auto}
-      
       # Main node URL (default: production)
-      - MAIN_NODE_URL=${MAIN_NODE_URL:-https://blyan.com/api}
+      - MAIN_NODE_URL=${MAIN_NODE_URL:-https://api.blyan.com}
       
-      # GPU nodes always use blockchain for model serving
+      # Public connectivity
+      - PUBLIC_HOST=${PUBLIC_HOST}
+      - PUBLIC_PORT=${PUBLIC_PORT:-8001}
       
       # Node configuration
-      - NODE_NAME=${NODE_NAME:-gpu-node}
-      - NODE_PORT=${NODE_PORT:-8001}
+      - JOB_CAPACITY=${JOB_CAPACITY:-1}
+      - NODE_ENV=${NODE_ENV:-production}
       
-      # GPU configuration (auto-detected)
-      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-all}
-      
-      # Model settings (can override via .env.model or environment)
-      - MODEL_NAME=${MODEL_NAME:-Qwen/Qwen3-8B-FP8}
-      - MODEL_QUANTIZATION=${MODEL_QUANTIZATION:-fp8}
-      
-      # Performance settings
-      - MAX_BATCH_SIZE=${MAX_BATCH_SIZE:-4}
-      - MAX_SEQUENCE_LENGTH=${MAX_SEQUENCE_LENGTH:-32768}  # Start conservative, can go up to 262144
+      # Optional: Skip proof-of-work in development
+      - SKIP_POW=${SKIP_POW:-false}
+      - ENABLE_POL=${ENABLE_POL:-false}
       
     deploy:
       resources:
@@ -75,12 +68,6 @@ services:
       - blyan-network
 
 volumes:
-  blyan-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-/var/lib/blyan/data}
   redis-data:
     driver: local
 

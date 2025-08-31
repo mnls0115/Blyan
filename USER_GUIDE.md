@@ -20,16 +20,27 @@ Visit [blyan.com](https://blyan.com) and start chatting immediately.
 
 #### Docker Method (Easiest)
 ```bash
-# One-line setup
-docker run --gpus all -d --name blyan-node \
+# Standardized Docker command (first run requires JOIN_CODE)
+docker run -d --name blyan-node \
+  --gpus all \
   -p 8001:8001 \
-  -e MAIN_NODE_URL=https://blyan.com/api \
-  -e NODE_ID=gpu-$(hostname) \
-  ghcr.io/blyan-network/expert-node:latest
+  -v /var/lib/blyan/data:/data \
+  -e JOIN_CODE=YOUR_CODE_HERE \
+  -e MAIN_NODE_URL=https://api.blyan.com \
+  -e PUBLIC_HOST=$(curl -s https://checkip.amazonaws.com) \
+  -e PUBLIC_PORT=8001 \
+  -e JOB_CAPACITY=1 \
+  -e NODE_ENV=production \
+  --restart unless-stopped \
+  mnls0115/blyan-node:latest
 
 # Check it's running
-docker logs blyan-node
+docker logs -f blyan-node
 ```
+
+Notes:
+- CUDA 12.x base, runs as non-root inside the container.
+- Credentials persist in `/data/credentials.json` after first enrollment.
 
 #### Python Method
 ```bash
@@ -52,7 +63,7 @@ python run_gpu_node.py
 
 API keys are required for authenticated access to the main API endpoints. They are NOT needed for running a GPU node.
 
-**Create an API Key:**
+Create an API Key:
 ```bash
 curl -X POST https://api.blyan.com/auth/v2/register \
   -H "Content-Type: application/json" \
@@ -61,13 +72,19 @@ curl -X POST https://api.blyan.com/auth/v2/register \
     "key_type": "basic",
     "metadata": {"purpose": "testing"}
   }'
-# Response contains your api_key (JWT token) - store it securely!
 ```
 
-**Validate Your Key:**
+Validate Your Key:
 ```bash
 curl -X GET https://api.blyan.com/auth/v2/validate \
   -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Refresh Your Key:
+```bash
+curl -X POST https://api.blyan.com/auth/v2/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"current_key": "YOUR_CURRENT_API_KEY"}'
 ```
 
 For detailed API key management instructions, see the [Contribute page](https://blyan.com/contribute#api-key-section).

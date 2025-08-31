@@ -8,24 +8,39 @@ We're building AI that is for everyone, built by everyone, and belongs to everyo
 
 **Web**: [blyan.com](https://blyan.com) - Start chatting immediately, no signup required
 
-**API**: 
+**API**:
 ```bash
-curl -X POST https://blyan.com/api/chat \
+curl -X POST https://api.blyan.com/chat \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Hello, Blyan!", "max_tokens": 50}'
 ```
 
-## 💰 Run a GPU Node (Earn BLY Tokens, not supported now! Please wait...)
+## 💰 Run a GPU Node (Docker)
 
 ```bash
-# Quick start with Docker
-docker run --gpus all -d --name blyan-node \
+# Standardized Docker command (first run requires JOIN_CODE)
+docker run -d --name blyan-node \
+  --gpus all \
   -p 8001:8001 \
-  -e MAIN_NODE_URL=https://blyan.com/api \
-  ghcr.io/blyan-network/expert-node:latest
+  -v /var/lib/blyan/data:/data \
+  -e JOIN_CODE=YOUR_CODE_HERE \
+  -e MAIN_NODE_URL=https://api.blyan.com \
+  -e PUBLIC_HOST=$(curl -s https://checkip.amazonaws.com) \
+  -e PUBLIC_PORT=8001 \
+  -e JOB_CAPACITY=1 \
+  -e NODE_ENV=production \
+  --restart unless-stopped \
+  mnls0115/blyan-node:latest
 ```
 
-Requirements: 16GB+ VRAM GPU (RTX 3090/4090), Linux, Public IP
+- Requirements: NVIDIA GPU (12+ GB VRAM), Linux/WSL2, CUDA 12.x, Docker + NVIDIA Container Toolkit
+- Security: Container runs as non-root. Credentials are stored in `/data/credentials.json` with 0600 permissions.
+
+Or use Compose:
+```bash
+export JOIN_CODE=YOUR_CODE_HERE
+docker-compose up -d
+```
 
 ## 📚 Documentation
 
@@ -87,3 +102,32 @@ Apache 2.0 License - See [LICENSE](LICENSE) file
 ---
 
 **Together, we're building AI for everyone.** 🚀
+## 🔑 API Keys (JWT)
+
+API keys are required for authenticated access to the main API; not needed for running a node.
+
+Register a key:
+```bash
+curl -X POST https://api.blyan.com/auth/v2/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-api-key",
+    "key_type": "basic",
+    "metadata": {"purpose": "testing"}
+  }'
+```
+
+Validate your key:
+```bash
+curl -X GET https://api.blyan.com/auth/v2/validate \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Refresh your key:
+```bash
+curl -X POST https://api.blyan.com/auth/v2/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"current_key": "YOUR_CURRENT_API_KEY"}'
+```
+
+See full details in `frontend/contribute.html#api-key-section`.

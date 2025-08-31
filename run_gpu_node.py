@@ -76,20 +76,14 @@ MAIN_NODE_URL = os.environ.get('MAIN_NODE_URL') or os.environ.get('API_URL') or 
 DATA_DIR = Path(os.environ.get('BLYAN_DATA_DIR', './data'))
 MODEL_NAME = os.environ.get('MODEL_NAME', DEFAULT_MODEL_NAME)
 
-# 🔒 Production Safety Settings
-IS_PRODUCTION = os.environ.get('NODE_ENV', 'production').lower() == 'production'
-IS_DEVELOPMENT = os.environ.get('DEVELOPMENT_MODE', 'false').lower() == 'true'
-
-# Security: NEVER disable PoL in production
-if IS_PRODUCTION and not IS_DEVELOPMENT:
-    SKIP_POL = False  # Force security in production
-    AUTO_UPLOAD = True
-    logger.info("🔒 PRODUCTION MODE: Security enforced (PoL enabled)")
-else:
-    SKIP_POL = os.environ.get('SKIP_POL', 'false').lower() == 'true'
-    AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'true').lower() == 'true'
-    if SKIP_POL:
-        logger.warning("⚠️ DEVELOPMENT MODE: PoL disabled - NOT FOR PRODUCTION")
+# 🔒 Production Safety Settings (always production)
+# Default: Proof-of-Learning ON, no HF bootstrap unless explicitly allowed
+SKIP_POL = os.environ.get('SKIP_POL', 'false').lower() == 'true'
+AUTO_UPLOAD = os.environ.get('AUTO_UPLOAD', 'false').lower() == 'true'
+ALLOW_HF_UPLOAD = os.environ.get('ALLOW_HF_UPLOAD', 'false').lower() == 'true'
+if SKIP_POL:
+    logger.warning("⚠️ PoL disabled via SKIP_POL=true — NOT RECOMMENDED in production")
+logger.info("🔒 Running with production defaults (PoL on by default)")
 
 # Auto-apply safe optimizations
 def apply_production_optimizations():
@@ -161,9 +155,8 @@ def apply_production_optimizations():
     os.environ['OPTIMIZATIONS_APPLIED'] = 'true'
     logger.info("   ✅ Optimizations applied")
 
-# Apply optimizations early
-if IS_PRODUCTION:
-    apply_production_optimizations()
+# Apply optimizations early (always production)
+apply_production_optimizations()
 
 # Optional: Use custom public IP/hostname if provided, otherwise auto-detect
 PUBLIC_HOST = os.environ.get('PUBLIC_HOST', '')  # Can be IP, domain, or empty for auto-detect
@@ -910,7 +903,7 @@ class BlyanGPUNode:
             logger.info(f"📦 Resuming - need {remaining} more layers ({progress['progress_percentage']:.1f}% complete)")
         
         # Check if we should auto-upload
-        if AUTO_UPLOAD:
+        if AUTO_UPLOAD and ALLOW_HF_UPLOAD:
             # Check if upload was already completed (verify blocks exist)
             upload_state_file = DATA_DIR / "upload_completed.json"
             actual_blocks = progress.get('layer_blocks', 0)
@@ -940,7 +933,10 @@ class BlyanGPUNode:
             else:
                 logger.info("✅ Model fully uploaded")
         else:
-            logger.info(f"ℹ️  Manual upload required (set AUTO_UPLOAD=True to enable)")
+            if AUTO_UPLOAD and not ALLOW_HF_UPLOAD:
+                logger.info("ℹ️  AUTO_UPLOAD requested but ALLOW_HF_UPLOAD is false in production. Skipping HF download.")
+            else:
+                logger.info(f"ℹ️  Manual upload required (set AUTO_UPLOAD=true and ALLOW_HF_UPLOAD=true to enable bootstrap)")
     
     def initialize_model_manager(self) -> bool:
         """Initialize blockchain-first model manager for inference."""
@@ -1076,7 +1072,7 @@ class BlyanGPUNode:
                         logger.info(f"    - {expert}")
             else:
                 logger.info(f"📦 No experts in blockchain yet (blocks: {actual_block_count})")
-                if AUTO_UPLOAD:
+                if AUTO_UPLOAD and ALLOW_HF_UPLOAD:
                     # Check if upload was already triggered from block building
                     if hasattr(self, '_upload_triggered_from_block_building') and self._upload_triggered_from_block_building:
                         logger.info("📋 Upload already triggered from block building phase")
@@ -1098,7 +1094,9 @@ class BlyanGPUNode:
                             # Create task to download and upload model
                             asyncio.create_task(self.download_and_upload_model())
                 else:
-                    logger.info("💡 Upload model using: python miner/upload_moe_parameters.py")
+                    if AUTO_UPLOAD and not ALLOW_HF_UPLOAD:
+                        logger.info("ℹ️  AUTO_UPLOAD requested but ALLOW_HF_UPLOAD=false. Skipping HF bootstrap in production.")
+                    logger.info("💡 Upload model using: python miner/upload_moe_parameters.py or pre-seed chain data")
             
             return True
             
@@ -1154,8 +1152,8 @@ class BlyanGPUNode:
                     except Exception:
                         weights_gb = None
                     try:
-                        from config.model_profile import get_kv_cache_size
-                        kv_est = get_kv_cache_size(batch_size=1, seq_len=2048, num_layers=36)
+                        from config.model_profile import calculate_kv_cache_size
+                        kv_est = calculate_kv_cache_size(batch_size=1, seq_len=2048, num_layers=36)
                     except Exception:
                         kv_est = None
                     if peak_gb is not None and (weights_gb is not None or kv_est is not None):
@@ -1197,6 +1195,10 @@ class BlyanGPUNode:
     
     async def _do_download_and_upload(self):
         """Download dense model and upload layers to blockchain - OPTIMIZED."""
+        # Respect production policy: do not touch HF unless explicitly allowed
+        if not ALLOW_HF_UPLOAD:
+            logger.info("⛔ HF bootstrap disabled (ALLOW_HF_UPLOAD=false). Skipping download/upload.")
+            return
         
         # OPTIMIZATION: Check parameter index first (fast)
         from backend.core.param_index import ParameterIndex
@@ -1332,6 +1334,14 @@ class BlyanGPUNode:
             meta_count = len(self.chains['A']._hash_index) if hasattr(self.chains['A'], '_hash_index') else 0
             if meta_count == 0:
                 if PROFILE_AVAILABLE:
+                    # Compute total params from config (supports *_b fields)
+                    total_params = ARCHITECTURE.get("total_params")
+                    if total_params is None:
+                        try:
+                            total_params_b = float(ARCHITECTURE.get("total_params_b", 0))
+                            total_params = int(total_params_b * 1e9)
+                        except Exception:
+                            total_params = 0
                     meta_spec = {
                         "model_name": MODEL_NAME,
                         "architecture": "dense",
@@ -1340,7 +1350,7 @@ class BlyanGPUNode:
                         "num_attention_heads": LAYERS["num_attention_heads"],
                         "num_kv_heads": LAYERS["num_kv_heads"],
                         "context_length": CONTEXT["max_length"],
-                        "total_params": ARCHITECTURE["total_params"]
+                        "total_params": total_params
                     }
                 self.chains['A'].add_block(json.dumps(meta_spec).encode(), block_type='meta')
                 logger.info("✅ Created meta block")
